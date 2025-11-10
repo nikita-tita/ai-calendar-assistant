@@ -83,6 +83,18 @@ class Settings(BaseSettings):
                     "RADICALE_BOT_PASSWORD must be set in .env for security. "
                     "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(24))'"
                 )
+
+            # Validate Yandex GPT credentials (required for bot to work)
+            if not self.yandex_gpt_api_key:
+                raise ValueError(
+                    "YANDEX_GPT_API_KEY must be set in production. "
+                    "Get your API key from: https://cloud.yandex.ru/docs/iam/concepts/authorization/api-key"
+                )
+            if not self.yandex_gpt_folder_id:
+                raise ValueError(
+                    "YANDEX_GPT_FOLDER_ID must be set in production. "
+                    "Find your folder ID in Yandex Cloud console: https://console.cloud.yandex.ru/"
+                )
         else:
             # Development mode - warn if using weak secrets
             if self.secret_key and len(self.secret_key) < 32:
@@ -91,6 +103,12 @@ class Settings(BaseSettings):
             if not self.radicale_bot_password:
                 logger.warning("missing_radicale_password",
                              message="RADICALE_BOT_PASSWORD not set. OK for dev, but required for production!")
+            if not self.yandex_gpt_api_key:
+                logger.warning("missing_yandex_gpt_api_key",
+                             message="YANDEX_GPT_API_KEY not set. Bot will not work without it!")
+            if not self.yandex_gpt_folder_id:
+                logger.warning("missing_yandex_gpt_folder_id",
+                             message="YANDEX_GPT_FOLDER_ID not set. Bot will not work without it!")
 
     # Property Bot Settings
     property_feed_url: Optional[str] = None
