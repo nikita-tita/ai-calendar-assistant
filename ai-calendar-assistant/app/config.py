@@ -3,9 +3,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import secrets
-import structlog
-
-logger = structlog.get_logger()
 
 
 class Settings(BaseSettings):
@@ -41,7 +38,7 @@ class Settings(BaseSettings):
     radicale_admin_user: str = ""
     radicale_admin_password: str = ""
     radicale_bot_user: str = "calendar_bot"
-    radicale_bot_password: Optional[str] = None  # Required for production, optional for dev
+    radicale_bot_password: str  # No default - must be set in .env for security
 
     # OpenAI (for Whisper - optional, can use Yandex STT)
     openai_api_key: Optional[str] = None
@@ -54,7 +51,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./calendar_assistant.db"
 
     # Security
-    secret_key: Optional[str] = None  # Required for production (min 32 chars), optional for dev
+    secret_key: str  # No default - must be set in .env for security
     cors_origins: str = "https://example.com,https://webapp.telegram.org"
 
     # Timezone
@@ -68,47 +65,19 @@ class Settings(BaseSettings):
         """Initialize settings with security validation."""
         super().__init__(**kwargs)
 
-        # Only validate in production environment
-        if self.app_env == "production":
-            # Validate SECRET_KEY is not default/weak
-            if not self.secret_key or len(self.secret_key) < 32:
-                raise ValueError(
-                    "SECRET_KEY must be set to a secure value (minimum 32 characters). "
-                    "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-                )
+        # Validate SECRET_KEY is not default/weak
+        if not self.secret_key or len(self.secret_key) < 32:
+            raise ValueError(
+                "SECRET_KEY must be set to a secure value (minimum 32 characters). "
+                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
 
-            # Validate Radicale password is set
-            if not self.radicale_bot_password:
-                raise ValueError(
-                    "RADICALE_BOT_PASSWORD must be set in .env for security. "
-                    "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(24))'"
-                )
-
-            # Validate Yandex GPT credentials (required for bot to work)
-            if not self.yandex_gpt_api_key:
-                raise ValueError(
-                    "YANDEX_GPT_API_KEY must be set in production. "
-                    "Get your API key from: https://cloud.yandex.ru/docs/iam/concepts/authorization/api-key"
-                )
-            if not self.yandex_gpt_folder_id:
-                raise ValueError(
-                    "YANDEX_GPT_FOLDER_ID must be set in production. "
-                    "Find your folder ID in Yandex Cloud console: https://console.cloud.yandex.ru/"
-                )
-        else:
-            # Development mode - warn if using weak secrets
-            if self.secret_key and len(self.secret_key) < 32:
-                logger.warning("weak_secret_key",
-                             message="SECRET_KEY is too short (< 32 chars). OK for dev, but change for production!")
-            if not self.radicale_bot_password:
-                logger.warning("missing_radicale_password",
-                             message="RADICALE_BOT_PASSWORD not set. OK for dev, but required for production!")
-            if not self.yandex_gpt_api_key:
-                logger.warning("missing_yandex_gpt_api_key",
-                             message="YANDEX_GPT_API_KEY not set. Bot will not work without it!")
-            if not self.yandex_gpt_folder_id:
-                logger.warning("missing_yandex_gpt_folder_id",
-                             message="YANDEX_GPT_FOLDER_ID not set. Bot will not work without it!")
+        # Validate Radicale password is set
+        if not self.radicale_bot_password:
+            raise ValueError(
+                "RADICALE_BOT_PASSWORD must be set in .env for security. "
+                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(24))'"
+            )
 
     # Property Bot Settings
     property_feed_url: Optional[str] = None
