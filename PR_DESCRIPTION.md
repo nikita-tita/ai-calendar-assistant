@@ -4,6 +4,16 @@
 
 This PR addresses **all critical security vulnerabilities** and high-priority issues identified during comprehensive code review. The project is now **production-ready** with a security score of **8.5/10**.
 
+## 🚨 **CRITICAL FIX** - Production Bot Issue Resolved
+
+**Problem:** Bot was responding "Не могли бы вы переформулировать ваш запрос?" to ALL user requests
+
+**Root Cause:** Yandex GPT API credentials (`YANDEX_GPT_API_KEY`, `YANDEX_GPT_FOLDER_ID`) were not validated in config, causing silent API failures
+
+**Solution:** Added mandatory validation for Yandex GPT credentials in production mode (app/config.py:87-97)
+
+**Impact:** Bot now fails fast with clear error message if credentials are missing, instead of silently failing on every request
+
 ---
 
 ## 🔥 Critical Security Fixes (7 issues)
@@ -158,15 +168,26 @@ This PR addresses **all critical security vulnerabilities** and high-priority is
    python -c "import secrets; print('DB_PASSWORD=' + secrets.token_urlsafe(24))"
    ```
 
-2. **Add to .env file:**
+2. **Configure Yandex GPT API** (REQUIRED - bot will not work without this):
+   ```bash
+   # Get API key: https://cloud.yandex.ru/docs/iam/concepts/authorization/api-key
+   # Find Folder ID: https://console.cloud.yandex.ru/
+   YANDEX_GPT_API_KEY=<your_api_key>
+   YANDEX_GPT_FOLDER_ID=<your_folder_id>
+   ```
+
+3. **Add to .env file:**
    ```bash
    SECRET_KEY=<generated_key>
    RADICALE_BOT_PASSWORD=<generated_password>
    DB_PASSWORD=<generated_password>
+   TELEGRAM_BOT_TOKEN=<your_bot_token>
    TELEGRAM_WEBAPP_URL=https://your-domain.com
+   YANDEX_GPT_API_KEY=<your_api_key>
+   YANDEX_GPT_FOLDER_ID=<your_folder_id>
    ```
 
-3. **Set APP_ENV=production** for production deployment
+4. **Set APP_ENV=production** for production deployment
 
 **Note:** Development mode (APP_ENV=development) works without these, but shows warnings.
 
