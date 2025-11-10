@@ -208,8 +208,8 @@ class TelegramHandler:
         # Устанавливаем WebApp button слева от поля ввода (кабинет календаря)
         try:
             from telegram import MenuButtonWebApp, WebAppInfo
-            # Add version parameter to bust Telegram cache
-            webapp_url = "https://этонесамыйдлинныйдомен.рф?v=2025103001"
+            # Use webapp URL from config (add version parameter to bust Telegram cache)
+            webapp_url = f"{settings.telegram_webapp_url}?v=2025103001"
             menu_button = MenuButtonWebApp(
                 text="🗓 Кабинет",
                 web_app=WebAppInfo(url=webapp_url)
@@ -345,7 +345,8 @@ class TelegramHandler:
             pytz.timezone(timezone)  # Validate timezone
             user_preferences.set_timezone(user_id, timezone)
             await update.message.reply_text(f"✅ Установлен: {timezone}")
-        except:
+        except Exception as e:
+            logger.error("timezone_set_error", user_id=user_id, timezone=timezone, error=str(e))
             await update.message.reply_text(
                 "Неверный пояс. Используйте /timezone для списка."
             )
