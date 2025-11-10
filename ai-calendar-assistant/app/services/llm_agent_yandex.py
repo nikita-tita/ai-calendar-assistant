@@ -918,7 +918,7 @@ Respuesta JSON:""",
         if "start_time" in input_data:
             try:
                 start_time = datetime.fromisoformat(input_data["start_time"])
-            except:
+            except (ValueError, TypeError) as e:
                 # Try parsing as time-only (HH:MM) for recurring events
                 import re
                 import pytz
@@ -937,11 +937,12 @@ Respuesta JSON:""",
                                timezone=str(start_time.tzinfo))
                 else:
                     start_time = parsed_start
+                    logger.warning("start_time_parse_failed", input=input_data["start_time"], error=str(e))
 
         if "end_time" in input_data:
             try:
                 end_time = datetime.fromisoformat(input_data["end_time"])
-            except:
+            except (ValueError, TypeError) as e:
                 # Try parsing as time-only (HH:MM)
                 import re
                 time_match = re.match(r'^(\d{1,2}):(\d{2})$', str(input_data["end_time"]))
@@ -951,6 +952,7 @@ Respuesta JSON:""",
                     end_time = start_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 else:
                     end_time = parsed_end
+                    logger.warning("end_time_parse_failed", input=input_data["end_time"], error=str(e))
 
         # Use parsed values as fallback
         if not start_time:
@@ -1036,16 +1038,16 @@ Respuesta JSON:""",
                 dt = self._parse_optional_datetime(first_date_str)
                 if dt:
                     first_date = format_datetime_human(dt, locale=language)
-        except:
-            pass
+        except Exception as e:
+            logger.warning("first_date_format_error", date=first_date_str, error=str(e))
 
         try:
             if last_date_str:
                 dt = self._parse_optional_datetime(last_date_str)
                 if dt:
                     last_date = format_datetime_human(dt, locale=language)
-        except:
-            pass
+        except Exception as e:
+            logger.warning("last_date_format_error", date=last_date_str, error=str(e))
 
         # Build compact summary based on action type
         # Get last event title too
@@ -1103,7 +1105,8 @@ Respuesta JSON:""",
                                     date_str = start_dt.strftime("%d.%m")
                                     time_str = f"{start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')}"
                                     summary += f"• {act_title}\n  📅 {date_str} | 🕐 {time_str}\n"
-                            except:
+                            except Exception as e:
+                                logger.debug("batch_summary_format_error", index=i, error=str(e))
                                 summary += f"• {act_title}\n"
 
                         if action_count > 10:
@@ -1137,7 +1140,8 @@ Respuesta JSON:""",
                                     date_str = start_dt.strftime("%d.%m")
                                     time_str = f"{start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')}"
                                     summary += f"• {act_title}\n  📅 {date_str} | 🕐 {time_str}\n"
-                            except:
+                            except Exception as e:
+                                logger.debug("batch_summary_format_error", index=i, error=str(e))
                                 summary += f"• {act_title}\n"
 
                         if action_count > 10:
@@ -1181,7 +1185,8 @@ Respuesta JSON:""",
                 tz = pytz.timezone(settings.default_timezone)
                 dt = tz.localize(dt)
             return dt
-        except:
+        except (ValueError, TypeError) as e:
+            logger.debug("datetime_parse_failed", input=dt_str, error=str(e))
             return None
 
 
