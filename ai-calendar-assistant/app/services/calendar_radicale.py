@@ -84,8 +84,9 @@ class RadicaleService:
                     if display_name == calendar_name:
                         logger.info("calendar_found", user_id=user_id, calendar=calendar_name, url=str(cal.url))
                         return cal
-                except:
+                except Exception as e:
                     # If can't get properties, skip this calendar
+                    logger.debug("calendar_props_error", calendar=str(cal.url), error=str(e))
                     continue
 
             # Create new calendar if doesn't exist

@@ -345,7 +345,8 @@ class TelegramHandler:
             pytz.timezone(timezone)  # Validate timezone
             user_preferences.set_timezone(user_id, timezone)
             await update.message.reply_text(f"✅ Установлен: {timezone}")
-        except:
+        except Exception as e:
+            logger.error("timezone_set_error", user_id=user_id, timezone=timezone, error=str(e))
             await update.message.reply_text(
                 "Неверный пояс. Используйте /timezone для списка."
             )
