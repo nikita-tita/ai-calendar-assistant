@@ -3,6 +3,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import secrets
+import structlog
+
+logger = structlog.get_logger()
 
 
 class Settings(BaseSettings):
@@ -38,7 +41,7 @@ class Settings(BaseSettings):
     radicale_admin_user: str = ""
     radicale_admin_password: str = ""
     radicale_bot_user: str = "calendar_bot"
-    radicale_bot_password: str  # No default - must be set in .env for security
+    radicale_bot_password: Optional[str] = None  # Required for production, optional for dev
 
     # OpenAI (for Whisper - optional, can use Yandex STT)
     openai_api_key: Optional[str] = None
@@ -51,7 +54,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./calendar_assistant.db"
 
     # Security
-    secret_key: str  # No default - must be set in .env for security
+    secret_key: Optional[str] = None  # Required for production (min 32 chars), optional for dev
     cors_origins: str = "https://example.com,https://webapp.telegram.org"
 
     # Timezone
@@ -65,19 +68,29 @@ class Settings(BaseSettings):
         """Initialize settings with security validation."""
         super().__init__(**kwargs)
 
-        # Validate SECRET_KEY is not default/weak
-        if not self.secret_key or len(self.secret_key) < 32:
-            raise ValueError(
-                "SECRET_KEY must be set to a secure value (minimum 32 characters). "
-                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-            )
+        # Only validate in production environment
+        if self.app_env == "production":
+            # Validate SECRET_KEY is not default/weak
+            if not self.secret_key or len(self.secret_key) < 32:
+                raise ValueError(
+                    "SECRET_KEY must be set to a secure value (minimum 32 characters). "
+                    "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+                )
 
-        # Validate Radicale password is set
-        if not self.radicale_bot_password:
-            raise ValueError(
-                "RADICALE_BOT_PASSWORD must be set in .env for security. "
-                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(24))'"
-            )
+            # Validate Radicale password is set
+            if not self.radicale_bot_password:
+                raise ValueError(
+                    "RADICALE_BOT_PASSWORD must be set in .env for security. "
+                    "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(24))'"
+                )
+        else:
+            # Development mode - warn if using weak secrets
+            if self.secret_key and len(self.secret_key) < 32:
+                logger.warning("weak_secret_key",
+                             message="SECRET_KEY is too short (< 32 chars). OK for dev, but change for production!")
+            if not self.radicale_bot_password:
+                logger.warning("missing_radicale_password",
+                             message="RADICALE_BOT_PASSWORD not set. OK for dev, but required for production!")
 
     # Property Bot Settings
     property_feed_url: Optional[str] = None
