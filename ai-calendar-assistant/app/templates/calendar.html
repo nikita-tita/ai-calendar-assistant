@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Календарь{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div class="logo">📅</div>
+    <h1>Календарный ассистент</h1>
+    <p>Ваш персональный ИИ-помощник</p>
+</div>
+
+<div class="quick-actions">
+    <button class="btn btn-primary" onclick="loadEvents('today')">
+        📋 Сегодня
+    </button>
+    <button class="btn btn-secondary" onclick="loadEvents('tomorrow')">
+        📅 Завтра
+    </button>
+    <button class="btn btn-secondary" onclick="loadEvents('week')">
+        📆 Неделя
+    </button>
+</div>
+
+<div class="events-section">
+    <h3>События</h3>
+    <div id="events-container" class="events-container">
+        <div class="loading">Загрузка...</div>
+    </div>
+</div>
+
+<div class="create-section">
+    <button class="btn btn-success" onclick="showCreateForm()">
+        ➕ Создать событие
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Telegram Web App initialization
+let tg = window.Telegram.WebApp;
+tg.expand();
+tg.ready();
+
+// Load today's events by default
+document.addEventListener('DOMContentLoaded', function() {
+    loadEvents('today');
+});
+
+async function loadEvents(period) {
+    const container = document.getElementById('events-container');
+    container.innerHTML = '<div class="loading">Загрузка...</div>';
+    
+    try {
+        const response = await fetch(`/api/events/${period}`);
+        const events = await response.json();
+        
+        if (events.length === 0) {
+            container.innerHTML = '<div class="empty-state">Нет событий</div>';
+            return;
+        }
+        
+        let html = '';
+        events.forEach(event => {
+            const time = new Date(event.start).toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            html += `
+                <div class="event-card">
+                    <div class="event-time">${time}</div>
+                    <div class="event-title">${event.title || 'Событие'}</div>
+                    ${event.location ? `<div class="event-location">📍 ${event.location}</div>` : ''}
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = '<div class="error">Ошибка загрузки</div>';
+        console.error('Error loading events:', error);
+    }
+}
+
+function showCreateForm() {
+    tg.showPopup({
+        title: 'Создание события',
+        message: 'Используйте текстовые команды в чате с ботом для создания событий',
+        buttons: [{ type: 'ok' }]
+    });
+}
+</script>
+{% endblock %}

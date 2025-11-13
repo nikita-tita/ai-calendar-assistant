@@ -1,5 +1,4 @@
 # Multi-stage build for AI Calendar Assistant
-
 FROM python:3.11-slim as builder
 
 WORKDIR /app

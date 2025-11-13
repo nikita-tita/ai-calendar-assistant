@@ -1,7 +1,8 @@
-"""Telegram bot message handler."""
+"""Telegram bot handler with built-in application management."""
 
+import asyncio
 from typing import Optional
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application
 import structlog
 
@@ -41,18 +42,106 @@ PROPERTY_BOT_ENABLED = False
 
 logger = structlog.get_logger()
 
-
 class TelegramHandler:
-    """Handler for Telegram bot messages."""
-
-    def __init__(self, app: Application):
-        """Initialize handler with Telegram application."""
-        self.app = app
-        self.bot = app.bot
+    def __init__(self):
+        self.app: Optional[Application] = None
+        self.bot: Optional[Bot] = None
+        self._initialized = False
+        self._initializing = False
+        self._lock = asyncio.Lock()
+        
         # Store conversation history per user (last 10 messages)
         self.conversation_history = {}
         # Store user timezone preferences (user_id -> timezone string)
         self.user_timezones = {}
+    
+    async def initialize(self) -> None:
+        """Initialize Telegram application (thread-safe)."""
+        if self._initialized:
+            return
+            
+        async with self._lock:
+            if self._initialized:
+                return
+                
+            if self._initializing:
+                while not self._initialized:
+                    await asyncio.sleep(0.1)
+                return
+
+            self._initializing = True
+            try:
+                logger.info("initializing_telegram_app")
+                
+                self.app = (
+                    Application.builder()
+                    .token(settings.telegram_bot_token)
+                    .build()
+                )
+                
+                # Инициализация и старт
+                await self.app.initialize()
+                await self.app.start()
+                self.bot = self.app.bot
+                
+                me = await self.bot.get_me()
+                logger.info(
+                    "telegram_app_initialized",
+                    bot_username=me.username,
+                    bot_id=me.id
+                )
+                
+                self._initialized = True
+                
+            except Exception as e:
+                logger.error("telegram_app_initialization_failed", error=str(e))
+                self._initializing = False
+                raise
+            finally:
+                self._initializing = False
+
+    async def ensure_initialized(self) -> None:
+        """Ensure bot is initialized (for lazy initialization)."""
+        if not self._initialized:
+            await self.initialize()
+
+    async def process_webhook_update(self, update_data: dict) -> None:
+        """Process webhook update with ensured initialization."""
+        await self.ensure_initialized()
+        update = Update.de_json(update_data, self.bot)
+        if update.callback_query:
+            await self.handle_callback_query(update)
+        else:
+            await self.handle_update(update)
+
+    async def set_webhook(self, url: str, secret_token: Optional[str] = None) -> bool:
+        """Set Telegram webhook URL."""
+        await self.ensure_initialized()
+        
+        try:
+            await self.bot.set_webhook(
+                url=url,
+                secret_token=secret_token,
+                max_connections=40,
+                allowed_updates=["message", "callback_query"]
+            )
+            
+            # Проверяем что вебхук установлен
+            webhook_info = await self.bot.get_webhook_info()
+            if webhook_info.url == url:
+                logger.info(
+                    "webhook_set_success",
+                    url=url,
+                    pending_updates=webhook_info.pending_update_count
+                )
+                return True
+            else:
+                logger.error("webhook_verification_failed", expected=url, actual=webhook_info.url)
+                return False
+                
+        except Exception as e:
+            logger.error("webhook_set_failed", url=url, error=str(e))
+            return False
 
     async def handle_update(self, update: Update) -> None:
         """
