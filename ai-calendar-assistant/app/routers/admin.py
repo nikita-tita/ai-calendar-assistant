@@ -7,6 +7,8 @@ from pydantic import BaseModel
 import structlog
 import hashlib
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 from app.services.analytics_service import analytics_service
 from app.services.calendar_radicale import calendar_service

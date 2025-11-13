@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}События{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>📋 Все события</h1>
+</div>
+
+<div class="events-section">
+    <div id="events-container" class="events-container">
+        <div class="loading">Загрузка событий...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadAllEvents();
+});
+
+async function loadAllEvents() {
+    const container = document.getElementById('events-container');
+    
+    try {
+        // Загружаем события на неделю
+        const response = await fetch('/api/events/week');
+        const events = await response.json();
+        
+        if (events.length === 0) {
+            container.innerHTML = '<div class="empty-state">Нет событий на этой неделе</div>';
+            return;
+        }
+        
+        let html = '';
+        events.forEach(event => {
+            const date = new Date(event.start).toLocaleDateString('ru-RU');
+            const time = new Date(event.start).toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            html += `
+                <div class="event-card">
+                    <div class="event-date">${date}</div>
+                    <div class="event-time">${time}</div>
+                    <div class="event-title">${event.title || 'Событие'}</div>
+                    ${event.location ? `<div class="event-location">📍 ${event.location}</div>` : ''}
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    } catch (error) {
+        container.innerHTML = '<div class="error">Ошибка загрузки событий</div>';
+        console.error('Error loading events:', error);
+    }
+}
+</script>
+{% endblock %}

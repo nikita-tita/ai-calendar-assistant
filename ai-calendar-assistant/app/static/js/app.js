@@ -1,0 +1,1 @@
+console.log('Calendar Assistant WebApp loaded');

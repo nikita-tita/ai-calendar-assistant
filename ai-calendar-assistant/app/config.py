@@ -24,11 +24,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     host: str = "0.0.0.0"
     port: int = 8000
+    app_base_url: str = "https://example.com"
 
     # Telegram Bot
     telegram_bot_token: str
     telegram_webhook_secret: Optional[str] = None
-    telegram_webhook_url: Optional[str] = None
     telegram_webapp_url: str = "https://example.com"  # WebApp URL for menu button
 
     # Anthropic Claude API (optional - can use Yandex GPT instead)
