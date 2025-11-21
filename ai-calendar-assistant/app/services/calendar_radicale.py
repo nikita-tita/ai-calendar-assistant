@@ -15,10 +15,6 @@ from app.utils.pii_masking import safe_log_params
 
 logger = structlog.get_logger()
 
-logger.info("radicale_settings", 
-    url=settings.radicale_url,
-    bot_user=settings.radicale_bot_user,
-    has_password=bool(settings.radicale_bot_password))
 
 class RadicaleService:
     """
@@ -42,19 +38,25 @@ class RadicaleService:
     def _get_user_client(self, user_id: str):
         """
         Create CalDAV client for specific user.
+
+        Args:
+            user_id: Telegram user ID
+
+        Returns:
+            caldav.DAVClient configured for this user
         """
-        # Всегда используем bot credentials для доступа ко всем календарям
+        # Use bot service account for authentication
+        # Bot has access to all calendars via Radicale rights configuration
         if settings.radicale_bot_user and settings.radicale_bot_password:
-            logger.debug("using_bot_credentials", user_id=user_id)
             return caldav.DAVClient(
                 url=self.url,
                 username=settings.radicale_bot_user,
                 password=settings.radicale_bot_password
             )
         else:
-            # Fallback для разработки (анонимный доступ)
+            # Fallback for development (no auth)
             logger.warning("radicale_auth_not_configured", message="Using unauthenticated access")
-            return caldav.DAVClient(url=self.url)
+            return caldav.DAVClient(url=self.url, username=str(user_id))
 
     def _get_user_calendar(self, user_id: str):
         """
@@ -67,12 +69,6 @@ class RadicaleService:
             caldav.Calendar object
         """
         try:
-            logger.info("getting_user_calendar", 
-                user_id=user_id, 
-                radicale_url=self.url,
-                bot_user=settings.radicale_bot_user,
-                has_password=bool(settings.radicale_bot_password))
-        
             client = self._get_user_client(user_id)
             principal = client.principal()
             calendar_name = self._get_user_calendar_name(user_id)
@@ -88,9 +84,8 @@ class RadicaleService:
                     if display_name == calendar_name:
                         logger.info("calendar_found", user_id=user_id, calendar=calendar_name, url=str(cal.url))
                         return cal
-                except Exception as e:
+                except:
                     # If can't get properties, skip this calendar
-                    logger.debug("calendar_props_error", calendar=str(cal.url), error=str(e))
                     continue
 
             # Create new calendar if doesn't exist
@@ -471,15 +466,8 @@ class RadicaleService:
     def is_connected(self) -> bool:
         """Check if Radicale server is accessible."""
         try:
-            if settings.radicale_bot_user and settings.radicale_bot_password:
-                client = caldav.DAVClient(
-                    url=self.url,
-                    username=settings.radicale_bot_user,
-                    password=settings.radicale_bot_password
-                )
-            else:
-                client = caldav.DAVClient(url=self.url)
-            
+            # Test with a dummy user ID
+            client = caldav.DAVClient(url=self.url, username="test")
             client.principal()
             return True
         except Exception as e:

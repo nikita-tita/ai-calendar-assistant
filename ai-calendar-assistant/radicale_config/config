@@ -1,36 +1,12 @@
-# Radicale Configuration
-# https://radicale.org/v3.html#configuration
-
 [server]
 hosts = 0.0.0.0:5232
-max_connections = 20
-max_content_length = 100000000
-timeout = 30
-
-[encoding]
-request = utf-8
-stock = utf-8
 
 [auth]
 type = none
-#type = htpasswd
-#htpasswd_filename = /radicale_config/users
-#htpasswd_encryption = md5
-
-[rights]
-type = owner_only
-#type = from_file
-#file = /radicale_config/rights
 
 [storage]
-# Store calendar data in /data volume
-type = multifilesystem
 filesystem_folder = /data/collections
 
-[web]
-# Disable web interface (only CalDAV/CardDAV access)
-type = none
-
-[logging]
-level = info
-mask_passwords = True
+[rights]
+type = from_file
+file = /config/rights

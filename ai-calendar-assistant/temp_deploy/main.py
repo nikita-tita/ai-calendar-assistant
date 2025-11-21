@@ -1,13 +1,11 @@
 """Main application entry point."""
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
 from app.config import settings
-from app.routers import telegram, events, admin, property, logs, webapp
+from app.routers import telegram, events, admin, property, logs
 # Temporarily disabled - calendar_sync is independent microservice
 # from app.routers import calendar_sync, health
 from app.utils.logger import setup_logging
@@ -51,15 +49,13 @@ app.add_middleware(
 # This validates all /api/events/* requests using HMAC signature
 app.add_middleware(TelegramAuthMiddleware)
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
 # Include routers
+# app.include_router(health.router, tags=["health"])  # Disabled - microservice
 app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 app.include_router(events.router, prefix="/api", tags=["events"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(property.router, prefix="/api/property", tags=["property"])
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
-app.include_router(webapp.router, prefix="/webapp", tags=["webapp"])
 # app.include_router(calendar_sync.router, tags=["calendar_sync"])  # Disabled - microservice
 
 
@@ -71,8 +67,6 @@ async def startup_event():
         environment=settings.app_env,
         debug=settings.debug,
     )
-    
-    await setup_telegram_webhook()
 
     # Start Property Bot feed scheduler if configured
     if settings.property_feed_url:
@@ -107,53 +101,24 @@ async def startup_event():
     #     logger.warning("google_oauth_not_configured",
     #                   message="Calendar sync disabled. Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to enable.")
 
-# async def _sync_task_loop():
-#     """Background task that syncs calendars every 10 minutes."""
-#     import asyncio
-#     from app.services.calendar_sync_service import calendar_sync_service
 
-#     # Wait 30 seconds before first sync (let app startup complete)
-#     await asyncio.sleep(30)
+async def _sync_task_loop():
+    """Background task that syncs calendars every 10 minutes."""
+    import asyncio
+    from app.services.calendar_sync_service import calendar_sync_service
 
-#     while True:
-#         try:
-#             if calendar_sync_service:
-#                 await calendar_sync_service.sync_all_users()
-#         except Exception as e:
-#             logger.error("sync_task_error", error=str(e), exc_info=True)
+    # Wait 30 seconds before first sync (let app startup complete)
+    await asyncio.sleep(30)
 
-#         # Wait 10 minutes
-#         await asyncio.sleep(600)
+    while True:
+        try:
+            if calendar_sync_service:
+                await calendar_sync_service.sync_all_users()
+        except Exception as e:
+            logger.error("sync_task_error", error=str(e), exc_info=True)
 
-async def setup_telegram_webhook():
-    """Setup Telegram webhook on application startup."""
-    try:
-        from app.routers.telegram import telegram_handler
-        await telegram_handler.initialize()
-        webhook_url = f"{settings.app_base_url}/telegram/webhook"
-        
-        # Устанавливаем вебхук
-        success = await telegram_handler.set_webhook(
-            url=webhook_url,
-            secret_token=settings.telegram_webhook_secret
-        )
-        if success:
-            logger.info(
-                "telegram_webhook_setup_success",
-                webhook_url=webhook_url,
-                has_secret=bool(settings.telegram_webhook_secret)
-            )
-        else:
-            logger.error(
-                "telegram_webhook_setup_failed",
-                webhook_url=webhook_url
-            )
-    except Exception as e:
-        logger.error(
-            "telegram_webhook_setup_error",
-            error=str(e),
-            exc_info=True
-        )
+        # Wait 10 minutes
+        await asyncio.sleep(600)
 
 
 @app.on_event("shutdown")
@@ -167,10 +132,15 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "0.1.0"}
 
+
 @app.get("/")
 async def root():
     """Root endpoint."""
-    return RedirectResponse(url="/webapp")
+    return {
+        "message": "AI Calendar Assistant API",
+        "version": "0.1.0",
+        "docs": "/docs",
+    }
 
 
 if __name__ == "__main__":

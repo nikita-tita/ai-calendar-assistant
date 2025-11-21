@@ -43,12 +43,13 @@ ai-calendar-assistant/
 
 ## 🚀 Технологический стек
 
-- **LLM**: Yandex GPT (с поддержкой русского языка)
+- **LLM**: Anthropic Claude (с поддержкой русского языка)
 - **Backend**: FastAPI (Python 3.11+)
 - **Bot Framework**: python-telegram-bot v21
 - **Calendar**: Radicale CalDAV Server (локальный, многопользовательский)
+- **STT**: OpenAI Whisper
 - **Deployment**: Docker, Docker Compose
-- **CI/CD**: GitLab CI/CD
+- **CI/CD**: GitHub Actions
 - **Testing**: pytest, pytest-asyncio
 
 ## 📋 Требования
@@ -56,7 +57,8 @@ ai-calendar-assistant/
 - Python 3.11+
 - Docker и Docker Compose
 - Telegram Bot Token
-- Yandex GPT API Key и Folder ID
+- Anthropic API Key
+- OpenAI API Key (для Whisper)
 
 **Примечание:** Google Calendar больше НЕ требуется - используется локальный Radicale сервер с автоматическим созданием календарей.
 

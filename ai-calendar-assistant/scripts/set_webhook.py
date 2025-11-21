@@ -11,6 +11,40 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from telegram import Bot
 from app.config import settings
 
+
+async def set_webhook():
+    """Set webhook for Telegram bot."""
+    bot = Bot(token=settings.telegram_bot_token)
+
+    if not settings.telegram_webhook_url:
+        print("❌ TELEGRAM_WEBHOOK_URL not set in .env")
+        return False
+
+    try:
+        # Delete existing webhook
+        await bot.delete_webhook(drop_pending_updates=True)
+        print("🗑️  Deleted existing webhook")
+
+        # Set new webhook
+        await bot.set_webhook(
+            url=settings.telegram_webhook_url,
+            secret_token=settings.telegram_webhook_secret,
+            drop_pending_updates=True
+        )
+
+        # Verify webhook
+        webhook_info = await bot.get_webhook_info()
+        print(f"\n✅ Webhook set successfully!")
+        print(f"📍 URL: {webhook_info.url}")
+        print(f"🔗 Pending updates: {webhook_info.pending_update_count}")
+
+        return True
+
+    except Exception as e:
+        print(f"❌ Error setting webhook: {e}")
+        return False
+
+
 async def delete_webhook():
     """Delete Telegram webhook."""
     bot = Bot(token=settings.telegram_bot_token)
