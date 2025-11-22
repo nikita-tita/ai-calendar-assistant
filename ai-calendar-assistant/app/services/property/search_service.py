@@ -6,7 +6,7 @@ import structlog
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from app.services.property.property_service import PropertyService
+from app.services.property.property_service import property_service
 from app.services.property.llm_agent_property import PropertyLLMAgent
 from app.services.property.feed_loader import PropertyFeedLoader
 
@@ -20,9 +20,9 @@ class PropertySearchService:
     """
 
     def __init__(self):
-        self.property_service = PropertyService()
         self.llm_agent = PropertyLLMAgent()
         self.feed_loader = PropertyFeedLoader()
+        self.property_service = property_service
 
         # Кэш контекстов пользователей
         self.user_contexts: Dict[int, Dict[str, Any]] = {}

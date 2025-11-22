@@ -10,7 +10,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from app.services.property.llm_agent_property import PropertyLLMAgent
-from app.services.property.property_service import PropertyService
+from app.services.property.property_service import property_service
 from app.services.property.search_result_handler import SearchResultHandler
 from app.services.property.dream_score import DreamScoreCalculator
 from app.services.property.enrichment_orchestrator import EnrichmentOrchestrator
@@ -34,9 +34,9 @@ class PropertyTelegramIntegration:
     def __init__(self):
         """Initialize property telegram integration."""
         self.llm_agent = PropertyLLMAgent()
-        self.property_service = PropertyService()
         self.result_handler = SearchResultHandler()
         self.enrichment = EnrichmentOrchestrator()
+        self.property_service = property_service
 
         logger.info("property_telegram_integration_initialized")
 

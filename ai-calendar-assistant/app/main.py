@@ -1,15 +1,11 @@
-"""Main application entry point."""
-
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
+import traceback
 
 from app.config import settings
 from app.routers import telegram, events, admin, property, logs, webapp
-# Temporarily disabled - calendar_sync is independent microservice
-# from app.routers import calendar_sync, health
 from app.utils.logger import setup_logging
 from app.middleware import TelegramAuthMiddleware
 
@@ -25,6 +21,31 @@ app = FastAPI(
     version="0.1.0",
     debug=settings.debug,
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Глобальный обработчик исключений для отладки."""
+    error_details = {
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "path": request.url.path,
+        "method": request.method,
+    }
+    
+    # Логируем полный traceback
+    logger.error(
+        "unhandled_exception",
+        **error_details,
+        traceback=traceback.format_exc()
+    )
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "error": str(exc) if settings.debug else "Internal server error"
+        }
+    )
 
 # Add CORS middleware with restricted origins
 # Parse CORS origins from config (comma-separated string)
@@ -50,8 +71,6 @@ app.add_middleware(
 # Add Telegram WebApp authentication middleware
 # This validates all /api/events/* requests using HMAC signature
 app.add_middleware(TelegramAuthMiddleware)
-
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Include routers
 app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])

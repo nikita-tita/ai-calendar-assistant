@@ -2,6 +2,7 @@
 
 import uuid
 import secrets
+from urllib.parse import quote_plus
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy import create_engine, and_, or_, cast, Boolean
@@ -39,18 +40,49 @@ logger = structlog.get_logger()
 
 class PropertyService:
     """Service for property search operations."""
-
-    def __init__(self, database_url: str = None):
+    
+    def __init__(self):
         """Initialize property service with database connection."""
-        # Use property_database_url for PostgreSQL, fallback to database_url for compatibility
-        self.database_url = database_url or settings.property_database_url or settings.database_url
+        # Получаем компоненты базы данных из настроек
+        db_user = settings.db_user
+        db_password = settings.db_password
+        db_host = settings.db_host
+        db_port = settings.db_port
+        db_name = settings.db_name
+        
+        # Проверяем, что все компоненты заданы
+        if not all([db_user, db_password, db_host, db_port, db_name]):
+            missing = []
+            if not db_user: missing.append("DB_USER")
+            if not db_password: missing.append("DB_PASSWORD") 
+            if not db_host: missing.append("DB_HOST")
+            if not db_port: missing.append("DB_PORT")
+            if not db_name: missing.append("DB_NAME")
+            raise ValueError(f"Missing database configuration: {', '.join(missing)}")
+        
+        # Создаем URL для подключения
+        encoded_password = quote_plus(db_password)
+        self.database_url = f"postgresql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}"
+        
+        # Отладочный вывод
+        logger.info("database_connection_details",
+                   db_user=db_user,
+                   db_host=db_host,
+                   db_port=db_port,
+                   db_name=db_name,
+                   password_length=len(db_password))
+        
         self.engine = create_engine(self.database_url, echo=False)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
-        # Create tables if they don't exist
-        Base.metadata.create_all(bind=self.engine)
-
-        logger.info("property_service_initialized", database_url=self.database_url)
+        # Создаем таблицы
+        try:
+            Base.metadata.create_all(bind=self.engine)
+            logger.info("property_service_initialized", 
+                       database_url=f"postgresql://{db_user}:****@{db_host}:{db_port}/{db_name}")
+        except Exception as e:
+            logger.error("database_initialization_failed", error=str(e))
+            raise
 
     def get_session(self) -> Session:
         """Get database session."""
@@ -311,67 +343,6 @@ class PropertyService:
     ) -> List[PropertyListingResponse]:
         """
         Search listings with comprehensive filters.
-
-        Args:
-            Basic filters:
-            - deal_type: buy/rent
-            - price_min/price_max: Price range
-            - rooms_min/rooms_max: Number of rooms
-            - area_min/area_max: Total area range
-            - districts: List of districts
-            - metro_stations: List of metro stations
-            - floor_min/floor_max: Floor range
-
-            Category filters:
-            - category: Property category (default: "квартира")
-            - property_type: жилая/коммерческая
-
-            Building filters:
-            - building_types: List of preferred building types
-            - exclude_building_types: List of excluded building types
-            - building_name: Building name (fuzzy search with ILIKE)
-
-            Renovation filters:
-            - renovations: List of acceptable renovation types
-            - exclude_renovations: List of excluded renovation types
-
-            Layout filters:
-            - balcony_required: Must have balcony
-            - balcony_types: List of preferred balcony types
-            - bathroom_type: раздельный/совмещенный
-            - bathroom_count_min: Minimum number of bathrooms
-            - min_ceiling_height: Minimum ceiling height in meters
-
-            Amenity filters:
-            - requires_elevator: Must have elevator
-            - has_parking: Must have parking
-
-            Financial filters:
-            - mortgage_required: Must support mortgage
-            - payment_methods: List of acceptable payment methods
-            - haggle_allowed: Whether haggling is allowed
-
-            Handover date filters:
-            - handover_quarter_min/max: Quarter range (1-4)
-            - handover_year_min/max: Year range
-
-            Developer filters:
-            - developers: List of preferred developers
-            - exclude_developers: List of excluded developers
-
-            Area detail filters:
-            - living_area_min/max: Living area range
-            - kitchen_area_min/max: Kitchen area range
-
-            POI filters:
-            - school_nearby: School within walking distance
-            - kindergarten_nearby: Kindergarten within walking distance
-            - park_nearby: Park within walking distance
-
-            limit: Maximum number of results
-
-        Returns:
-            List of PropertyListingResponse matching all criteria
         """
         session = self.get_session()
         try:
@@ -552,16 +523,7 @@ class PropertyService:
         rooms_min: Optional[int] = None,
         rooms_max: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Get database statistics to show user what's available.
-
-        Args:
-            deal_type: Filter by deal type
-            rooms_min: Filter by minimum rooms
-            rooms_max: Filter by maximum rooms
-
-        Returns:
-            Dict with stats: total_count, price_range, area_range, districts
-        """
+        """Get database statistics to show user what's available."""
         session = self.get_session()
         try:
             from sqlalchemy import func
@@ -918,5 +880,4 @@ class PropertyService:
             session.close()
 
 
-# Global instance
 property_service = PropertyService()

@@ -50,11 +50,7 @@ class Settings(BaseSettings):
     yandex_gpt_api_key: Optional[str] = None
     yandex_gpt_folder_id: Optional[str] = None
 
-    # Database
-    database_url: str = "sqlite:///./calendar_assistant.db"
-
     # Security
-    secret_key: Optional[str] = None  # Required for production (min 32 chars), optional for dev
     cors_origins: str = "https://example.com,https://webapp.telegram.org"
 
     # Timezone
@@ -71,9 +67,9 @@ class Settings(BaseSettings):
         # Only validate in production environment
         if self.app_env == "production":
             # Validate SECRET_KEY is not default/weak
-            if not self.secret_key or len(self.secret_key) < 32:
+            if not self.telegram_webhook_secret or len(self.telegram_webhook_secret) < 32:
                 raise ValueError(
-                    "SECRET_KEY must be set to a secure value (minimum 32 characters). "
+                    "telegram_webhook_secret must be set to a secure value (minimum 32 characters). "
                     "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
                 )
 
@@ -85,17 +81,22 @@ class Settings(BaseSettings):
                 )
         else:
             # Development mode - warn if using weak secrets
-            if self.secret_key and len(self.secret_key) < 32:
+            if self.telegram_webhook_secret and len(self.telegram_webhook_secret) < 32:
                 logger.warning("weak_secret_key",
-                             message="SECRET_KEY is too short (< 32 chars). OK for dev, but change for production!")
+                             message="telegram_webhook_secret is too short (< 32 chars). OK for dev, but change for production!")
             if not self.radicale_bot_password:
                 logger.warning("missing_radicale_password",
                              message="RADICALE_BOT_PASSWORD not set. OK for dev, but required for production!")
 
+    # Database
+    db_user: Optional[str] = None
+    db_password: Optional[str] = None
+    db_host: Optional[str] = None
+    db_port: Optional[int] = None
+    db_name: Optional[str] = None
+
     # Property Bot Settings
     property_feed_url: Optional[str] = None
-    db_password: Optional[str] = None
-    property_database_url: Optional[str] = None
 
     # Yandex Maps & Vision APIs (optional)
     yandex_maps_api_key: Optional[str] = None

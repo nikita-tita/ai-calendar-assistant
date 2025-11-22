@@ -101,7 +101,6 @@ services:
   #   environment:
   #     - APP_ENV=production
   #     - DEBUG=False
-  #     - DATABASE_URL=postgresql://property_user:${DB_PASSWORD}@property-bot-db:5432/property_bot
   #   depends_on:
   #     property-bot-db:
   #       condition: service_healthy
