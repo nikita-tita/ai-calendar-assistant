@@ -2,10 +2,13 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import structlog
+from pathlib import Path
 
 from app.config import settings
-from app.routers import telegram, events, admin, logs
+from app.routers import telegram, events, admin, logs, todos
 # Temporarily disabled - calendar_sync is independent microservice
 # from app.routers import calendar_sync, health
 # ARCHIVED - property is independent microservice (moved to _archived/property_bot_microservice)
@@ -51,10 +54,16 @@ app.add_middleware(
 # This validates all /api/events/* requests using HMAC signature
 app.add_middleware(TelegramAuthMiddleware)
 
+# Mount static files
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
 # Include routers
 # app.include_router(health.router, tags=["health"])  # Disabled - microservice
 app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 app.include_router(events.router, prefix="/api", tags=["events"])
+app.include_router(todos.router, prefix="/api", tags=["todos"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 # app.include_router(property.router, prefix="/api/property", tags=["property"])  # ARCHIVED - independent microservice
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
@@ -143,6 +152,16 @@ async def root():
         "version": "0.1.0",
         "docs": "/docs",
     }
+
+
+@app.get("/todos")
+async def todos_webapp():
+    """Serve todos webapp page."""
+    static_path = Path(__file__).parent / "static" / "todos.html"
+    if static_path.exists():
+        return FileResponse(static_path)
+    else:
+        return {"error": "Todos webapp not found"}
 
 
 if __name__ == "__main__":

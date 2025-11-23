@@ -128,6 +128,11 @@ class TelegramHandler:
                 await self._handle_settings_command(update, user_id)
                 return
 
+            # Handle todos button
+            if message.text and message.text in ['📝 Список дел', 'Список дел']:
+                await self._handle_todos_command(update, user_id)
+                return
+
             # Handle voice message
             if message.voice:
                 await self._handle_voice(update, user_id)
@@ -200,6 +205,7 @@ class TelegramHandler:
         keyboard = ReplyKeyboardMarkup([
             [KeyboardButton("📋 Дела на сегодня")],
             [KeyboardButton("📅 Дела на завтра"), KeyboardButton("📆 Дела на неделю")],
+            [KeyboardButton("📝 Список дел", web_app=WebAppInfo(url=f"{settings.telegram_webapp_url.rstrip('/')}/todos"))],
             [KeyboardButton("⚙️ Настройки"), KeyboardButton("🛠 Сервисы")]
         ], resize_keyboard=True)
 
@@ -356,6 +362,19 @@ class TelegramHandler:
         await update.message.reply_text(
             "📅 Вы уже в календарном боте!\n\n"
             "Я помогу вам с планированием дел и событий. Просто напишите, что хотите запланировать."
+        )
+
+    async def _handle_todos_command(self, update: Update, user_id: str) -> None:
+        """Handle todos button - open todos webapp."""
+        todos_webapp_url = f"{settings.telegram_webapp_url.rstrip('/')}/todos"
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📝 Открыть список дел", web_app=WebAppInfo(url=todos_webapp_url))]
+        ])
+
+        await update.message.reply_text(
+            "Нажмите кнопку ниже, чтобы открыть список дел:",
+            reply_markup=keyboard
         )
 
     async def _handle_services_menu(self, update: Update, user_id: str) -> None:
