@@ -1,7 +1,9 @@
 """Blog API endpoints."""
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 import structlog
 
@@ -23,6 +25,9 @@ from app.models.blog import Base
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/blog", tags=["blog"])
+
+# Templates for WebApp
+templates = Jinja2Templates(directory="templates")
 
 
 # Database dependency
@@ -292,3 +297,17 @@ async def list_sources(service: BlogService = Depends(get_blog_service)):
 async def get_statistics(service: BlogService = Depends(get_blog_service)):
     """Get blog statistics."""
     return service.get_statistics()
+
+
+# WebApp endpoints
+
+@router.get("/{slug}", response_class=HTMLResponse, include_in_schema=False)
+async def read_article_webapp(request: Request, slug: str):
+    """Render article in WebApp (HTML page).
+
+    This endpoint is accessed from Telegram WebApp inline buttons.
+    """
+    return templates.TemplateResponse("blog_article.html", {
+        "request": request,
+        "slug": slug
+    })

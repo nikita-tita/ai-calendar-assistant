@@ -88,3 +88,20 @@ class BlogSource(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BlogDigest(Base):
+    """Blog digest sent to users."""
+
+    __tablename__ = "blog_digests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Articles included in this digest (comma-separated IDs)
+    article_ids = Column(String(500), nullable=False)
+
+    # Statistics
+    total_users_sent = Column(Integer, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow)

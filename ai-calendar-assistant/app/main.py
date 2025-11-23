@@ -71,6 +71,14 @@ async def startup_event():
         debug=settings.debug,
     )
 
+    # Start blog digest scheduler
+    try:
+        from app.services.blog.digest_scheduler import digest_scheduler
+        digest_scheduler.start()
+        logger.info("blog_digest_scheduler_started", schedule="Daily at 14:00")
+    except Exception as e:
+        logger.error("digest_scheduler_start_error", error=str(e), exc_info=True)
+
     # ARCHIVED - Property Bot feed scheduler disabled (independent microservice)
     # if settings.property_feed_url:
     #     try:
@@ -128,6 +136,14 @@ async def _sync_task_loop():
 async def shutdown_event():
     """Application shutdown event."""
     logger.info("application_shutdown")
+
+    # Stop blog digest scheduler
+    try:
+        from app.services.blog.digest_scheduler import digest_scheduler
+        digest_scheduler.stop()
+        logger.info("blog_digest_scheduler_stopped")
+    except Exception as e:
+        logger.error("digest_scheduler_stop_error", error=str(e))
 
 
 @app.get("/health")
