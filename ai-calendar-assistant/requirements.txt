@@ -58,3 +58,8 @@ APScheduler==3.10.4
 # XML parsing (for property feed)
 lxml==4.9.3
 
+# Blog parsing and rewriting
+beautifulsoup4==4.12.2
+transliterate==1.10.2
+html2text==2020.1.16
+
