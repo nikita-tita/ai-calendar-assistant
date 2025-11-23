@@ -1,0 +1,67 @@
+services:
+  # Radicale CalDAV server - multi-user calendar storage
+  radicale:
+    image: tomsquest/docker-radicale:latest
+    container_name: radicale-calendar
+    # Security: Only expose internally, not to public
+    expose:
+      - "5232"
+    volumes:
+      - radicale_data:/data
+      - ./radicale_config:/config:ro
+    restart: unless-stopped
+    networks:
+      - internal
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5232"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Telegram Bot with Calendar + Todos (polling mode)
+  telegram-bot:
+    container_name: telegram-bot
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - DEBUG=False
+      - RADICALE_URL=http://radicale:5232
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./credentials:/app/credentials
+      - ./data:/var/lib/calendar-bot
+    depends_on:
+      radicale:
+        condition: service_healthy
+    networks:
+      - internal
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  radicale_data:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge
