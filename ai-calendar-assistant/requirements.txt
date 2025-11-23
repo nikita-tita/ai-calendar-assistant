@@ -62,4 +62,5 @@ lxml==4.9.3
 beautifulsoup4==4.12.2
 transliterate==1.10.2
 html2text==2020.1.16
+jinja2==3.1.2
 
