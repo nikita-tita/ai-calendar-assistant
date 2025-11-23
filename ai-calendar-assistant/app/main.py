@@ -42,6 +42,11 @@ if settings.debug:
         "http://127.0.0.1:8000"
     ])
 
+# Mount static files BEFORE middleware (so they bypass auth)
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -51,13 +56,8 @@ app.add_middleware(
 )
 
 # Add Telegram WebApp authentication middleware
-# This validates all /api/events/* requests using HMAC signature
+# This validates /api/events/* and /api/todos/* requests using HMAC signature
 app.add_middleware(TelegramAuthMiddleware)
-
-# Mount static files
-static_path = Path(__file__).parent / "static"
-if static_path.exists():
-    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 # Include routers
 # app.include_router(health.router, tags=["health"])  # Disabled - microservice

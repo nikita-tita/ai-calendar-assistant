@@ -165,13 +165,14 @@ class TelegramAuthMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
-        # Skip auth for health endpoints and non-events routes
+        # Skip auth for health endpoints and admin routes
         path = scope.get("path", "")
         if path.startswith("/health") or path.startswith("/api/admin"):
             return await self.app(scope, receive, send)
 
-        # Only apply to /api/events/ endpoints
-        if not path.startswith("/api/events/"):
+        # Only apply to protected API endpoints: /api/events/ and /api/todos/
+        protected_paths = ["/api/events/", "/api/todos/"]
+        if not any(path.startswith(prefix) for prefix in protected_paths):
             return await self.app(scope, receive, send)
 
         # Create Request object to access headers
