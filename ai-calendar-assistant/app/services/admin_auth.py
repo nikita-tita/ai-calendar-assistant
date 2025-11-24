@@ -1,6 +1,6 @@
 """Admin authentication service with two-factor password protection."""
 
-import hashlib
+import bcrypt
 import secrets
 import os
 from datetime import datetime, timedelta
@@ -30,10 +30,10 @@ class AdminAuthService:
                         message="ADMIN_PRIMARY_PASSWORD and ADMIN_SECONDARY_PASSWORD must be set in environment")
             raise ValueError("Admin passwords not configured. Set ADMIN_PRIMARY_PASSWORD and ADMIN_SECONDARY_PASSWORD in .env file")
 
-        # Primary password hash
+        # Primary password hash (bcrypt with salt)
         self.primary_hash = self._hash_password(primary_password)
 
-        # Secondary password hash
+        # Secondary password hash (bcrypt with salt)
         self.secondary_hash = self._hash_password(secondary_password)
 
         # Session storage (user_id -> session data)
@@ -44,9 +44,20 @@ class AdminAuthService:
 
         logger.info("admin_auth_initialized")
 
-    def _hash_password(self, password: str) -> str:
-        """Hash password using SHA-256."""
-        return hashlib.sha256(password.encode()).hexdigest()
+    def _hash_password(self, password: str) -> bytes:
+        """
+        Hash password using bcrypt with automatic salt generation.
+
+        bcrypt is more secure than SHA-256 because:
+        - Includes automatic salt generation
+        - Computationally expensive (resistant to brute-force)
+        - Industry standard for password hashing
+        """
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12))
+
+    def _verify_password(self, password: str, hashed: bytes) -> bool:
+        """Verify password against bcrypt hash."""
+        return bcrypt.checkpw(password.encode('utf-8'), hashed)
 
     def authenticate(self, primary_password: str, secondary_password: str) -> Optional[str]:
         """
@@ -59,10 +70,11 @@ class AdminAuthService:
         Returns:
             Session token if authenticated, None otherwise
         """
-        primary_hash = self._hash_password(primary_password)
-        secondary_hash = self._hash_password(secondary_password)
+        # Use bcrypt's built-in timing-safe comparison
+        primary_valid = self._verify_password(primary_password, self.primary_hash)
+        secondary_valid = self._verify_password(secondary_password, self.secondary_hash)
 
-        if primary_hash == self.primary_hash and secondary_hash == self.secondary_hash:
+        if primary_valid and secondary_valid:
             # Generate session token
             session_token = secrets.token_urlsafe(32)
 

@@ -4,6 +4,27 @@ version: '3.8'
 # This is the primary configuration file for production deployment
 
 services:
+  # Redis - for rate limiter persistence and caching
+  redis:
+    image: redis:7-alpine
+    container_name: calendar-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --save 60 1 --loglevel warning
+
   # Radicale CalDAV server - multi-user calendar storage
   radicale:
     image: tomsquest/docker-radicale:latest
@@ -40,6 +61,7 @@ services:
       - APP_ENV=production
       - DEBUG=False
       - RADICALE_URL=http://radicale:5232
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     volumes:
@@ -48,6 +70,8 @@ services:
       - calendar_bot_data:/var/lib/calendar-bot
     restart: unless-stopped
     depends_on:
+      redis:
+        condition: service_healthy
       radicale:
         condition: service_started
     networks:
@@ -66,6 +90,8 @@ services:
       start_period: 40s
 
 volumes:
+  redis_data:
+    driver: local
   radicale_data:
     driver: local
   calendar_bot_data:
