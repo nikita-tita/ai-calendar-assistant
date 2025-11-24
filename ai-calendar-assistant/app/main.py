@@ -1,11 +1,14 @@
 """Main application entry point."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import structlog
 from pathlib import Path
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.routers import telegram, events, admin, logs, todos
@@ -17,6 +20,14 @@ from app.middleware import TelegramAuthMiddleware
 setup_logging(settings.log_level)
 logger = structlog.get_logger()
 
+# Setup IP-based rate limiter
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["100/minute"],  # Global rate limit per IP
+    storage_uri=getattr(settings, 'redis_url', 'memory://'),
+    strategy="fixed-window"
+)
+
 # Create FastAPI application
 app = FastAPI(
     title="AI Calendar Assistant",
@@ -24,6 +35,27 @@ app = FastAPI(
     version="0.1.0",
     debug=settings.debug,
 )
+
+# Add rate limiter state to app
+app.state.limiter = limiter
+
+# Custom rate limit exceeded handler
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit exceeded errors with user-friendly message."""
+    logger.warning(
+        "rate_limit_exceeded",
+        ip=get_remote_address(request),
+        path=request.url.path
+    )
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "Too many requests",
+            "message": "Пожалуйста, подождите немного перед следующим запросом",
+            "retry_after": exc.detail
+        }
+    )
 
 # Add CORS middleware with restricted origins
 # Parse CORS origins from config (comma-separated string)
