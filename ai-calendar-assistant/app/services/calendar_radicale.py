@@ -467,12 +467,26 @@ class RadicaleService:
     def is_connected(self) -> bool:
         """Check if Radicale server is accessible."""
         try:
-            # Test with a dummy user ID
-            client = caldav.DAVClient(url=self.url, username="test")
-            client.principal()
+            # Test with bot service account credentials
+            if settings.radicale_bot_user and settings.radicale_bot_password:
+                client = caldav.DAVClient(
+                    url=self.url,
+                    username=settings.radicale_bot_user,
+                    password=settings.radicale_bot_password
+                )
+                # Get principal and calendars - this tests actual connectivity
+                principal = client.principal()
+                # Get calendars list to verify connection works
+                _ = principal.calendars()
+            else:
+                # Fallback for development (no auth)
+                client = caldav.DAVClient(url=self.url, username="test")
+                principal = client.principal()
+                _ = principal.calendars()
             return True
         except Exception as e:
-            logger.error("radicale_connection_error", error=str(e))
+            # Log error but don't expose details
+            logger.debug("radicale_connection_check_failed", error=str(e))
             return False
 
 

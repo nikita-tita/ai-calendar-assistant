@@ -65,7 +65,6 @@ async def _check_calendar_health():
         }
 
 
-# ARCHIVED - Property health check removed (independent microservice)
 # @router.get("/property")
 # async def check_property_health():
 #     """Public endpoint for property health check."""

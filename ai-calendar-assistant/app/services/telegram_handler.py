@@ -1,7 +1,7 @@
 """Telegram bot message handler."""
 
 from typing import Optional
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application
 import structlog
 
@@ -9,6 +9,8 @@ from app.config import settings
 from app.services.llm_agent_yandex import llm_agent_yandex as llm_agent
 from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
+from app.services.todos_service import TodosService
+from app.schemas.todos import TodoDTO, TodoIntentType, TodoPriority
 
 # Analytics service - optional, fallback if not available
 try:
@@ -35,7 +37,6 @@ except ImportError:
 from app.schemas.events import IntentType
 from app.utils.datetime_parser import format_datetime_human
 
-# ARCHIVED - Property Bot moved to independent microservice (_archived/property_bot_microservice)
 # Property Bot imports removed - calendar bot only
 PROPERTY_BOT_ENABLED = False
 
@@ -53,6 +54,8 @@ class TelegramHandler:
         self.conversation_history = {}
         # Store user timezone preferences (user_id -> timezone string)
         self.user_timezones = {}
+        # Todos service for managing tasks
+        self.todos_service = TodosService()
 
     async def handle_update(self, update: Update) -> None:
         """
@@ -67,6 +70,10 @@ class TelegramHandler:
         user_id = str(update.effective_user.id)
         message = update.message
 
+        # Debug: log incoming message text
+        if message.text:
+            logger.info("incoming_message", user_id=user_id, message_text=message.text)
+
         try:
             # Handle /start command
             if message.text and message.text.startswith('/start'):
@@ -78,7 +85,6 @@ class TelegramHandler:
                 await self._handle_calendar_command(update, user_id)
                 return
 
-            # ARCHIVED - /property command removed (independent microservice)
 
             # Handle /settings command
             if message.text and message.text.startswith('/settings'):
@@ -99,10 +105,6 @@ class TelegramHandler:
                 await self._handle_text(update, user_id, "Какие планы на завтра?")
                 return
 
-            if message.text and message.text in ['📆 Дела на неделю', 'Дела на неделю']:
-                await self._handle_text(update, user_id, "Какие планы на эту неделю?")
-                return
-
             # Handle MenuButton commands
             if message.text and message.text.startswith('/'):
                 if message.text == '/calendar':
@@ -111,14 +113,12 @@ class TelegramHandler:
                 elif message.text == '/settings':
                     await self._handle_settings_command(update, user_id)
                     return
-                # ARCHIVED - /property command removed (independent microservice)
 
             # Handle services button
             if message.text and message.text in ['🛠 Сервисы', 'Сервисы', '🛠️ Сервисы']:
                 await self._handle_services_menu(update, user_id)
                 return
 
-            # ARCHIVED - Property button handler removed (independent microservice)
 
             if message.text and message.text in ['📅 Календарь', 'Календарь']:
                 await self._handle_calendar_command(update, user_id)
@@ -129,8 +129,8 @@ class TelegramHandler:
                 return
 
             # Handle todos button
-            if message.text and message.text in ['📝 Список дел', 'Список дел']:
-                await self._handle_todos_command(update, user_id)
+            if message.text and message.text in ['📝 Список дел', 'Список дел', '✅ Задачи', 'Задачи']:
+                await self._handle_todos_list(update, user_id)
                 return
 
             # Handle voice message
@@ -192,33 +192,42 @@ class TelegramHandler:
             return
 
         # Both consents given - show welcome message
-        welcome_message = """👋 Привет! Я ваш персональный ИИ-помощник по календарю.
-Скажите одной фразой, что запланировать — я запишу и вовремя напомню.
+        welcome_message = """👋 Привет! Я ваш персональный ИИ-помощник по планированию.
 
-Примеры:
-• "Показ завтра 14:00 на Ленина для Андрея"
-• "Созвон в пятницу 10:00 с Петровым"
-• "Напомни написать собственнику через 2 часа"
+📅 **Создавайте события:**
+• "Встреча завтра в 14:00 с клиентом"
+• "Показ квартиры в пятницу 10:00"
+
+📝 **Добавляйте задачи:**
+• "Обновить персональные данные"
+• "Позвонить собственнику"
+
+📊 **Смотрите планы:**
+• Используйте кнопки "Дела на сегодня" или "Дела на завтра"
+• Откройте 🗓 **Кабинет** для полного обзора
+
+✅ **Управляйте задачами:**
+• Нажмите кнопку "Задачи" для списка дел
 
 🎤 Можете использовать голос — удобно за рулем."""
-        # Создаем клавиатуру с кнопками
+
+        # Создаем клавиатуру с кнопками (чистые текстовые кнопки без WebApp)
         keyboard = ReplyKeyboardMarkup([
             [KeyboardButton("📋 Дела на сегодня")],
-            [KeyboardButton("📅 Дела на завтра"), KeyboardButton("📆 Дела на неделю")],
-            [KeyboardButton("📝 Список дел", web_app=WebAppInfo(url=f"{settings.telegram_webapp_url.rstrip('/')}/todos"))],
+            [KeyboardButton("📅 Дела на завтра"), KeyboardButton("✅ Задачи")],
             [KeyboardButton("⚙️ Настройки"), KeyboardButton("🛠 Сервисы")]
         ], resize_keyboard=True)
 
-        await update.message.reply_text(welcome_message, reply_markup=keyboard)
+        await update.message.reply_text(welcome_message, reply_markup=keyboard, parse_mode="Markdown")
 
         # Устанавливаем WebApp button слева от поля ввода (кабинет календаря)
         try:
-            from telegram import MenuButtonWebApp, WebAppInfo
-            # Use webapp URL from config (add version parameter to bust Telegram cache)
-            webapp_url = f"{settings.telegram_webapp_url}?v=2025103001"
+            from telegram import MenuButtonWebApp, WebAppInfo as WA
+            # Use webapp URL from config (version parameter already in settings)
+            webapp_url = settings.telegram_webapp_url
             menu_button = MenuButtonWebApp(
                 text="🗓 Кабинет",
-                web_app=WebAppInfo(url=webapp_url)
+                web_app=WA(url=webapp_url)
             )
             await self.bot.set_chat_menu_button(
                 chat_id=update.effective_chat.id,
@@ -364,18 +373,69 @@ class TelegramHandler:
             "Я помогу вам с планированием дел и событий. Просто напишите, что хотите запланировать."
         )
 
-    async def _handle_todos_command(self, update: Update, user_id: str) -> None:
-        """Handle todos button - open todos webapp."""
-        todos_webapp_url = f"{settings.telegram_webapp_url.rstrip('/')}/todos"
+    async def _handle_todos_list(self, update: Update, user_id: str) -> None:
+        """Handle todos list button - show text-based list of todos."""
+        try:
+            # Fetch all todos for the user
+            todos = await self.todos_service.list_todos(user_id)
 
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📝 Открыть список дел", web_app=WebAppInfo(url=todos_webapp_url))]
-        ])
+            if not todos:
+                await update.message.reply_text(
+                    "📝 Список задач пуст.\n\n"
+                    "Чтобы добавить задачу, просто напишите что нужно сделать, например:\n"
+                    "• Обновить персональные данные\n"
+                    "• Позвонить клиенту\n"
+                    "• Подготовить документы"
+                )
+                return
 
-        await update.message.reply_text(
-            "Нажмите кнопку ниже, чтобы открыть список дел:",
-            reply_markup=keyboard
-        )
+            # Separate active and completed todos
+            active_todos = [t for t in todos if not t.completed]
+            completed_todos = [t for t in todos if t.completed]
+
+            # Priority emojis
+            priority_emoji = {
+                TodoPriority.HIGH: "🔴",
+                TodoPriority.MEDIUM: "🟡",
+                TodoPriority.LOW: "🟢"
+            }
+
+            # Format message
+            message_parts = []
+
+            # Active todos section
+            if active_todos:
+                message_parts.append(f"<b>📋 Активные задачи ({len(active_todos)}):</b>\n")
+                for i, todo in enumerate(active_todos, 1):
+                    priority_icon = priority_emoji.get(todo.priority, "⚪")
+                    due_date_str = ""
+                    if todo.due_date:
+                        due_date_str = f" 📅 {format_datetime_human(todo.due_date, self._get_user_timezone(update))}"
+                    message_parts.append(f"{i}. {priority_icon} {todo.title}{due_date_str}")
+
+            # Completed todos section
+            if completed_todos:
+                if active_todos:
+                    message_parts.append("")  # Empty line separator
+                message_parts.append(f"<b>✅ Выполнено ({len(completed_todos)}):</b>\n")
+                for i, todo in enumerate(completed_todos[:5], 1):  # Show max 5 completed
+                    message_parts.append(f"{i}. <s>{todo.title}</s>")
+
+                if len(completed_todos) > 5:
+                    message_parts.append(f"... и ещё {len(completed_todos) - 5}")
+
+            # Footer
+            message_parts.append("")
+            message_parts.append("📝 <i>Отметить выполненные задачи можно в 🗓 Кабинете</i>")
+
+            message = "\n".join(message_parts)
+            await update.message.reply_text(message, parse_mode="HTML")
+
+        except Exception as e:
+            logger.error("handle_todos_list_error", user_id=user_id, error=str(e), exc_info=True)
+            await update.message.reply_text(
+                "❌ Не удалось загрузить список дел. Попробуйте ещё раз."
+            )
 
     async def _handle_services_menu(self, update: Update, user_id: str) -> None:
         """Handle services menu button - show М2 services."""
@@ -401,7 +461,6 @@ class TelegramHandler:
             reply_markup=keyboard
         )
 
-    # ARCHIVED - Property command handler removed (independent microservice)
     # Method _handle_property_command deleted
 
     async def _send_settings_menu(self, update: Update, user_id: str, query=None) -> None:
@@ -644,7 +703,6 @@ class TelegramHandler:
             # Return to main settings menu
             await self._send_settings_menu(update, user_id, query=query)
 
-        # ARCHIVED - services:property_search callback removed (independent microservice)
 
         # Handle deletion confirmation
         elif data.startswith("confirm_delete_"):
@@ -704,13 +762,8 @@ class TelegramHandler:
             except Exception as e:
                 logger.warning("analytics_log_failed", error=str(e))
 
-        # Calendar mode only
-        # Check calendar service connection
-        if not calendar_service.is_connected():
-            await update.message.reply_text(
-                "⚠️ Календарный сервер временно недоступен.\nПопробуйте позже."
-            )
-            return
+        # Calendar connection will be checked only for calendar-related intents (create, update, query, etc.)
+        # TODO intents don't require calendar connection
 
         # Check if user is in a settings flow (awaiting time input)
         if user_id in self.conversation_history and len(self.conversation_history[user_id]) > 0:
@@ -882,13 +935,30 @@ class TelegramHandler:
             await self._handle_delete_duplicates(update, user_id, event_dto)
             return
 
+        if event_dto.intent == IntentType.TODO:
+            await self._handle_todo(update, user_id, event_dto)
+            return
+
         # Other intents not yet implemented
         await update.message.reply_text(
             "Эта функция пока в разработке. Скоро будет доступна!"
         )
 
+    async def _check_calendar_connection(self, update: Update) -> bool:
+        """Check calendar service connection and notify user if unavailable."""
+        if not calendar_service.is_connected():
+            await update.message.reply_text(
+                "⚠️ Календарный сервер временно недоступен.\nПопробуйте позже."
+            )
+            return False
+        return True
+
     async def _handle_create(self, update: Update, user_id: str, event_dto) -> None:
         """Handle event creation."""
+        # Check calendar connection
+        if not await self._check_calendar_connection(update):
+            return
+
         # Validate required fields
         if not event_dto.title or not event_dto.start_time:
             await update.message.reply_text(
@@ -1362,6 +1432,40 @@ class TelegramHandler:
         ])
 
         await update.message.reply_text(message, reply_markup=keyboard)
+
+    async def _handle_todo(self, update: Update, user_id: str, event_dto) -> None:
+        """Handle TODO task creation."""
+        # Validate required fields
+        if not event_dto.title:
+            await update.message.reply_text(
+                "Недостаточно данных. Укажите что нужно сделать."
+            )
+            return
+
+        # Create TodoDTO from EventDTO
+        from datetime import datetime
+        todo_dto = TodoDTO(
+            intent=TodoIntentType.CREATE,
+            title=event_dto.title,
+            notes=event_dto.description,
+            due_date=event_dto.start_time,  # Use start_time as due_date for todos
+            priority=TodoPriority.MEDIUM
+        )
+
+        # Create todo
+        todo_id = await self.todos_service.create_todo(user_id, todo_dto)
+
+        if todo_id:
+            message = f"✅ Добавил в список дел:\n📝 {event_dto.title}"
+            if event_dto.start_time:
+                from app.utils.datetime_formatting import format_datetime_human
+                due_str = format_datetime_human(event_dto.start_time, self._get_user_timezone(update))
+                message += f"\n📅 {due_str}"
+            await update.message.reply_text(message)
+        else:
+            await update.message.reply_text(
+                "❌ Не смог создать задачу. Попробуйте ещё раз."
+            )
 
 
 # Global instance (will be initialized in router)

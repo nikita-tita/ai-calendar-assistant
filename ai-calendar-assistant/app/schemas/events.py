@@ -18,6 +18,7 @@ class IntentType(str, Enum):
     CREATE_RECURRING = "create_recurring"
     DELETE_BY_CRITERIA = "delete_by_criteria"
     DELETE_DUPLICATES = "delete_duplicates"
+    TODO = "todo"  # Task without specific time slot
 
 
 class EventDTO(BaseModel):
