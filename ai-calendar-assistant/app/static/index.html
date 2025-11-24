@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Календарь и дела</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 0;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Tab Navigation */
+        .tabs {
+            display: flex;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 1px solid var(--tg-theme-hint-color, #ccc);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            background-color: transparent;
+            color: var(--tg-theme-hint-color, #999);
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: var(--tg-theme-button-color, #0088cc);
+            border-bottom: 2px solid var(--tg-theme-button-color, #0088cc);
+        }
+
+        /* Content Container */
+        .content {
+            padding: 16px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Calendar Styles */
+        .calendar-header {
+            margin-bottom: 16px;
+        }
+
+        .calendar-header h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .calendar-date {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .event-item {
+            padding: 12px;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 3px solid var(--tg-theme-button-color, #0088cc);
+        }
+
+        .event-time {
+            font-size: 14px;
+            color: var(--tg-theme-button-color, #0088cc);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .event-title {
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .event-location {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        /* TODO Styles */
+        .add-todo-form {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .add-todo-input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            border-radius: 8px;
+            font-size: 16px;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+
+        .add-todo-button {
+            padding: 12px 24px;
+            background-color: var(--tg-theme-button-color, #0088cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .filter-button {
+            padding: 8px 16px;
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            border-radius: 8px;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .filter-button.active {
+            background-color: var(--tg-theme-button-color, #0088cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            border-radius: 8px;
+            gap: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .todo-item.completed {
+            opacity: 0.6;
+        }
+
+        .todo-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .todo-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .todo-title {
+            font-size: 16px;
+        }
+
+        .todo-title.completed {
+            text-decoration: line-through;
+        }
+
+        .todo-meta {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .todo-delete {
+            padding: 8px 12px;
+            background-color: #ff3b30;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 16px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 24px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .error {
+            padding: 12px;
+            background-color: #ff3b30;
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Tab Navigation -->
+    <div class="tabs">
+        <button class="tab active" data-tab="calendar">📅 Календарь</button>
+        <button class="tab" data-tab="todos">✅ Задачи</button>
+    </div>
+
+    <div class="content">
+        <div id="error"></div>
+        <div id="loading" class="loading" style="display: none;">Загрузка...</div>
+
+        <!-- Calendar Tab -->
+        <div id="calendar-tab" class="tab-content active">
+            <!-- Calendar Controls -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <button id="datePickerBtn" onclick="toggleCalendar()" style="flex: 1; padding: 12px; background-color: var(--tg-theme-secondary-bg-color, #f5f5f5); border: 2px solid var(--tg-theme-hint-color, #ccc); border-radius: 8px; font-size: 16px; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center; color: var(--tg-theme-text-color, #000);">
+                    <span id="selectedDateText"></span>
+                    <span>📅</span>
+                </button>
+                <button onclick="goToToday()" style="padding: 12px 16px; background-color: var(--tg-theme-secondary-bg-color, #f5f5f5); border: 2px solid var(--tg-theme-hint-color, #ccc); border-radius: 8px; font-size: 16px; cursor: pointer; color: var(--tg-theme-text-color, #000); font-weight: 600;">Сегодня</button>
+            </div>
+
+            <!-- Calendar Picker (hidden by default) -->
+            <div id="calendarPicker" style="display: none; background-color: var(--tg-theme-secondary-bg-color, #f5f5f5); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--tg-theme-hint-color, #ccc);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <button onclick="prevMonth()" style="width: 40px; height: 40px; background-color: var(--tg-theme-bg-color, #fff); border: 2px solid var(--tg-theme-hint-color, #ccc); border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold;">←</button>
+                    <div id="monthYearDisplay" style="font-weight: 600; font-size: 16px; color: var(--tg-theme-text-color, #000);"></div>
+                    <button onclick="nextMonth()" style="width: 40px; height: 40px; background-color: var(--tg-theme-bg-color, #fff); border: 2px solid var(--tg-theme-hint-color, #ccc); border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold;">→</button>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 8px;">
+                    <div style="text-align: center; font-size: 12px; color: var(--tg-theme-hint-color, #999); padding: 4px;">Пн</div>
+                    <div style="text-align: center; font-size: 12px; color: var(--tg-theme-hint-color, #999); padding: 4px;">Вт</div>
+                    <div style="text-align: center; font-size: 12px; color: var(--tg-theme-hint-color, #999); padding: 4px;">Ср</div>
+                    <div style="text-align: center; font-size: 12px; color: var(--tg-theme-hint-color, #999); padding: 4px;">Чт</div>
+                    <div style="text-align: center; font-size: 12px; color: var(--tg-theme-hint-color, #999); padding: 4px;">Пт</div>
+                    <div style="text-align: center; font-size: 12px; color: var(--tg-theme-hint-color, #999); padding: 4px;">Сб</div>
+                    <div style="text-align: center; font-size: 12px; color: var(--tg-theme-hint-color, #999); padding: 4px;">Вс</div>
+                </div>
+                <div id="calendarDays" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;"></div>
+            </div>
+
+            <!-- New Event Button -->
+            <button onclick="openNewEventModal()" style="width: 100%; padding: 12px; background-color: var(--tg-theme-button-color, #0088cc); color: var(--tg-theme-button-text-color, #ffffff); border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 16px;">
+                + Новое событие
+            </button>
+
+            <div id="eventsList"></div>
+        </div>
+
+        <!-- Todos Tab -->
+        <div id="todos-tab" class="tab-content">
+            <div class="add-todo-form">
+                <input
+                    type="text"
+                    class="add-todo-input"
+                    id="newTodoInput"
+                    placeholder="Добавить новую задачу..."
+                    autocomplete="off"
+                >
+                <button class="add-todo-button" id="addTodoButton">+</button>
+            </div>
+
+            <div class="filters">
+                <button class="filter-button active" data-filter="all">Все</button>
+                <button class="filter-button" data-filter="active">Активные</button>
+                <button class="filter-button" data-filter="completed">Выполненные</button>
+            </div>
+
+            <div id="todosList"></div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        const API_BASE = window.location.origin + '/api';
+        const userId = tg.initDataUnsafe?.user?.id?.toString();
+        const initData = tg.initData; // Raw init data for authentication
+
+        let currentFilter = 'all';
+        let todos = [];
+        let events = [];
+        let selectedDate = new Date();
+        let currentMonth = new Date();
+        let showCalendar = false;
+
+        // Critical check for Telegram data
+        if (!userId || !initData) {
+            document.getElementById('error').innerHTML = `
+                <div class="error">
+                    ❌ Ошибка загрузки данных Telegram<br><br>
+                    Пожалуйста, закройте это окно и откройте заново через кнопку "✅ Задачи" в боте.<br><br>
+                    Если проблема повторяется, попробуйте перезапустить Telegram.
+                </div>
+            `;
+            document.getElementById('calendar-tab').style.display = 'none';
+            document.getElementById('todos-tab').style.display = 'none';
+            throw new Error('Missing Telegram WebApp data');
+        }
+
+        // Helper function to add Telegram auth headers
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'X-Telegram-Init-Data': initData
+            };
+        }
+
+        // Date formatting helpers
+        function formatDate(date) {
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+
+            if (sameDay(date, today)) return 'Сегодня';
+            if (sameDay(date, tomorrow)) return 'Завтра';
+            if (sameDay(date, yesterday)) return 'Вчера';
+
+            const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+            return `${date.getDate()} ${months[date.getMonth()]}`;
+        }
+
+        function sameDay(d1, d2) {
+            return d1.getDate() === d2.getDate() &&
+                   d1.getMonth() === d2.getMonth() &&
+                   d1.getFullYear() === d2.getFullYear();
+        }
+
+        // Calendar navigation functions
+        function toggleCalendar() {
+            showCalendar = !showCalendar;
+            document.getElementById('calendarPicker').style.display = showCalendar ? 'block' : 'none';
+            if (showCalendar) {
+                renderCalendar();
+            }
+        }
+
+        function goToToday() {
+            selectedDate = new Date();
+            currentMonth = new Date();
+            showCalendar = false;
+            document.getElementById('calendarPicker').style.display = 'none';
+            updateSelectedDateText();
+            loadEvents();
+        }
+
+        function prevMonth() {
+            currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+            renderCalendar();
+        }
+
+        function nextMonth() {
+            currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+            renderCalendar();
+        }
+
+        function selectDate(date) {
+            selectedDate = new Date(date);
+            showCalendar = false;
+            document.getElementById('calendarPicker').style.display = 'none';
+            updateSelectedDateText();
+            loadEvents();
+        }
+
+        function updateSelectedDateText() {
+            document.getElementById('selectedDateText').textContent = formatDate(selectedDate);
+        }
+
+        function renderCalendar() {
+            const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+            document.getElementById('monthYearDisplay').textContent = `${months[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+
+            const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+            const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+
+            let startDay = firstDay.getDay();
+            if (startDay === 0) startDay = 7; // Sunday becomes 7
+            startDay--; // Adjust for Monday start
+
+            const days = [];
+
+            // Previous month days
+            for (let i = 0; i < startDay; i++) {
+                const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1 - (startDay - i));
+                days.push({ date, current: false });
+            }
+
+            // Current month days
+            for (let i = 1; i <= lastDay.getDate(); i++) {
+                const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i);
+                days.push({ date, current: true });
+            }
+
+            // Next month days to fill grid
+            while (days.length % 7 !== 0) {
+                const lastDate = days[days.length - 1].date;
+                const date = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate() + 1);
+                days.push({ date, current: false });
+            }
+
+            const calendarDaysDiv = document.getElementById('calendarDays');
+            calendarDaysDiv.innerHTML = days.map(({ date, current }) => {
+                const isToday = sameDay(date, new Date());
+                const isSelected = sameDay(date, selectedDate);
+                const hasEvents = events.some(e => sameDay(new Date(e.start), date));
+
+                let style = 'width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-size: 14px;';
+
+                if (!current) style += ' opacity: 0.3;';
+                if (isSelected) style += ' background-color: var(--tg-theme-button-color, #0088cc); color: white;';
+                else if (isToday) style += ' border: 2px solid var(--tg-theme-button-color, #0088cc);';
+                if (hasEvents && !isSelected) style += ' font-weight: bold;';
+
+                return `<div style="${style}" onclick="selectDate(new Date(${date.getTime()}))">${date.getDate()}</div>`;
+            }).join('');
+        }
+
+        function openNewEventModal() {
+            // For now, just show a simple alert
+            // In the future, this could open a full modal with form
+            const title = prompt('Название события:');
+            if (!title) return;
+
+            const time = prompt('Время (HH:MM):', '10:00');
+            if (!time) return;
+
+            const duration = prompt('Длительность (минут):', '60');
+
+            createEvent(title, time, parseInt(duration) || 60);
+        }
+
+        async function createEvent(title, time, duration) {
+            try {
+                const [hours, minutes] = time.split(':').map(n => parseInt(n));
+                const start = new Date(selectedDate);
+                start.setHours(hours, minutes, 0, 0);
+
+                const end = new Date(start);
+                end.setMinutes(end.getMinutes() + duration);
+
+                const response = await fetch(`${API_BASE}/events/${userId}`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        title,
+                        start: start.toISOString(),
+                        end: end.toISOString(),
+                        location: '',
+                        description: ''
+                    })
+                });
+
+                if (!response.ok) throw new Error('Ошибка создания события');
+
+                await loadEvents();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // Check URL parameter for initial tab
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialTab = urlParams.get('tab') || 'calendar';
+
+        // Switch to initial tab if specified
+        if (initialTab === 'todos') {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector('.tab[data-tab="todos"]').classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('todos-tab').classList.add('active');
+        }
+
+        // Tab Switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+
+                // Update tab buttons
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                document.getElementById(`${tabName}-tab`).classList.add('active');
+
+                // Load data for active tab
+                if (tabName === 'calendar') {
+                    loadEvents();
+                } else {
+                    loadTodos();
+                }
+            });
+        });
+
+        // Error handling
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.innerHTML = `<div class="error">${message}</div>`;
+            setTimeout(() => {
+                errorDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        // Calendar Functions
+        async function loadEvents() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
+            try {
+                const now = new Date();
+                const startDate = new Date(now);
+                startDate.setDate(now.getDate() - 90); // Load 90 days back
+                const endDate = new Date(now);
+                endDate.setDate(now.getDate() + 90); // Load 90 days ahead
+
+                const response = await fetch(`${API_BASE}/events/${userId}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`, {
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) throw new Error('Ошибка загрузки событий');
+
+                events = await response.json();
+                renderEvents();
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function renderEvents() {
+            const list = document.getElementById('eventsList');
+
+            if (events.length === 0) {
+                list.innerHTML = '<div class="empty-state">📭 Нет событий</div>';
+                return;
+            }
+
+            // Group all events by day
+            const grouped = {};
+            events.forEach(e => {
+                const eDate = new Date(e.start);
+                const key = `${eDate.getFullYear()}-${String(eDate.getMonth()+1).padStart(2,'0')}-${String(eDate.getDate()).padStart(2,'0')}`;
+
+                if (!grouped[key]) {
+                    grouped[key] = [];
+                }
+                grouped[key].push(e);
+            });
+
+            // Sort each day's events
+            Object.keys(grouped).forEach(key => {
+                grouped[key].sort((a, b) => new Date(a.start) - new Date(b.start));
+            });
+
+            // Get sorted date keys
+            const dateKeys = Object.keys(grouped).sort();
+
+            // Find today's date key
+            const today = new Date();
+            const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+            list.innerHTML = dateKeys.map(dateKey => {
+                const dayEvents = grouped[dateKey];
+                if (dayEvents.length === 0) return '';
+
+                const [y, m, d] = dateKey.split('-').map(Number);
+                const dayDate = new Date(y, m - 1, d);
+
+                const isToday = dateKey === todayKey;
+                return `
+                    <div id="${isToday ? 'today-section' : ''}" style="position: sticky; top: 0; z-index: 10; background-color: var(--tg-theme-bg-color, #ffffff); padding: 8px 0; margin: 16px 0 8px 0; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--tg-theme-hint-color, #ccc);">
+                        ${formatDate(dayDate)}${isToday ? ' 🔵 Сегодня' : ''} — ${dayEvents.length} ${dayEvents.length === 1 ? 'событие' : 'событий'}
+                    </div>
+                    ${dayEvents.map(event => {
+                        const startDate = new Date(event.start);
+                        const endDate = new Date(event.end);
+                        const timeStr = `${startDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} — ${endDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+
+                        return `
+                            <div class="event-item" onclick="viewEvent('${event.id}')" style="cursor: pointer;">
+                                <div class="event-time">${timeStr}</div>
+                                <div class="event-title">${event.title}</div>
+                                ${event.location ? `<div class="event-location">📍 ${event.location}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                `;
+            }).join('');
+
+            // Scroll to today's section after rendering
+            setTimeout(() => {
+                const todaySection = document.getElementById('today-section');
+                if (todaySection) {
+                    todaySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
+        }
+
+        function viewEvent(eventId) {
+            const event = events.find(e => e.id === eventId);
+            if (!event) return;
+
+            const startDate = new Date(event.start);
+            const endDate = new Date(event.end);
+
+            const message = `
+📅 ${event.title}
+
+⏰ ${startDate.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit'
+})} — ${endDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+
+${event.location ? `📍 ${event.location}\n` : ''}
+${event.description ? `\n${event.description}` : ''}
+            `.trim();
+
+            if (confirm(`${message}\n\nУдалить это событие?`)) {
+                deleteEvent(eventId);
+            }
+        }
+
+        async function deleteEvent(eventId) {
+            try {
+                const response = await fetch(`${API_BASE}/events/${userId}/${eventId}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) throw new Error('Ошибка удаления события');
+
+                await loadEvents();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // TODO Functions
+        async function loadTodos() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+
+            try {
+                const response = await fetch(`${API_BASE}/todos/${userId}`, {
+                    headers: getAuthHeaders()
+                });
+                if (!response.ok) throw new Error('Ошибка загрузки задач');
+
+                todos = await response.json();
+                renderTodos();
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function renderTodos() {
+            const list = document.getElementById('todosList');
+            const filtered = todos.filter(todo => {
+                if (currentFilter === 'active') return !todo.completed;
+                if (currentFilter === 'completed') return todo.completed;
+                return true;
+            });
+
+            // Sort: active first, then completed
+            filtered.sort((a, b) => {
+                if (a.completed === b.completed) return 0;
+                return a.completed ? 1 : -1;
+            });
+
+            if (filtered.length === 0) {
+                const emptyText = currentFilter === 'completed' ? 'Нет выполненных задач' : 'Нет задач';
+                list.innerHTML = `<div class="empty-state">📭 ${emptyText}</div>`;
+                return;
+            }
+
+            list.innerHTML = filtered.map(todo => `
+                <div class="todo-item ${todo.completed ? 'completed' : ''}" data-id="${todo.id}">
+                    <input
+                        type="checkbox"
+                        class="todo-checkbox"
+                        ${todo.completed ? 'checked' : ''}
+                        onclick="event.stopPropagation(); toggleTodo('${todo.id}')"
+                    >
+                    <div class="todo-content" onclick="toggleTodo('${todo.id}')">
+                        <div class="todo-title ${todo.completed ? 'completed' : ''}">${todo.title}</div>
+                        ${todo.due_date ? `<div class="todo-meta">📅 ${new Date(todo.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
+                    </div>
+                    <button class="todo-delete" onclick="event.stopPropagation(); deleteTodo('${todo.id}')">🗑</button>
+                </div>
+            `).join('');
+        }
+
+        async function addTodo() {
+            const input = document.getElementById('newTodoInput');
+            const title = input.value.trim();
+
+            if (!title) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/todos/${userId}`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ title, completed: false })
+                });
+
+                if (!response.ok) throw new Error('Ошибка создания задачи');
+
+                input.value = '';
+                await loadTodos();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        async function toggleTodo(todoId) {
+            const todo = todos.find(t => t.id === todoId);
+            if (!todo) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/todos/${userId}/${todoId}/toggle`, {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) throw new Error('Ошибка обновления задачи');
+
+                await loadTodos();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        async function deleteTodo(todoId) {
+            if (!confirm('Удалить задачу?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/todos/${userId}/${todoId}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) throw new Error('Ошибка удаления задачи');
+
+                await loadTodos();
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // Event Listeners
+        document.getElementById('addTodoButton').addEventListener('click', addTodo);
+        document.getElementById('newTodoInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addTodo();
+        });
+
+        document.querySelectorAll('.filter-button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                renderTodos();
+            });
+        });
+
+        // Initial load
+        updateSelectedDateText();
+        if (initialTab === 'todos') {
+            loadTodos();
+        } else {
+            loadEvents();
+        }
+    </script>
+</body>
+</html>

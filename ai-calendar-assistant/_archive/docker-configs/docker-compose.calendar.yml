@@ -1,14 +1,10 @@
 version: '3.8'
 
-# Production configuration for AI Calendar Assistant
-# This is the primary configuration file for production deployment
-
 services:
   # Radicale CalDAV server - multi-user calendar storage
   radicale:
     image: tomsquest/docker-radicale:latest
     container_name: radicale-calendar
-    # Security: Only expose internally, not to public
     expose:
       - "5232"
     volumes:
@@ -28,12 +24,12 @@ services:
       timeout: 10s
       retries: 3
 
-  # AI Calendar Assistant API
+  # AI Calendar Assistant Bot
   calendar-assistant:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: ai-calendar-assistant
+      dockerfile: Dockerfile.bot
+    container_name: telegram-bot
     ports:
       - "8000:8000"
     environment:
@@ -43,36 +39,29 @@ services:
     env_file:
       - .env
     volumes:
-      - ./credentials:/app/credentials
       - ./logs:/app/logs
-      - calendar_bot_data:/var/lib/calendar-bot
-    restart: unless-stopped
+      - ./credentials:/app/credentials
+      - ./data:/var/lib/calendar-bot
     depends_on:
       radicale:
-        condition: service_started
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - internal
-      - external
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-
-volumes:
-  radicale_data:
-    driver: local
-  calendar_bot_data:
-    driver: local
 
 networks:
   internal:
     driver: bridge
-  external:
-    driver: bridge
+
+volumes:
+  radicale_data:
