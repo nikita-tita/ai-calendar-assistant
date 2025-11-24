@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     # Rate Limiting
     max_requests_per_user_per_day: int = 20
     max_concurrent_requests: int = 100
+    redis_url: str = "memory://"  # Redis URL for rate limiter (use redis://redis:6379/0 in production)
 
     def __init__(self, **kwargs):
         """Initialize settings with security validation."""
