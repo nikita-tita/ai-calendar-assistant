@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-Script to automatically create Radicale users file with correct MD5 format
+Script to automatically create Radicale users file with correct bcrypt format
 """
 
 import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
+import bcrypt
 
 load_dotenv()
 
 def setup_radicale_users():
-    """Create Radicale users file with correct MD5 hash format."""
+    """Create Radicale users file with correct bcrypt hash format."""
     
     # Path to users file
     users_file = Path("../radicale_config/users")
@@ -21,46 +22,32 @@ def setup_radicale_users():
     
     print(f"📁 Creating Radicale users file at: {users_file}")
     
-    # Get credentials from environment with fallbacks
+    # Get credentials from environment
     bot_user = os.getenv("RADICALE_BOT_USER")
-    bot_password_hash = os.getenv("RADICALE_BOT_PASSWORD")
+    bot_password = os.getenv("RADICALE_BOT_PASSWORD")  # Plain password now
     admin_user = os.getenv("RADICALE_ADMIN_USER")
-    admin_password_hash = os.getenv("RADICALE_ADMIN_PASSWORD")
+    admin_password = os.getenv("RADICALE_ADMIN_PASSWORD")  # Plain password now
     
     print(f"🔑 Bot user: {bot_user}")
     print(f"🔑 Admin user: {admin_user}")
     
-    # Format MD5 hashes correctly for htpasswd
-    # Radicale expects: $apr1$SALT$HASH
-    def format_md5_hash(password_hash):
-        """
-        Convert plain hash to correct htpasswd MD5 format.
-        Format: $apr1$SALT$HASH (8 chars salt + 22 chars hash)
-        """
-        if not password_hash:
+    def hash_bcrypt(password):
+        """Hash password using bcrypt."""
+        if not password:
             return ""
-        
-        if password_hash.startswith('$apr1$') and password_hash.count('$') == 2:
-            return password_hash
-        
-        if len(password_hash) >= 30:
-            salt = password_hash[:8]
-            hash_part = password_hash[8:]
-            return f'$apr1${salt}${hash_part}'
-        else:
-            print(f"⚠️  Warning: Invalid hash length for {password_hash}")
-            return f'$apr1${password_hash}'
+        # Generate bcrypt hash
+        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        return hashed.decode('utf-8')
     
-    # Format the passwords
-    formatted_bot_hash = format_md5_hash(bot_password_hash)
-    formatted_admin_hash = format_md5_hash(admin_password_hash)
+    # Hash the passwords
+    hashed_bot_password = hash_bcrypt(bot_password)
+    hashed_admin_password = hash_bcrypt(admin_password)
     
-    print(f"🔒 Formatted bot hash: {formatted_bot_hash}")
-    print(f"🔒 Formatted admin hash: {formatted_admin_hash}")
+    print("🔒 Passwords hashed with bcrypt")
     
     # Create users file content
-    users_content = f"""{bot_user}:{formatted_bot_hash}
-{admin_user}:{formatted_admin_hash}
+    users_content = f"""{bot_user}:{hashed_bot_password}
+{admin_user}:{hashed_admin_password}
 """
     
     # Write to file
@@ -68,16 +55,12 @@ def setup_radicale_users():
     print(f"✅ Radicale users file created successfully!")
     print(f"   📍 Location: {users_file}")
     print(f"   👤 Users: {bot_user}, {admin_user}")
+    print(f"   🔐 Encryption: bcrypt")
     
     # Verify file was created
     if users_file.exists():
         file_size = users_file.stat().st_size
         print(f"✅ Verification: File exists ({file_size} bytes)")
-        
-        # Show file content for verification
-        content = users_file.read_text(encoding='utf-8')
-        print("📄 File content:")
-        print(content)
         return True
     else:
         print("❌ Verification: File was not created!")

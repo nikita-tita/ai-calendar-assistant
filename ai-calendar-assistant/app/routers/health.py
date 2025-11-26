@@ -65,35 +65,32 @@ async def _check_calendar_health():
         }
 
 
-@router.get("/property")
-async def check_property_health():
-    """Public endpoint for property health check."""
-    return await _check_property_health()
+# @router.get("/property")
+# async def check_property_health():
+#     """Public endpoint for property health check."""
+#     return await _check_property_health()
 
 
-async def _check_property_health():
-    """Check property search service health."""
-    try:
-        # Try a simple database query
-        # This checks: DB connection, property module functionality
-        test_user_id = "health_check_user"
-        mode = await property_service.get_user_mode(test_user_id)
-
-        return {
-            "healthy": True,
-            "message": "Property service is operational",
-            "checks": {
-                "database_connection": True,
-                "property_module": True,
-            }
-        }
-    except Exception as e:
-        logger.error("property_health_check_failed", error=str(e))
-        return {
-            "healthy": False,
-            "message": f"Property service error: {str(e)}",
-            "checks": {
-                "database_connection": False,
-                "property_module": False,
-            }
-        }
+# async def _check_property_health():
+#     """Check property search service health."""
+#     try:
+#         # Try a simple database query
+#         # This checks: DB connection, property module functionality
+#         return {
+#             "healthy": True,
+#             "message": "Property service is operational",
+#             "checks": {
+#                 "database_connection": True,
+#                 "property_module": True,
+#             }
+#         }
+#     except Exception as e:
+#         logger.error("property_health_check_failed", error=str(e))
+#         return {
+#             "healthy": False,
+#             "message": f"Property service error: {str(e)}",
+#             "checks": {
+#                 "database_connection": False,
+#                 "property_module": False,
+#             }
+#         }

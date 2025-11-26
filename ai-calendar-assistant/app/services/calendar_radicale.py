@@ -466,9 +466,8 @@ class RadicaleService:
     def is_connected(self) -> bool:
         """Check if Radicale server is accessible."""
         try:
-            # Test with a dummy user ID
-            client = caldav.DAVClient(url=self.url, username="test")
-            client.principal()
+            client = self._get_user_client("test_user")
+            principal = client.principal()
             return True
         except Exception as e:
             logger.error("radicale_connection_error", error=str(e))

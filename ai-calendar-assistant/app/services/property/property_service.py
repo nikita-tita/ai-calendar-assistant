@@ -5,8 +5,7 @@ import secrets
 from urllib.parse import quote_plus
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from sqlalchemy import create_engine, and_, or_, cast, Boolean
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, and_, or_, cast, Boolean, JSON as SQLAlchemyJSON
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 import structlog
@@ -60,9 +59,11 @@ class PropertyService:
             if not db_name: missing.append("DB_NAME")
             raise ValueError(f"Missing database configuration: {', '.join(missing)}")
         
-        # Создаем URL для подключения
-        encoded_password = quote_plus(db_password)
-        self.database_url = f"postgresql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}"
+        if getattr(settings, "database_url", None):
+            self.database_url = settings.database_url
+        else:
+            # Fallback to SQLite if not set
+            self.database_url = "sqlite:///./data/app.db"
         
         # Отладочный вывод
         logger.info("database_connection_details",
@@ -79,7 +80,7 @@ class PropertyService:
         try:
             Base.metadata.create_all(bind=self.engine)
             logger.info("property_service_initialized", 
-                       database_url=f"postgresql://{db_user}:****@{db_host}:{db_port}/{db_name}")
+                       database_url=self.database_url if self.database_url else "<unknown>")
         except Exception as e:
             logger.error("database_initialization_failed", error=str(e))
             raise
@@ -438,10 +439,10 @@ class PropertyService:
                 query = query.filter(PropertyListing.mortgage_available == mortgage_required)
 
             if payment_methods:
-                # JSONB contains check for any of the specified payment methods
+                # JSON contains check for any of the specified payment methods
                 for method in payment_methods:
                     query = query.filter(
-                        cast(PropertyListing.payment_methods, JSONB).contains([method])
+                        cast(PropertyListing.payment_methods, SQLAlchemyJSON).contains([method])
                     )
 
             if haggle_allowed is not None:
@@ -485,19 +486,19 @@ class PropertyService:
                 # Assumes poi_data JSONB field with structure: {"school": {"nearby": true}}
                 if school_nearby:
                     query = query.filter(
-                        cast(PropertyListing.poi_data, JSONB)['school']['nearby'].astext.cast(Boolean) == True
+                        cast(PropertyListing.poi_data, SQLAlchemyJSON)['school']['nearby'].astext.cast(Boolean) == True
                     )
 
             if kindergarten_nearby is not None:
                 if kindergarten_nearby:
                     query = query.filter(
-                        cast(PropertyListing.poi_data, JSONB)['kindergarten']['nearby'].astext.cast(Boolean) == True
+                        cast(PropertyListing.poi_data, SQLAlchemyJSON)['kindergarten']['nearby'].astext.cast(Boolean) == True
                     )
 
             if park_nearby is not None:
                 if park_nearby:
                     query = query.filter(
-                        cast(PropertyListing.poi_data, JSONB)['park']['nearby'].astext.cast(Boolean) == True
+                        cast(PropertyListing.poi_data, SQLAlchemyJSON)['park']['nearby'].astext.cast(Boolean) == True
                     )
 
             listings = query.limit(limit).all()

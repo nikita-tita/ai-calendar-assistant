@@ -17,18 +17,6 @@ except ImportError:
 from app.schemas.events import IntentType
 from app.utils.datetime_parser import format_datetime_human
 
-# Try to import Property Bot modules (graceful fallback if not available)
-try:
-    from app.services.property.property_handler import property_handler
-    from app.services.property.property_service import property_service
-    from app.models.property import BotMode
-    PROPERTY_BOT_ENABLED = True
-except ImportError as e:
-    property_handler = None
-    property_service = None
-    BotMode = None
-    PROPERTY_BOT_ENABLED = False
-
 logger = structlog.get_logger()
 
 

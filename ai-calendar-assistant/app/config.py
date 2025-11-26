@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     radicale_admin_user: str = ""
     radicale_admin_password: str = ""
     radicale_bot_user: str = "calendar_bot"
-    radicale_bot_password: Optional[str] = None  # Required for production, optional for dev
+    radicale_bot_password: Optional[str] = None
 
     # OpenAI (for Whisper - optional, can use Yandex STT)
     openai_api_key: Optional[str] = None
@@ -87,13 +87,6 @@ class Settings(BaseSettings):
             if not self.radicale_bot_password:
                 logger.warning("missing_radicale_password",
                              message="RADICALE_BOT_PASSWORD not set. OK for dev, but required for production!")
-
-    # Database
-    db_user: Optional[str] = None
-    db_password: Optional[str] = None
-    db_host: Optional[str] = None
-    db_port: Optional[int] = None
-    db_name: Optional[str] = None
 
     # Property Bot Settings
     property_feed_url: Optional[str] = None

@@ -18,16 +18,7 @@ templates = Jinja2Templates(directory="app/templates")
 async def webapp_main(request: Request):
     """Main Web App interface for Telegram."""
     return templates.TemplateResponse(
-        "calendar.html",
-        {"request": request}
-    )
-
-
-@router.get("/events", response_class=HTMLResponse)
-async def webapp_events(request: Request):
-    """Events list interface."""
-    return templates.TemplateResponse(
-        "events.html", 
+        "index.html",
         {"request": request}
     )
 
