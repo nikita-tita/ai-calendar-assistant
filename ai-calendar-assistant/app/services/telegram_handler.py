@@ -370,6 +370,8 @@ class TelegramHandler:
 Просто выбери свой сервис, а дальше подключатся наши специалисты"""
 
         keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📰 Новости", url="https://housler.ru/blog")],
+            [InlineKeyboardButton("🏷 Оценить рыночную стоимость", url="https://housler.ru/calculator")],
             [InlineKeyboardButton("💰 Ипотечный брокер", url="https://m2.ru/ipoteka/calculator/")],
             [InlineKeyboardButton("🛡 Защита сделки", url="https://m2.ru/services/guaranteed-deal/")],
             [InlineKeyboardButton("📋 Регистрация и безопасные расчеты", url="https://m2.ru/services/deal/")],
