@@ -1,15 +1,11 @@
-"""Main application entry point."""
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
+import traceback
 
 from app.config import settings
-from app.routers import telegram, events, admin, logs
-# Temporarily disabled - calendar_sync is independent microservice
-# from app.routers import calendar_sync, health
-# ARCHIVED - property is independent microservice (moved to _archived/property_bot_microservice)
-# from app.routers import property
+from app.routers import telegram, events, admin, logs, webapp
 from app.utils.logger import setup_logging
 from app.middleware import TelegramAuthMiddleware
 
@@ -25,6 +21,31 @@ app = FastAPI(
     version="0.1.0",
     debug=settings.debug,
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Глобальный обработчик исключений для отладки."""
+    error_details = {
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "path": request.url.path,
+        "method": request.method,
+    }
+    
+    # Логируем полный traceback
+    logger.error(
+        "unhandled_exception",
+        **error_details,
+        traceback=traceback.format_exc()
+    )
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "error": str(exc) if settings.debug else "Internal server error"
+        }
+    )
 
 # Add CORS middleware with restricted origins
 # Parse CORS origins from config (comma-separated string)
@@ -48,17 +69,14 @@ app.add_middleware(
 )
 
 # Add Telegram WebApp authentication middleware
-# This validates all /api/events/* requests using HMAC signature
 app.add_middleware(TelegramAuthMiddleware)
 
 # Include routers
-# app.include_router(health.router, tags=["health"])  # Disabled - microservice
 app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 app.include_router(events.router, prefix="/api", tags=["events"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
-# app.include_router(property.router, prefix="/api/property", tags=["property"])  # ARCHIVED - independent microservice
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
-# app.include_router(calendar_sync.router, tags=["calendar_sync"])  # Disabled - microservice
+app.include_router(webapp.router, prefix="/webapp", tags=["webapp"])
 
 
 @app.on_event("startup")
@@ -69,58 +87,38 @@ async def startup_event():
         environment=settings.app_env,
         debug=settings.debug,
     )
+    
+    await setup_telegram_webhook()
 
-    # ARCHIVED - Property Bot feed scheduler disabled (independent microservice)
-    # if settings.property_feed_url:
-    #     try:
-    #         from app.services.property.feed_scheduler import feed_scheduler
-    #         feed_scheduler.start()
-    #         logger.info("property_feed_scheduler_started",
-    #                    feed_url=settings.property_feed_url[:50] + "...")
-    #     except Exception as e:
-    #         logger.error("feed_scheduler_start_error", error=str(e), exc_info=True)
-    # else:
-    #     logger.warning("property_feed_url_not_configured",
-    #                   message="Property feed auto-update disabled. Set PROPERTY_FEED_URL to enable.")
-
-    # Calendar sync disabled - independent microservice
-    # if settings.google_oauth_client_id and settings.google_oauth_client_secret:
-    #     from app.services.calendar_sync_service import init_calendar_sync_service
-    #     init_calendar_sync_service(
-    #         google_client_id=settings.google_oauth_client_id,
-    #         google_client_secret=settings.google_oauth_client_secret,
-    #         google_redirect_uri=settings.google_oauth_redirect_uri or
-    #             f"https://этонесамыйдлинныйдомен.рф/sync/oauth/google/callback"
-    #     )
-    #     logger.info("calendar_sync_initialized")
-    #
-    #     # Start background sync task
-    #     import asyncio
-    #     from app.services.calendar_sync_service import calendar_sync_service
-    #     asyncio.create_task(_sync_task_loop())
-    #     logger.info("background_sync_task_started")
-    # else:
-    #     logger.warning("google_oauth_not_configured",
-    #                   message="Calendar sync disabled. Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to enable.")
-
-
-async def _sync_task_loop():
-    """Background task that syncs calendars every 10 minutes."""
-    import asyncio
-    from app.services.calendar_sync_service import calendar_sync_service
-
-    # Wait 30 seconds before first sync (let app startup complete)
-    await asyncio.sleep(30)
-
-    while True:
-        try:
-            if calendar_sync_service:
-                await calendar_sync_service.sync_all_users()
-        except Exception as e:
-            logger.error("sync_task_error", error=str(e), exc_info=True)
-
-        # Wait 10 minutes
-        await asyncio.sleep(600)
+async def setup_telegram_webhook():
+    """Setup Telegram webhook on application startup."""
+    try:
+        from app.routers.telegram import telegram_handler
+        await telegram_handler.initialize()
+        webhook_url = f"{settings.app_base_url}/telegram/webhook"
+        
+        # Устанавливаем вебхук
+        success = await telegram_handler.set_webhook(
+            url=webhook_url,
+            secret_token=settings.telegram_webhook_secret
+        )
+        if success:
+            logger.info(
+                "telegram_webhook_setup_success",
+                webhook_url=webhook_url,
+                has_secret=bool(settings.telegram_webhook_secret)
+            )
+        else:
+            logger.error(
+                "telegram_webhook_setup_failed",
+                webhook_url=webhook_url
+            )
+    except Exception as e:
+        logger.error(
+            "telegram_webhook_setup_error",
+            error=str(e),
+            exc_info=True
+        )
 
 
 @app.on_event("shutdown")
@@ -134,15 +132,10 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "0.1.0"}
 
-
 @app.get("/")
 async def root():
     """Root endpoint."""
-    return {
-        "message": "AI Calendar Assistant API",
-        "version": "0.1.0",
-        "docs": "/docs",
-    }
+    return RedirectResponse(url="/webapp")
 
 
 if __name__ == "__main__":

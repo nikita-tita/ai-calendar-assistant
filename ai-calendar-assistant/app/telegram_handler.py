@@ -1,8 +1,7 @@
-"""Telegram bot handler with built-in application management."""
+"""Telegram bot message handler."""
 
-import asyncio
 from typing import Optional
-from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application
 import structlog
 
@@ -10,24 +9,6 @@ from app.config import settings
 from app.services.llm_agent_yandex import llm_agent_yandex as llm_agent
 from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
-
-# Analytics service - optional, fallback if not available
-try:
-    from app.services.analytics_service import analytics_service
-    ANALYTICS_ENABLED = True
-    logger_temp = structlog.get_logger()
-    logger_temp.info("analytics_service_loaded", status="enabled")
-except ImportError as e:
-    analytics_service = None
-    ANALYTICS_ENABLED = False
-    logger_temp = structlog.get_logger()
-    logger_temp.warning("analytics_service_unavailable", status="disabled", reason=str(e))
-except Exception as e:
-    analytics_service = None
-    ANALYTICS_ENABLED = False
-    logger_temp = structlog.get_logger()
-    logger_temp.error("analytics_service_load_error", status="disabled", error=str(e))
-
 try:
     from app.services.stt_yandex import STTServiceYandex
     stt_service = STTServiceYandex()
@@ -36,112 +17,20 @@ except ImportError:
 from app.schemas.events import IntentType
 from app.utils.datetime_parser import format_datetime_human
 
-# ARCHIVED - Property Bot moved to independent microservice (_archived/property_bot_microservice)
-# Property Bot imports removed - calendar bot only
-PROPERTY_BOT_ENABLED = False
-
 logger = structlog.get_logger()
 
+
 class TelegramHandler:
-    def __init__(self):
-        self.app: Optional[Application] = None
-        self.bot: Optional[Bot] = None
-        self._initialized = False
-        self._initializing = False
-        self._lock = asyncio.Lock()
-        
+    """Handler for Telegram bot messages."""
+
+    def __init__(self, app: Application):
+        """Initialize handler with Telegram application."""
+        self.app = app
+        self.bot = app.bot
         # Store conversation history per user (last 10 messages)
         self.conversation_history = {}
         # Store user timezone preferences (user_id -> timezone string)
         self.user_timezones = {}
-    
-    async def initialize(self) -> None:
-        """Initialize Telegram application (thread-safe)."""
-        if self._initialized:
-            return
-            
-        async with self._lock:
-            if self._initialized:
-                return
-                
-            if self._initializing:
-                while not self._initialized:
-                    await asyncio.sleep(0.1)
-                return
-
-            self._initializing = True
-            try:
-                logger.info("initializing_telegram_app")
-                
-                self.app = (
-                    Application.builder()
-                    .token(settings.telegram_bot_token)
-                    .build()
-                )
-                
-                # Инициализация и старт
-                await self.app.initialize()
-                await self.app.start()
-                self.bot = self.app.bot
-                
-                me = await self.bot.get_me()
-                logger.info(
-                    "telegram_app_initialized",
-                    bot_username=me.username,
-                    bot_id=me.id
-                )
-                
-                self._initialized = True
-                
-            except Exception as e:
-                logger.error("telegram_app_initialization_failed", error=str(e))
-                self._initializing = False
-                raise
-            finally:
-                self._initializing = False
-
-    async def ensure_initialized(self) -> None:
-        """Ensure bot is initialized (for lazy initialization)."""
-        if not self._initialized:
-            await self.initialize()
-
-    async def process_webhook_update(self, update_data: dict) -> None:
-        """Process webhook update with ensured initialization."""
-        await self.ensure_initialized()
-        update = Update.de_json(update_data, self.bot)
-        if update.callback_query:
-            await self.handle_callback_query(update)
-        else:
-            await self.handle_update(update)
-
-    async def set_webhook(self, url: str, secret_token: Optional[str] = None) -> bool:
-        """Set Telegram webhook URL."""
-        await self.ensure_initialized()
-        
-        try:
-            await self.bot.set_webhook(
-                url=url,
-                secret_token=secret_token,
-                max_connections=40,
-                allowed_updates=["message", "callback_query"]
-            )
-            
-            # Проверяем что вебхук установлен
-            webhook_info = await self.bot.get_webhook_info()
-            if webhook_info.url == url:
-                logger.info(
-                    "webhook_set_success",
-                    url=url,
-                    pending_updates=webhook_info.pending_update_count
-                )
-                return True
-            else:
-                logger.error("webhook_verification_failed", expected=url, actual=webhook_info.url)
-                return False
-                
-        except Exception as e:
-            logger.error("webhook_set_failed", url=url, error=str(e))
-            return False
 
     async def handle_update(self, update: Update) -> None:
         """
@@ -167,7 +56,10 @@ class TelegramHandler:
                 await self._handle_calendar_command(update, user_id)
                 return
 
-            # ARCHIVED - /property command removed (independent microservice)
+            # Handle /property command
+            if message.text and message.text.startswith('/property'):
+                await self._handle_property_command(update, user_id)
+                return
 
             # Handle /settings command
             if message.text and message.text.startswith('/settings'):
@@ -194,20 +86,20 @@ class TelegramHandler:
 
             # Handle MenuButton commands
             if message.text and message.text.startswith('/'):
-                if message.text == '/calendar':
+                if message.text == '/property':
+                    await self._handle_property_command(update, user_id)
+                    return
+                elif message.text == '/calendar':
                     await self._handle_calendar_command(update, user_id)
                     return
                 elif message.text == '/settings':
                     await self._handle_settings_command(update, user_id)
                     return
-                # ARCHIVED - /property command removed (independent microservice)
 
-            # Handle services button
-            if message.text and message.text in ['🛠 Сервисы', 'Сервисы', '🛠️ Сервисы']:
-                await self._handle_services_menu(update, user_id)
+            # Handle property button
+            if message.text and message.text in ['🏢 Поиск недвижимости', 'Поиск недвижимости', '🏢 Поиск новостроек', 'Поиск новостроек']:
+                await self._handle_property_command(update, user_id)
                 return
-
-            # ARCHIVED - Property button handler removed (independent microservice)
 
             if message.text and message.text in ['📅 Календарь', 'Календарь']:
                 await self._handle_calendar_command(update, user_id)
@@ -224,7 +116,18 @@ class TelegramHandler:
 
             # Handle text message
             if message.text:
-                # All text messages go to calendar
+                # Check if message is about real estate - show property bot link
+                text_lower = message.text.lower()
+                property_keywords = ['квартир', 'новостро', 'недвижим', 'жк', 'жилой комплекс',
+                                    'комнат', 'двушк', 'трешк', 'студи', 'ипотек', 'млн руб',
+                                    'район', 'метро', 'купить квартир', 'найди квартир', 'ищу квартир']
+
+                if any(keyword in text_lower for keyword in property_keywords):
+                    logger.info("detected_property_query_redirect_to_bot", user_id=user_id, text=message.text[:100])
+                    await self._handle_property_command(update, user_id)
+                    return
+
+                # Default: calendar mode
                 await self._handle_text(update, user_id, message.text)
                 return
 
@@ -246,36 +149,6 @@ class TelegramHandler:
 
     async def _handle_start(self, update: Update, user_id: str) -> None:
         """Handle /start command."""
-        # Log user registration
-        if ANALYTICS_ENABLED and analytics_service:
-            try:
-                analytics_service.log_action(
-                    user_id=user_id,
-                    action_type="user_start",
-                    details="/start command",
-                    success=True,
-                    username=update.effective_user.username if update.effective_user else None,
-                    first_name=update.effective_user.first_name if update.effective_user else None,
-                    last_name=update.effective_user.last_name if update.effective_user else None
-                )
-            except Exception as e:
-                logger.warning("analytics_log_failed", error=str(e))
-
-        # Check if user has already given consents
-        advertising_consent = user_preferences.get_advertising_consent(user_id)
-        privacy_consent = user_preferences.get_privacy_consent(user_id)
-
-        if not advertising_consent:
-            # Ask for advertising consent first
-            await self._ask_advertising_consent(update, user_id)
-            return
-
-        if not privacy_consent:
-            # Ask for privacy consent second
-            await self._ask_privacy_consent(update, user_id)
-            return
-
-        # Both consents given - show welcome message
         welcome_message = """👋 Привет! Я ваш персональный ИИ-помощник по календарю.
 Скажите одной фразой, что запланировать — я запишу и вовремя напомню.
 
@@ -289,7 +162,7 @@ class TelegramHandler:
         keyboard = ReplyKeyboardMarkup([
             [KeyboardButton("📋 Дела на сегодня")],
             [KeyboardButton("📅 Дела на завтра"), KeyboardButton("📆 Дела на неделю")],
-            [KeyboardButton("⚙️ Настройки"), KeyboardButton("🛠 Сервисы")]
+            [KeyboardButton("⚙️ Настройки"), KeyboardButton("🏢 Поиск недвижимости")]
         ], resize_keyboard=True)
 
         await update.message.reply_text(welcome_message, reply_markup=keyboard)
@@ -297,72 +170,21 @@ class TelegramHandler:
         # Устанавливаем WebApp button слева от поля ввода (кабинет календаря)
         try:
             from telegram import MenuButtonWebApp, WebAppInfo
-            # Use webapp URL from config (add version parameter to bust Telegram cache)
-            webapp_url = f"{settings.telegram_webapp_url}?v=2025103001"
             menu_button = MenuButtonWebApp(
                 text="🗓 Кабинет",
-                web_app=WebAppInfo(url=webapp_url)
+                web_app=WebAppInfo(url="https://этонесамыйдлинныйдомен.рф")
             )
             await self.bot.set_chat_menu_button(
                 chat_id=update.effective_chat.id,
                 menu_button=menu_button
             )
-            logger.info("menu_button_webapp_set", user_id=user_id, webapp_url=webapp_url)
+            logger.info("menu_button_webapp_set", user_id=user_id)
         except Exception as e:
             logger.warning("menu_button_set_failed", error=str(e))
-
-    async def _ask_advertising_consent(self, update: Update, user_id: str) -> None:
-        """Ask for advertising consent."""
-        message = """Для дальнейшего взаимодействия с ботом необходимо дать согласие на получение новостей и рекламных рассылок.
-
-[Соглашение на получение рекламы](https://m2.ru/doc/realtors/soglasiya/advertising-agreement/)"""
-
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("✅ Даю согласие", callback_data="consent:advertising:yes"),
-                InlineKeyboardButton("❌ Не даю", callback_data="consent:advertising:no")
-            ]
-        ])
-
-        await update.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
-
-    async def _ask_privacy_consent(self, update: Update, user_id: str) -> None:
-        """Ask for privacy policy consent."""
-        message = """Для дальнейшего взаимодействия с ботом необходимо дать согласие на обработку персональных данных.
-
-[Политика конфиденциальности](https://m2.ru/doc/realtors/politiki/privacy-policy/)"""
-
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("✅ Даю согласие", callback_data="consent:privacy:yes"),
-                InlineKeyboardButton("❌ Не даю", callback_data="consent:privacy:no")
-            ]
-        ])
-
-        # Send message either via message or callback_query
-        if update.message:
-            await update.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
-        elif update.callback_query:
-            await update.callback_query.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
 
     async def _handle_voice(self, update: Update, user_id: str) -> None:
         """Handle voice message using OpenAI Whisper."""
         logger.info("voice_message_received", user_id=user_id)
-
-        # Log voice message to analytics
-        if ANALYTICS_ENABLED and analytics_service:
-            try:
-                analytics_service.log_action(
-                    user_id=user_id,
-                    action_type="voice_message",
-                    details="Voice message received",
-                    success=True,
-                    username=update.effective_user.username if update.effective_user else None,
-                    first_name=update.effective_user.first_name if update.effective_user else None,
-                    last_name=update.effective_user.last_name if update.effective_user else None
-                )
-            except Exception as e:
-                logger.warning("analytics_log_failed", error=str(e))
 
         try:
             await update.message.reply_text("🎤 Слушаю...")
@@ -434,8 +256,7 @@ class TelegramHandler:
             pytz.timezone(timezone)  # Validate timezone
             user_preferences.set_timezone(user_id, timezone)
             await update.message.reply_text(f"✅ Установлен: {timezone}")
-        except Exception as e:
-            logger.error("timezone_set_error", user_id=user_id, timezone=timezone, error=str(e))
+        except:
             await update.message.reply_text(
                 "Неверный пояс. Используйте /timezone для списка."
             )
@@ -443,28 +264,34 @@ class TelegramHandler:
     async def _handle_calendar_command(self, update: Update, user_id: str) -> None:
         """Handle /calendar command - already in calendar bot."""
         await update.message.reply_text(
-            "📅 Вы уже в календарном боте!\n\n"
-            "Я помогу вам с планированием дел и событий. Просто напишите, что хотите запланировать."
+            "📅 Вы в календарном боте!\n\n"
+            "Здесь я помогу с планированием дел и событий.\n\n"
+            "Для поиска недвижимости используйте команду /property"
         )
 
-    async def _handle_services_menu(self, update: Update, user_id: str) -> None:
-        """Handle services menu button - show М2 services."""
-        message = """<b>М2 — всё сложится</b>
+    async def _handle_property_command(self, update: Update, user_id: str) -> None:
+        """Handle /property command - redirect to property search bot."""
+        message = """🏢 <b>Поиск недвижимости</b>
 
-С нами можно легко подать заявку на ипотеку в несколько банков
-А еще провести сделку и регистрацию и расчёты
-Конечно же защитить сделку от юридических рисков
-И даже получить доп комиссию по аренде
+Для поиска квартир в новостройках используйте специального бота:
 
-Просто выбери свой сервис, а дальше подключатся наши специалисты"""
+👉 @aipropertyfinder_bot
+
+<b>Что умеет бот:</b>
+• Умный поиск по вашим критериям
+• Подбор квартир с учетом бюджета и локации
+• Фото, планировки и характеристики
+• Сохранение избранных вариантов
+
+<b>Примеры запросов:</b>
+• "Двушка до 18 млн на севере"
+• "Квартиру на васке за 15 млн"
+• "Однушку около метро, до 12 млн"
+
+Просто напишите боту, что ищете - он поймет! 🤖"""
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📰 Новости", url="https://housler.ru/blog")],
-            [InlineKeyboardButton("🏷 Оценить рыночную стоимость", url="https://housler.ru/calculator")],
-            [InlineKeyboardButton("💰 Ипотечный брокер", url="https://m2.ru/ipoteka/calculator/")],
-            [InlineKeyboardButton("🛡 Защита сделки", url="https://m2.ru/services/guaranteed-deal/")],
-            [InlineKeyboardButton("📋 Регистрация и безопасные расчеты", url="https://m2.ru/services/deal/")],
-            [InlineKeyboardButton("🏠 Аренда", url="https://arenda.yandex.ru/pages/for-agents/?utm_source=menu_landing")]
+            [InlineKeyboardButton("🔍 Открыть бота поиска", url="https://t.me/aipropertyfinder_bot")]
         ])
 
         await update.message.reply_text(
@@ -472,9 +299,6 @@ class TelegramHandler:
             parse_mode="HTML",
             reply_markup=keyboard
         )
-
-    # ARCHIVED - Property command handler removed (independent microservice)
-    # Method _handle_property_command deleted
 
     async def _send_settings_menu(self, update: Update, user_id: str, query=None) -> None:
         """Send settings menu (reusable helper)."""
@@ -516,54 +340,8 @@ class TelegramHandler:
         user_id = str(update.effective_user.id)
         data = query.data
 
-        # Handle consent callbacks
-        if data.startswith("consent:"):
-            parts = data.split(":")
-            consent_type = parts[1]  # "advertising" or "privacy"
-            answer = parts[2]  # "yes" or "no"
-
-            if answer == "yes":
-                # User gave consent
-                if consent_type == "advertising":
-                    user_preferences.set_advertising_consent(user_id, True)
-                    logger.info("advertising_consent_given", user_id=user_id)
-                    await query.edit_message_text("✅ Согласие на получение рекламы принято")
-
-                    # Now ask for privacy consent
-                    await self._ask_privacy_consent(update, user_id)
-
-                elif consent_type == "privacy":
-                    user_preferences.set_privacy_consent(user_id, True)
-                    logger.info("privacy_consent_given", user_id=user_id)
-                    await query.edit_message_text("✅ Согласие на обработку данных принято")
-
-                    # Now show welcome message - call _handle_start but pass a message object
-                    # Create a fake update with message
-                    from telegram import Message
-                    fake_update = Update(
-                        update_id=update.update_id,
-                        message=query.message
-                    )
-                    await self._handle_start(fake_update, user_id)
-
-            else:
-                # User declined
-                if consent_type == "advertising":
-                    await query.edit_message_text(
-                        "❌ Без согласия на получение рекламы продолжить невозможно.\n\nПопробуйте снова:"
-                    )
-                    # Ask again
-                    await self._ask_advertising_consent(update, user_id)
-
-                elif consent_type == "privacy":
-                    await query.edit_message_text(
-                        "❌ Без согласия на обработку данных продолжить невозможно.\n\nПопробуйте снова:"
-                    )
-                    # Ask again
-                    await self._ask_privacy_consent(update, user_id)
-
         # Handle timezone selection
-        elif data.startswith("tz:"):
+        if data.startswith("tz:"):
             timezone = data[3:]  # Remove "tz:" prefix
             try:
                 import pytz
@@ -716,8 +494,6 @@ class TelegramHandler:
             # Return to main settings menu
             await self._send_settings_menu(update, user_id, query=query)
 
-        # ARCHIVED - services:property_search callback removed (independent microservice)
-
         # Handle deletion confirmation
         elif data.startswith("confirm_delete_"):
             if user_id not in self.conversation_history or len(self.conversation_history[user_id]) == 0:
@@ -760,21 +536,6 @@ class TelegramHandler:
     async def _handle_text(self, update: Update, user_id: str, text: str) -> None:
         """Handle text message - only calendar mode."""
         logger.info("text_message_received", user_id=user_id, text=text)
-
-        # Log message to analytics
-        if ANALYTICS_ENABLED and analytics_service:
-            try:
-                analytics_service.log_action(
-                    user_id=user_id,
-                    action_type="text_message",
-                    details=f"Text: {text[:200]}" if len(text) <= 200 else f"Text: {text[:197]}...",
-                    success=True,
-                    username=update.effective_user.username if update.effective_user else None,
-                    first_name=update.effective_user.first_name if update.effective_user else None,
-                    last_name=update.effective_user.last_name if update.effective_user else None
-                )
-            except Exception as e:
-                logger.warning("analytics_log_failed", error=str(e))
 
         # Calendar mode only
         # Check calendar service connection
@@ -1190,81 +951,9 @@ class TelegramHandler:
 
     async def _handle_create_recurring(self, update: Update, user_id: str, event_dto) -> None:
         """Handle recurring event creation."""
-        from datetime import datetime, timedelta
-
-        # Validate required fields
-        if not event_dto.title or not event_dto.start_time:
-            await update.message.reply_text(
-                "Недостаточно данных. Укажите название и время."
-            )
-            return
-
-        if not event_dto.recurrence_type:
-            await update.message.reply_text(
-                "Не указан тип повторения (ежедневно, еженедельно, ежемесячно)."
-            )
-            return
-
-        # Default: create recurring events for 30 days
-        recurrence_end = event_dto.recurrence_end_date or (event_dto.start_time + timedelta(days=30))
-
-        created_count = 0
-        failed_count = 0
-        current_date = event_dto.start_time
-
-        # Create individual events based on recurrence type
-        while current_date <= recurrence_end:
-            # Create a copy of event_dto for this occurrence
-            from app.schemas.events import EventDTO, IntentType
-            occurrence = EventDTO(
-                intent=IntentType.CREATE,
-                title=event_dto.title,
-                start_time=current_date,
-                end_time=current_date + timedelta(minutes=event_dto.duration_minutes or 60) if event_dto.duration_minutes else None,
-                location=event_dto.location,
-                description=event_dto.description
-            )
-
-            # Create the event
-            event_uid = await calendar_service.create_event(user_id, occurrence)
-            if event_uid:
-                created_count += 1
-            else:
-                failed_count += 1
-
-            # Move to next occurrence
-            if event_dto.recurrence_type == "daily":
-                current_date += timedelta(days=1)
-            elif event_dto.recurrence_type == "weekly":
-                current_date += timedelta(weeks=1)
-            elif event_dto.recurrence_type == "monthly":
-                # Add one month (approximate - use 30 days for simplicity)
-                current_date += timedelta(days=30)
-            else:
-                # Unknown recurrence type
-                break
-
-            # Safety limit: don't create more than 100 events
-            if created_count >= 100:
-                break
-
-        # Send confirmation
-        if created_count > 0:
-            recurrence_name = {
-                "daily": "ежедневное",
-                "weekly": "еженедельное",
-                "monthly": "ежемесячное"
-            }.get(event_dto.recurrence_type, "повторяющееся")
-
-            time_str = format_datetime_human(event_dto.start_time, self._get_user_timezone(update))
-            message = f"✅ Создано {recurrence_name} событие\n{time_str} • {event_dto.title}\n\nСоздано повторений: {created_count}"
-            if failed_count > 0:
-                message += f"\nНе создано: {failed_count}"
-            await update.message.reply_text(message)
-        else:
-            await update.message.reply_text(
-                "Не получилось создать повторяющиеся события."
-            )
+        await update.message.reply_text(
+            "Повторяющиеся события пока делаю. Скоро будет."
+        )
 
     async def _handle_delete_by_criteria(self, update: Update, user_id: str, event_dto) -> None:
         """Handle mass deletion by criteria (title contains, date range, etc)."""
@@ -1274,12 +963,11 @@ class TelegramHandler:
         start_date = event_dto.query_date_start
         end_date = event_dto.query_date_end
 
-        # If no date range, default to next year (365 days) for "delete all X" queries
-        # This ensures we catch recurring events that span long periods
+        # If no date range, default to next 7 days
         if not start_date:
             start_date = datetime.now()
         if not end_date:
-            end_date = start_date + timedelta(days=365)
+            end_date = start_date + timedelta(days=7)
 
         # Ensure we cover the full day(s)
         # If times are 00:00:00, extend end_date to end of day (23:59:59)

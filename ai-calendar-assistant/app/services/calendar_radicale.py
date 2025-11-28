@@ -84,9 +84,8 @@ class RadicaleService:
                     if display_name == calendar_name:
                         logger.info("calendar_found", user_id=user_id, calendar=calendar_name, url=str(cal.url))
                         return cal
-                except Exception as e:
+                except:
                     # If can't get properties, skip this calendar
-                    logger.debug("calendar_props_error", calendar=str(cal.url), error=str(e))
                     continue
 
             # Create new calendar if doesn't exist
@@ -467,9 +466,8 @@ class RadicaleService:
     def is_connected(self) -> bool:
         """Check if Radicale server is accessible."""
         try:
-            # Test with a dummy user ID
-            client = caldav.DAVClient(url=self.url, username="test")
-            client.principal()
+            client = self._get_user_client("test_user")
+            principal = client.principal()
             return True
         except Exception as e:
             logger.error("radicale_connection_error", error=str(e))

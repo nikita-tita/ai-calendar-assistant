@@ -51,32 +51,17 @@ async def main():
 
     # Create wrapper for handle_update that accepts context
     async def handle_with_context(update: Update, context):
-        # Register user for reminders on any interaction
-        if update.effective_user and update.effective_chat:
+        # Register user for reminders on /start
+        if update.message and update.message.text and update.message.text.startswith('/start'):
             user_id = str(update.effective_user.id)
             chat_id = update.effective_chat.id
-
-            # Register for both daily and event reminders
-            if user_id not in daily_reminders.active_users:
-                daily_reminders.register_user(user_id, chat_id)
-            if user_id not in event_reminders.active_users:
-                event_reminders.register_user(user_id, chat_id)
+            daily_reminders.register_user(user_id, chat_id)
+            event_reminders.register_user(user_id, chat_id)
 
         await handler.handle_update(update)
 
     # Create wrapper for callback queries
     async def handle_callback(update: Update, context):
-        # Register user for reminders on callback interactions too
-        if update.effective_user and update.effective_chat:
-            user_id = str(update.effective_user.id)
-            chat_id = update.effective_chat.id
-
-            # Register for both daily and event reminders
-            if user_id not in daily_reminders.active_users:
-                daily_reminders.register_user(user_id, chat_id)
-            if user_id not in event_reminders.active_users:
-                event_reminders.register_user(user_id, chat_id)
-
         await handler.handle_callback_query(update)
 
     # Add handlers
@@ -101,7 +86,6 @@ async def main():
     daily_reminders_task = asyncio.create_task(daily_reminders.run_daily_schedule())
     logger.info("Daily reminders started (9:00 morning, 20:00 evening)")
 
-    logger.info("Starting event reminders service...")
     event_reminders_task = asyncio.create_task(event_reminders.run_reminder_schedule())
     logger.info("Event reminders started (30 minutes before each event)")
 
