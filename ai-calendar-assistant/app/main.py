@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import structlog
 
 from app.config import settings
@@ -50,6 +52,9 @@ app.add_middleware(
 # Add Telegram WebApp authentication middleware
 # This validates all /api/events/* requests using HMAC signature
 app.add_middleware(TelegramAuthMiddleware)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Include routers
 # app.include_router(health.router, tags=["health"])  # Disabled - microservice
@@ -144,6 +149,12 @@ async def root():
         "version": "0.1.0",
         "docs": "/docs",
     }
+
+
+@app.get("/app")
+async def webapp():
+    """WebApp endpoint - serve index.html."""
+    return FileResponse("app/static/index.html")
 
 
 if __name__ == "__main__":
