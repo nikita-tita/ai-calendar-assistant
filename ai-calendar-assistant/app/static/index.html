@@ -95,7 +95,7 @@
 
     <script>
         // Version: 2025-10-28-18:15 - Added Telegram HMAC authentication
-        const APP_VERSION = '2025-10-28-18:15';
+        const APP_VERSION = '2025-11-29-16:00';
         console.log('WebApp loaded, version:', APP_VERSION);
 
         // Initialize Telegram WebApp
@@ -686,15 +686,16 @@
 
                                     ${dateKeys.map(dateKey => {
                                         const dayEvents = grouped[dateKey];
-                                        if (dayEvents.length === 0) return '';
-
                                         const [y, m, d] = dateKey.split('-').map(Number);
                                         const dayDate = new Date(y, m - 1, d);
                                         const isToday = sameDay(dayDate, new Date());
 
+                                        // Skip empty days UNLESS it's today (always show today for scroll)
+                                        if (dayEvents.length === 0 && !isToday) return '';
+
                                         return `
                                             <div class="day-separator py-2 px-2 font-semibold text-sm ${isToday ? 'bg-blue-500/20 rounded-lg' : ''}" data-date="${dateKey}">
-                                                ${fmtDate(dayDate)} ${isToday ? '🔵' : ''} — ${dayEvents.length} ${dayEvents.length === 1 ? 'событие' : 'событий'}
+                                                ${fmtDate(dayDate)} ${isToday ? '🔵 Сегодня' : ''} — ${dayEvents.length > 0 ? (dayEvents.length + ' ' + (dayEvents.length === 1 ? 'событие' : 'событий')) : 'событий нет'}
                                             </div>
                                             ${dayEvents.map(e => `
                                                 <div onclick="viewEvent('${e.id}')" class="event-card secondary-bg p-4 mb-2 rounded-2xl cursor-pointer">
@@ -917,24 +918,48 @@
                         const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
                         let targetSection = document.querySelector(`[data-date="${todayKey}"]`);
 
+                        // DEBUG: Log today info
+                        console.log('[SCROLL] Today:', today.toISOString(), 'Key:', todayKey);
+
                         // If no exact match, find closest date (minimum time difference)
                         if (!targetSection) {
+                            console.log('[SCROLL] Today section not found, using fallback');
                             const allSections = Array.from(document.querySelectorAll('[data-date]'));
+                            console.log('[SCROLL] Available dates:', allSections.map(s => s.getAttribute('data-date')));
+
                             let minDiff = Infinity;
+                            const diffs = [];  // DEBUG: collect all diffs
+
                             allSections.forEach(section => {
                                 const sectionDate = new Date(section.getAttribute('data-date'));
                                 const diff = Math.abs(sectionDate.getTime() - today.getTime());
+
+                                // DEBUG: Record all differences
+                                diffs.push({
+                                    date: section.getAttribute('data-date'),
+                                    diff: diff,
+                                    diffDays: (diff / 86400000).toFixed(2)
+                                });
+
                                 if (diff < minDiff) {
                                     minDiff = diff;
                                     targetSection = section;
                                 }
                             });
+
+                            // DEBUG: Show top 5 closest dates
+                            console.log('[SCROLL] Top 5 closest:', diffs.sort((a,b) => a.diff - b.diff).slice(0, 5));
+                            console.log('[SCROLL] Selected:', targetSection?.getAttribute('data-date'));
+                        } else {
+                            console.log('[SCROLL] Found exact match for today');
                         }
 
                         if (targetSection) {
+                            console.log('[SCROLL] Scrolling to:', targetSection.getAttribute('data-date'));
                             targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             return true;
                         }
+                        console.log('[SCROLL] ERROR: No target section found!');
                         return false;
                     };
 
