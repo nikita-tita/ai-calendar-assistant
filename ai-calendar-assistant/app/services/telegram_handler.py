@@ -9,6 +9,7 @@ from app.config import settings
 from app.services.llm_agent_yandex import llm_agent_yandex as llm_agent
 from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
+from app.services.todos_service import todos_service
 
 # Analytics service - optional, fallback if not available
 try:
@@ -126,6 +127,11 @@ class TelegramHandler:
 
             if message.text and message.text in ['⚙️ Настройки', 'Настройки']:
                 await self._handle_settings_command(update, user_id)
+                return
+
+            # Handle todos list button
+            if message.text and message.text in ['✅ Задачи', 'Задачи']:
+                await self._handle_todos_list(update, user_id)
                 return
 
             # Handle voice message
@@ -367,6 +373,58 @@ class TelegramHandler:
             "📅 Вы уже в календарном боте!\n\n"
             "Я помогу вам с планированием дел и событий. Просто напишите, что хотите запланировать."
         )
+
+    async def _handle_todos_list(self, update: Update, user_id: str) -> None:
+        """Handle todos list button - show text-based list of todos."""
+        try:
+            # Fetch all todos for the user
+            todos = await todos_service.list_todos(user_id)
+
+            if not todos:
+                await update.message.reply_text(
+                    "📝 Список задач пуст.\n\n"
+                    "Чтобы добавить задачу, просто напишите что нужно сделать, например:\n"
+                    "• Обновить персональные данные\n"
+                    "• Позвонить собственнику\n\n"
+                    "📋 Можно также открыть 🗓 **Кабинет** для управления задачами",
+                    parse_mode="Markdown"
+                )
+                return
+
+            # Separate active and completed todos
+            active_todos = [t for t in todos if not t.get('completed', False)]
+            completed_todos = [t for t in todos if t.get('completed', False)]
+
+            # Build message
+            message_parts = []
+
+            if active_todos:
+                message_parts.append(f"📋 <b>Активные задачи ({len(active_todos)}):</b>\n")
+                for i, todo in enumerate(active_todos, 1):
+                    title = todo.get('title', 'Без названия')
+                    message_parts.append(f"{i}. 🟡 {title}")
+                message_parts.append("")
+
+            if completed_todos:
+                message_parts.append(f"✅ <b>Выполнено ({len(completed_todos)}):</b>\n")
+                for i, todo in enumerate(completed_todos, 1):
+                    title = todo.get('title', 'Без названия')
+                    message_parts.append(f"{i}. {title}")
+                message_parts.append("")
+
+            message_parts.append("📝 Отметить выполненные задачи можно в 🗓 Кабинете")
+
+            await update.message.reply_text(
+                "\n".join(message_parts),
+                parse_mode="HTML"
+            )
+
+        except Exception as e:
+            logger.error("todos_list_error", user_id=user_id, error=str(e), exc_info=True)
+            await update.message.reply_text(
+                "⏳ Секунду...\n\n"
+                "Не удалось загрузить список задач. Попробуйте позже."
+            )
 
     async def _handle_services_menu(self, update: Update, user_id: str) -> None:
         """Handle services menu button - show Housler and M2 services."""
