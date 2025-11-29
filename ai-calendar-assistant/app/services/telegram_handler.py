@@ -114,7 +114,7 @@ class TelegramHandler:
                 # ARCHIVED - /property command removed (independent microservice)
 
             # Handle services button
-            if message.text and message.text in ['🛠 Сервисы', 'Сервисы', '🛠️ Сервисы']:
+            if message.text and message.text in ['🛠 Сервисы', 'Сервисы', '🛠️ Сервисы', '💡 Полезное', 'Полезное']:
                 await self._handle_services_menu(update, user_id)
                 return
 

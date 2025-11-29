@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
 from app.config import settings
-from app.routers import telegram, events, admin, logs
+from app.routers import telegram, events, admin, logs, todos
 # Temporarily disabled - calendar_sync is independent microservice
 # from app.routers import calendar_sync, health
 # ARCHIVED - property is independent microservice (moved to _archived/property_bot_microservice)
@@ -55,6 +55,7 @@ app.add_middleware(TelegramAuthMiddleware)
 # app.include_router(health.router, tags=["health"])  # Disabled - microservice
 app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 app.include_router(events.router, prefix="/api", tags=["events"])
+app.include_router(todos.router, prefix="/api", tags=["todos"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 # app.include_router(property.router, prefix="/api/property", tags=["property"])  # ARCHIVED - independent microservice
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
