@@ -500,10 +500,13 @@ For batch_confirm intent, include "batch_actions" array field with all events to
             end_of_year_date = end_of_year.strftime('%Y-%m-%d')  # Format: 2025-12-31 or 2026-12-31
 
             # Prepare events list to prepend to user message
+            # Limit to first 10 events to avoid content moderation triggers
             events_prefix = ""
             if existing_events and len(existing_events) > 0:
+                max_events_in_context = 10
+                limited_events = existing_events[:max_events_in_context]
                 events_prefix = "<existing_calendar_events>\n"
-                for event in existing_events:
+                for event in limited_events:
                     event_time = event.start.strftime('%d.%m.%Y %H:%M') if hasattr(event, 'start') else 'Unknown'
                     event_title = event.summary if hasattr(event, 'summary') else 'No title'
                     event_id = event.id if hasattr(event, 'id') else 'unknown'
@@ -614,9 +617,12 @@ Ejemplos de fechas relativas desde la FECHA ACTUAL ({current_date_str}):
             start_time, end_time, duration = parse_datetime_range(user_text)
 
             # Build dynamic enum for event_id with real IDs from existing events
+            # Limit to first 10 events to match events_prefix and avoid large prompts
             event_id_enum = ["none"]  # default value for create/query
             if existing_events and len(existing_events) > 0:
-                for event in existing_events:
+                max_events_in_context = 10
+                limited_events = existing_events[:max_events_in_context]
+                for event in limited_events:
                     if hasattr(event, 'id') and event.id:
                         event_id_enum.append(str(event.id))
 
