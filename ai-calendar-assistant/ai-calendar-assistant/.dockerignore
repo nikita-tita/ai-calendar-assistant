@@ -1,0 +1,82 @@
+# Exclude sensitive files from Docker build context
+.env
+.env.*
+*.env
+
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Testing
+tests/
+test_*.py
+*_test.py
+pytest.ini
+.pytest_cache/
+coverage/
+htmlcov/
+.coverage
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+.DS_Store
+
+# Archives and backups
+*.zip
+*.tar
+*.tar.gz
+backups/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Deployment scripts
+deploy*.sh
+setup*.sh
+install*.sh
+
+# Docker
+docker-compose*.yml
+Dockerfile.*
