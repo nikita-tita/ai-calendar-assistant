@@ -391,9 +391,8 @@ class TelegramHandler:
                 )
                 return
 
-            # Separate active and completed todos
+            # Filter only active todos
             active_todos = [t for t in todos if not t.completed]
-            completed_todos = [t for t in todos if t.completed]
 
             # Build message
             message_parts = []
@@ -401,12 +400,6 @@ class TelegramHandler:
             if active_todos:
                 message_parts.append(f"📋 <b>Активные задачи ({len(active_todos)}):</b>\n")
                 for i, todo in enumerate(active_todos, 1):
-                    message_parts.append(f"{i}. 🟡 {todo.title}")
-                message_parts.append("")
-
-            if completed_todos:
-                message_parts.append(f"✅ <b>Выполнено ({len(completed_todos)}):</b>\n")
-                for i, todo in enumerate(completed_todos, 1):
                     message_parts.append(f"{i}. {todo.title}")
                 message_parts.append("")
 
