@@ -1051,15 +1051,23 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Default to today if no date specified
         start_date = event_dto.query_date_start or datetime.now()
-        end_date = event_dto.query_date_end or (start_date + timedelta(days=1))
 
-        # Ensure we cover the full day(s)
-        # If times are 00:00:00, extend end_date to end of day (23:59:59)
-        if start_date and end_date:
-            if start_date.hour == 0 and start_date.minute == 0 and start_date.second == 0:
-                start_date = start_date.replace(hour=0, minute=0, second=0)
-            if end_date.hour == 0 and end_date.minute == 0 and end_date.second == 0:
-                end_date = end_date.replace(hour=23, minute=59, second=59)
+        # If no end_date specified, use END of the same day as start_date (not next day!)
+        # This ensures "Дела на сегодня" only shows today's events
+        if event_dto.query_date_end:
+            end_date = event_dto.query_date_end
+        else:
+            # Set end_date to end of same day as start_date
+            end_date = start_date.replace(hour=23, minute=59, second=59)
+
+        # Ensure start_date covers from beginning of day
+        if start_date.hour == 0 and start_date.minute == 0 and start_date.second == 0:
+            start_date = start_date.replace(hour=0, minute=0, second=0)
+
+        # If end_date is at midnight (00:00:00), it means end of PREVIOUS day,
+        # so extend to end of that day
+        if end_date.hour == 0 and end_date.minute == 0 and end_date.second == 0:
+            end_date = end_date.replace(hour=23, minute=59, second=59)
 
         events = await calendar_service.list_events(user_id, start_date, end_date)
 
