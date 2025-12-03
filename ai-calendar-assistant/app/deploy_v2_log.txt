@@ -1,0 +1,107 @@
+===============================================
+ДЕПЛОЙ И ТЕСТИРОВАНИЕ ПОИСКОВОГО БОТА V2
+===============================================
+
+📤 Загрузка файлов на сервер...
+✅ Файлы загружены
+
+🚀 Применение обновлений и запуск тестов...
+
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.15.0-113-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Thu Oct 30 01:34:46 PM MSK 2025
+
+  System load:  0.1               Processes:             118
+  Usage of /:   74.3% of 9.76GB   Users logged in:       0
+  Memory usage: 50%               IPv4 address for ens3: 192.168.0.86
+  Swap usage:   0%
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+187 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+New release '24.04.3 LTS' available.
+Run 'do-release-upgrade' to upgrade to it.
+
+
+📦 Найден контейнер: telegram-bot-polling
+
+📋 Копирование файлов...
+📦 Копирование в контейнер telegram-bot-polling...
+time="2025-10-30T13:35:02+03:00" level=error msg="Can't close tar writer: archive/tar: missed writing 17389 bytes"
+Error response from daemon: unexpected EOF
+time="2025-10-30T13:35:02+03:00" level=error msg="Can't close tar writer: archive/tar: missed writing 1126 bytes"
+Error response from daemon: unexpected EOF
+time="2025-10-30T13:35:02+03:00" level=error msg="Can't close tar writer: archive/tar: missed writing 11396 bytes"
+Error response from daemon: unexpected EOF
+time="2025-10-30T13:35:02+03:00" level=error msg="Can't close tar writer: archive/tar: missed writing 5379 bytes"
+Error response from daemon: unexpected EOF
+✅ Файлы скопированы
+
+🔄 Перезапуск контейнера...
+no such directory
+telegram-bot-polling
+⏳ Ожидание запуска (15 секунд)...
+📊 Статус контейнера:
+4d7f243b2936   ai-calendar-assistant-telegram-bot         "python run_polling.…"   2 hours ago    Up 15 seconds (health: starting)   8000/tcp                                      telegram-bot-polling
+
+📜 Последние логи:
+2025-10-30 10:35:14,486 - __main__ - INFO - Starting bot in polling mode...
+2025-10-30 10:35:14,486 - __main__ - INFO - Bot token: 8378762774...
+2025-10-30 10:35:14,643 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot***REDACTED_BOT_TOKEN***/getMe "HTTP/1.1 200 OK"
+2025-10-30 10:35:14,644 - apscheduler.scheduler - INFO - Scheduler started
+2025-10-30 10:35:14,644 - telegram.ext.Application - INFO - Application started
+2025-10-30 10:35:14,693 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot***REDACTED_BOT_TOKEN***/deleteWebhook "HTTP/1.1 200 OK"
+2025-10-30 10:35:14,694 - __main__ - INFO - Bot is running! Press Ctrl+C to stop.
+2025-10-30 10:35:14,694 - __main__ - INFO - Daily reminders started (9:00 morning, 20:00 evening)
+2025-10-30 10:35:14 [info     ] daily_reminders_started
+2025-10-30 10:35:24,849 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot***REDACTED_BOT_TOKEN***/getUpdates "HTTP/1.1 200 OK"
+
+================================================
+🧪 ЗАПУСК РЕАЛЬНОГО ТЕСТИРОВАНИЯ
+================================================
+
+🔌 Проверка доступности API...
+OCI runtime exec failed: exec failed: unable to start container process: exec: "curl": executable file not found in $PATH: unknown
+⚠️ API недоступен
+
+📨 Отправка тестовых сообщений от 5 пользователей...
+
+Тест 1/5: Поиск однушки
+  Error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /telegram/webhook (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f1fb8a907d0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+Тест 2/5: Уточнение - парк
+  Error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /telegram/webhook (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7fdbb1d58e90>: Failed to establish a new connection: [Errno 111] Connection refused'))
+Тест 3/5: Студия
+  Error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /telegram/webhook (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f1d641dead0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+
+================================================
+📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ
+================================================
+
+📜 Статистика логов:
+⚠️ Логи недоступны
+
+📝 Последние логи бота:
+2025-10-30 10:35:14 [info     ] property_service_initialized   database_url=postgresql://property_user:r1wu5AFyCU1M50Vn+fSpbkgT7PQuzMqpKvS6p9L3ymg=@property-bot-db:5432/property_bot
+
+================================================
+✅ ТЕСТИРОВАНИЕ ЗАВЕРШЕНО
+================================================
+
+===============================================
+✅ ДЕПЛОЙ ЗАВЕРШЕН
+===============================================

@@ -703,6 +703,9 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Handle deletion confirmation
         elif data.startswith("confirm_delete_"):
+            # Answer callback immediately to prevent "Время истекло"
+            await query.answer("Удаляю...")
+
             if user_id not in self.conversation_history or len(self.conversation_history[user_id]) == 0:
                 await query.edit_message_text("Время истекло. Попробуйте ещё раз.")
                 return
@@ -720,6 +723,9 @@ Housler.ru сделал подборку сервисов, которые пом
                 await query.edit_message_text("Неверная команда.")
                 return
 
+            # Show progress
+            await query.edit_message_text(f"⏳ Удаляю {len(event_ids)} {action_name}...")
+
             # Delete events
             deleted_count = 0
             for event_id in event_ids:
@@ -732,6 +738,7 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Handle deletion cancellation
         elif data.startswith("cancel_delete:"):
+            await query.answer()
             self.conversation_history[user_id] = []  # Clear history
             await query.edit_message_text("Отменено.")
 
