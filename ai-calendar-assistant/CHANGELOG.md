@@ -6,6 +6,45 @@
 
 ---
 
+## [2025-12-04] - Data Protection & External Volume
+
+### Fixed
+- **Восстановлены события календаря** - 447 событий восстановлены из старого Docker volume
+- **Исправлена потеря данных при деплое** - данные теперь хранятся во внешнем volume
+
+### Added
+- `scripts/backup-radicale.sh` - автоматический бэкап данных Radicale
+- `scripts/restore-radicale.sh` - восстановление из бэкапа
+- `scripts/safe-deploy.sh` - безопасный деплой с автобэкапом
+- Внешний Docker volume `calendar-radicale-data` для защиты данных
+
+### Changed
+- **docker-compose.secure.yml** - Radicale теперь использует external volume
+- Volume `calendar-radicale-data` не удаляется при `docker-compose down -v`
+
+### Technical
+- Причина потери данных: Docker создавал новый volume при изменении имени проекта
+- Старый volume: `ai-calendar-assistant_radicale_data` (подчёркивание)
+- Новый volume: `ai-calendar-assistant_radicale-data` (дефис)
+- Решение: внешний volume с фиксированным именем `calendar-radicale-data`
+
+### Backup Commands
+```bash
+# Создать бэкап
+./scripts/backup-radicale.sh
+
+# Показать доступные бэкапы
+./scripts/restore-radicale.sh --list
+
+# Восстановить из последнего бэкапа
+./scripts/restore-radicale.sh --latest
+
+# Безопасный деплой (с автобэкапом)
+./scripts/safe-deploy.sh
+```
+
+---
+
 ## [2025-12-04] - Production Cleanup & Git-only Workflow
 
 ### Changed

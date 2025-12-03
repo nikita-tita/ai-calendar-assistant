@@ -99,7 +99,11 @@ networks:
 volumes:
   redis-data:
     driver: local
+  # IMPORTANT: radicale-data is an external volume to prevent data loss
+  # It was created manually and persists across docker-compose changes
+  # Create if not exists: docker volume create calendar-radicale-data
   radicale-data:
-    driver: local
+    external: true
+    name: calendar-radicale-data
   radicale-config:
     driver: local
