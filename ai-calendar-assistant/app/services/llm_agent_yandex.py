@@ -1079,8 +1079,12 @@ Respuesta JSON:""",
             attendees=input_data.get("attendees", []),
             event_id=input_data.get("event_id"),  # For update/delete
             clarify_question=input_data.get("clarify_question"),
-            query_date_start=self._parse_optional_datetime(input_data.get("query_date_start")),
-            query_date_end=self._parse_optional_datetime(input_data.get("query_date_end")),
+            query_date_start=self._parse_optional_datetime(
+                input_data.get("query_date_start") or input_data.get("delete_criteria_date")
+            ),
+            query_date_end=self._parse_optional_datetime(
+                input_data.get("query_date_end") or input_data.get("delete_criteria_date")
+            ),
             raw_text=user_text,
             # Recurring events fields
             recurrence_type=input_data.get("recurrence_type"),
