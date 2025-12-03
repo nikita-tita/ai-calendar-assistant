@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Копируем только минимальные зависимости
+COPY requirements-minimal.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем код
+COPY . .
+
+CMD ["python", "run_polling.py"]

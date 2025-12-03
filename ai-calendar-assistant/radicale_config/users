@@ -1,0 +1,4 @@
+# Radicale htpasswd file (bcrypt encrypted)
+# Format: username:bcrypt_hash
+# Generate new entries with: python -c "import bcrypt; print(bcrypt.hashpw(b'password', bcrypt.gensalt(12)).decode())"
+calendar_bot:$2b$12$GjcoU7BwldtZvKkrRzgzCO2YAqwV2Aq.u0JcMIJWHSPsMcVPG0RNG

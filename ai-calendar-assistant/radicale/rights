@@ -1,0 +1,20 @@
+# Radicale Access Rights
+# Documentation: https://radicale.org/v3.html#documentation/authentication-and-rights
+
+# Admin has full access
+[admin]
+user = admin
+collection = .*
+permissions = rw
+
+# Bot service account has full access
+[bot]
+user = calendar_bot
+collection = .*
+permissions = rw
+
+# Users can only access their own calendars
+[owner]
+user = .+
+collection = ^%(login)s/.*$
+permissions = rw

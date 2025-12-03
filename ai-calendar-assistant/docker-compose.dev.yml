@@ -1,0 +1,75 @@
+version: '3.8'
+
+# Development configuration for AI Calendar Assistant
+# Use this for local development with hot-reload and debugging enabled
+
+services:
+  # Redis - for rate limiter persistence and caching
+  redis:
+    image: redis:7-alpine
+    container_name: calendar-redis-dev
+    ports:
+      - "6379:6379"  # Exposed for development access
+    volumes:
+      - redis_data_dev:/data
+    restart: unless-stopped
+    networks:
+      - internal
+    command: redis-server --save 60 1 --loglevel warning
+
+  # Radicale CalDAV server - multi-user calendar storage
+  radicale:
+    image: tomsquest/docker-radicale:latest
+    container_name: radicale-calendar-dev
+    ports:
+      - "5232:5232"  # Exposed for development access
+    volumes:
+      - radicale_data_dev:/data
+      - ./radicale_config:/config:ro
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # AI Calendar Assistant API (Development mode)
+  calendar-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-calendar-assistant-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+      - RADICALE_URL=http://radicale:5232
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app  # Mount source code for hot-reload
+      - ./credentials:/app/credentials
+      - ./logs:/app/logs
+      - calendar_bot_data_dev:/var/lib/calendar-bot
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - radicale
+    networks:
+      - internal
+      - external
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+volumes:
+  redis_data_dev:
+    driver: local
+  radicale_data_dev:
+    driver: local
+  calendar_bot_data_dev:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge
+  external:
+    driver: bridge

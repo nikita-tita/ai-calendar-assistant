@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Calendar Assistant</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--tg-theme-bg-color, #0b0b0b);
+            color: var(--tg-theme-text-color, #ffffff);
+            overscroll-behavior: none;
+            touch-action: pan-y;
+            padding-bottom: 20px;
+        }
+        .secondary-bg { background: var(--tg-theme-secondary-bg-color, #1a1a1a); }
+        .tertiary-bg { background: rgba(255,255,255,0.05); }
+        .button-bg { background: var(--tg-theme-button-color, #2563eb); color: var(--tg-theme-button-text-color, #ffffff); }
+        .button-danger { background: #dc2626; color: #ffffff; }
+        .hint-color { color: var(--tg-theme-hint-color, #9ca3af); }
+
+        /* Light theme adaptations */
+        body.light-theme .secondary-bg { background: var(--tg-theme-secondary-bg-color, #f5f5f5); }
+        body.light-theme .tertiary-bg { background: rgba(0,0,0,0.05); }
+        body.light-theme .calendar-day:hover { background: rgba(0,0,0,0.08); }
+        body.light-theme .day-separator { background: rgba(255, 255, 255, 0.95); }
+        body.light-theme .modal { background: rgba(0,0,0,0.5); }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid #fff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .day-separator {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            background: rgba(11, 11, 11, 0.95);
+        }
+        .calendar-day {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .calendar-day:hover { background: rgba(255,255,255,0.1); }
+        .calendar-day.selected { background: var(--tg-theme-button-color, #2563eb); }
+        .calendar-day.today { border: 2px solid var(--tg-theme-button-color, #2563eb); }
+        .calendar-day.has-events { position: relative; }
+        .calendar-day.has-events::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            width: 4px;
+            height: 4px;
+            background: var(--tg-theme-button-color, #2563eb);
+            border-radius: 50%;
+        }
+        .event-card {
+            position: relative;
+            overflow: hidden;
+        }
+        .event-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--tg-theme-button-color, #2563eb);
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="modal" style="display:flex;">
+            <div class="spinner"></div>
+        </div>
+    </div>
+    <div id="loading" class="modal" style="display:none;"><div class="spinner"></div></div>
+    <div id="confirmModal" class="modal" style="display:none;">
+        <div class="secondary-bg rounded-3xl p-6 max-w-sm mx-4 shadow-2xl">
+            <div id="confirmText" class="text-lg mb-6 text-center"></div>
+            <div class="flex gap-3">
+                <button onclick="closeConfirm()" class="tertiary-bg px-6 py-3 rounded-2xl flex-1 font-medium"></button>
+                <button id="confirmBtn" onclick="execConfirm()" class="button-bg px-6 py-3 rounded-2xl flex-1 font-medium"></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Version: 2025-10-28-18:15 - Added Telegram HMAC authentication
+        const APP_VERSION = '2025-11-29-16:00';
+        console.log('WebApp loaded, version:', APP_VERSION);
+
+        // Initialize Telegram WebApp
+        const tg = window.Telegram?.WebApp;
+
+        if (!tg) {
+            console.error('Telegram WebApp SDK not loaded!');
+            document.getElementById('app').innerHTML = `
+                <div style="padding: 40px; text-align: center; font-family: Arial;">
+                    <h2>⚠️ Ошибка загрузки</h2>
+                    <p>Telegram WebApp SDK не загрузился.</p>
+                    <p>Попробуйте обновить страницу.</p>
+                </div>
+            `;
+        } else {
+            tg.ready();
+            tg.expand();
+
+            // Wait for WebApp to be ready
+            setTimeout(initApp, 100);
+        }
+
+        function initApp() {
+            console.log('Initializing app...');
+            console.log('tg.initDataUnsafe:', tg.initDataUnsafe);
+
+            // Detect and apply Telegram theme
+            function applyTheme() {
+                const colorScheme = tg.colorScheme || 'dark';
+                if (colorScheme === 'light') {
+                    document.body.classList.add('light-theme');
+                } else {
+                    document.body.classList.remove('light-theme');
+                }
+                console.log('Theme applied:', colorScheme);
+            }
+            applyTheme();
+            tg.onEvent('themeChanged', applyTheme);
+
+            const urlParams = new URLSearchParams(window.location.search);
+
+            // Get userId from Telegram ONLY (no fallback to URL)
+            const userId = tg.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null;
+
+            console.log('User ID:', userId);
+
+            if (!userId) {
+                console.error('No user ID found');
+                document.getElementById('app').innerHTML = `
+                    <div style="padding: 40px; text-align: center; font-family: Arial;">
+                        <h2>⚠️ Доступ запрещён</h2>
+                        <p>Не удалось получить ID пользователя.</p>
+                        <p>Откройте приложение через бота.</p>
+                        <p style="margin-top: 20px; font-size: 12px; color: #888;">
+                            Debug: initDataUnsafe=${JSON.stringify(tg.initDataUnsafe)}<br>
+                            initData available: ${tg.initData ? 'Yes' : 'No'}
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Get initData for authentication
+            const initData = tg.initData;
+            if (!initData) {
+                console.error('No initData found - authentication will fail');
+            }
+
+            const userLang = urlParams.get('lang') || 'ru';
+
+            // Translations
+            const i18n = {
+                ru: {
+                    today: 'Сегодня', tomorrow: 'Завтра', yesterday: 'Вчера', loading: 'Загрузка...',
+                    save: 'Сохранить', cancel: 'Отмена', delete: 'Удалить', edit: 'Редактировать',
+                    newEvent: 'Новое событие', editEvent: 'Редактировать событие',
+                    title: 'Название', date: 'Дата', start: 'Начало', end: 'Конец',
+                    location: 'Локация', note: 'Заметка', color: 'Цвет',
+                    confirm: 'Подтвердить', no: 'Нет', yes: 'Да', noEvents: 'Нет событий',
+                    confirmDelete: 'Удалить это событие?', confirmSave: 'Сохранить изменения?',
+                    selectDate: 'Выберите дату', myEvents: 'Мои события',
+                    events: 'События', todos: 'Задачи', myTodos: 'Мои задачи',
+                    noTodos: 'Нет задач', completed: 'Выполнено', active: 'Активные',
+                    months: ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
+                    monthsGen: ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"],
+                    days: ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+                }
+            };
+
+            const t = i18n[userLang] || i18n.ru;
+
+            // State management
+            const state = {
+                events: [],
+                todos: [],
+                selectedDate: new Date(),
+                currentMonth: new Date(),
+                showCalendar: false,
+                view: 'list', // 'list' | 'detail' | 'edit' | 'todo-edit'
+                viewEvent: null,
+                edit: {},
+                activeTab: 'events', // 'events' | 'todos'
+                editingTodo: null // Currently editing todo
+            };
+
+            // Utility functions
+            function fmtDate(d) {
+                const today = new Date();
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+
+                if (sameDay(d, today)) return t.today;
+                if (sameDay(d, tomorrow)) return t.tomorrow;
+                if (sameDay(d, yesterday)) return t.yesterday;
+                return `${d.getDate()} ${t.monthsGen[d.getMonth()]}`;
+            }
+
+            function sameDay(d1, d2) {
+                return d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+            }
+
+            function fmtTime(d) {
+                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            }
+
+            function toDateInputValue(d) {
+                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            }
+
+            function toTimeInputValue(d) {
+                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            }
+
+            function showLoading() {
+                document.getElementById('loading').style.display = 'flex';
+            }
+
+            function hideLoading() {
+                document.getElementById('loading').style.display = 'none';
+            }
+
+            // API functions
+            async function loadEvents() {
+                showLoading();
+                try {
+                    const start = new Date();
+                    start.setDate(start.getDate() - 90);
+                    start.setHours(0,0,0,0);
+                    const end = new Date();
+                    end.setDate(end.getDate() + 90);
+                    end.setHours(23,59,59,999);
+
+                    const res = await fetch(`/api/events/${userId}?start=${start.toISOString()}&end=${end.toISOString()}`, {
+                        headers: {
+                            'X-Telegram-Init-Data': initData
+                        }
+                    });
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                    }
+                    state.events = await res.json();
+                    console.log('Events loaded:', state.events.length);
+                    render();
+                } catch(e) {
+                    console.error('Error loading events:', e);
+                    document.getElementById('app').innerHTML = `
+                        <div style="padding: 40px; text-align: center; font-family: Arial;">
+                            <h2>⚠️ Ошибка загрузки</h2>
+                            <p>Не удалось загрузить события.</p>
+                            <p style="font-size: 12px; color: #888; margin-top: 20px;">${e.message}</p>
+                            <button onclick="location.reload()" class="button-bg px-6 py-3 rounded-2xl mt-4">
+                                Обновить
+                            </button>
+                        </div>
+                    `;
+                } finally {
+                    hideLoading();
+                }
+            }
+
+            async function loadTodos() {
+                try {
+                    const res = await fetch(`/api/todos/${userId}`, {
+                        headers: {
+                            'X-Telegram-Init-Data': initData
+                        }
+                    });
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                    }
+                    state.todos = await res.json();
+                    console.log('Todos loaded:', state.todos.length);
+                    render();
+                } catch(e) {
+                    console.error('Error loading todos:', e);
+                    state.todos = [];
+                    render();
+                }
+            }
+
+            window.viewEvent = function(id) {
+                state.viewEvent = state.events.find(e => e.id === id);
+                state.view = 'detail';
+                render();
+            };
+
+            window.openEdit = function(id = null) {
+                if (id) {
+                    const e = state.events.find(ev => ev.id === id);
+                    if (!e) return;
+                    state.edit = { ...e, start: new Date(e.start), end: new Date(e.end) };
+                } else {
+                    const now = new Date(state.selectedDate);
+                    now.setHours(12, 0, 0, 0);
+                    const end = new Date(now);
+                    end.setHours(13, 0, 0, 0);
+                    state.edit = { title: '', start: now, end, location: '', description: '', color: 'blue' };
+                }
+                state.view = 'edit';
+                render();
+            };
+
+            window.closeEdit = function() {
+                state.view = 'list';
+                render();
+            };
+
+            window.saveEvent = async function() {
+                const title = document.getElementById('editTitle').value.trim();
+                const dateVal = document.getElementById('editDate').value;
+                const startTime = document.getElementById('editStartTime').value;
+                const endTime = document.getElementById('editEndTime').value;
+                const location = document.getElementById('editLocation').value.trim();
+                const description = document.getElementById('editNote').value.trim();
+
+                if (!title) {
+                    tg.showAlert('Введите название события');
+                    return;
+                }
+
+                const start = new Date(`${dateVal}T${startTime}:00`);
+                const end = new Date(`${dateVal}T${endTime}:00`);
+
+                const event = {
+                    title,
+                    start: start.toISOString(),
+                    end: end.toISOString(),
+                    location,
+                    description,
+                    color: 'blue'
+                };
+
+                showLoading();
+                try {
+                    let res;
+                    if (state.edit.id) {
+                        res = await fetch(`/api/events/${userId}/${state.edit.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Telegram-Init-Data': initData
+                            },
+                            body: JSON.stringify(event)
+                        });
+                    } else {
+                        res = await fetch(`/api/events/${userId}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Telegram-Init-Data': initData
+                            },
+                            body: JSON.stringify(event)
+                        });
+                    }
+
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                    await loadEvents();
+                    state.view = 'list';
+                    render();
+                } catch(e) {
+                    console.error('Save error:', e);
+                    tg.showAlert('Ошибка сохранения: ' + e.message);
+                } finally {
+                    hideLoading();
+                }
+            };
+
+            window.deleteEvent = function(id) {
+                confirmAction(t.confirmDelete, async () => {
+                    showLoading();
+                    try {
+                        const res = await fetch(`/api/events/${userId}/${id}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-Telegram-Init-Data': initData
+                            }
+                        });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        await loadEvents();
+                        state.view = 'list';
+                        render();
+                    } catch(e) {
+                        console.error('Delete error:', e);
+                        tg.showAlert('Ошибка удаления: ' + e.message);
+                    } finally {
+                        hideLoading();
+                    }
+                });
+            };
+
+            // Calendar functions
+            function groupEventsByDay(events, fromDate, days) {
+                const result = {};
+                for (let i = 0; i < days; i++) {
+                    const d = new Date(fromDate);
+                    d.setDate(d.getDate() + i);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    result[key] = events.filter(e => {
+                        const eDate = new Date(e.start);
+                        return sameDay(eDate, d);
+                    }).sort((a, b) => new Date(a.start) - new Date(b.start));
+                }
+                return result;
+            }
+
+            function getMonthDays(year, month) {
+                const first = new Date(year, month, 1);
+                const last = new Date(year, month + 1, 0);
+                const days = [];
+
+                let startDay = first.getDay();
+                if (startDay === 0) startDay = 7;
+                startDay--;
+
+                for (let i = 0; i < startDay; i++) {
+                    const d = new Date(year, month, 1 - (startDay - i));
+                    days.push({ date: d, current: false });
+                }
+
+                for (let i = 1; i <= last.getDate(); i++) {
+                    days.push({ date: new Date(year, month, i), current: true });
+                }
+
+                while (days.length % 7 !== 0) {
+                    const lastDate = days[days.length - 1].date;
+                    days.push({ date: new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate() + 1), current: false });
+                }
+
+                return days;
+            }
+
+            function hasEventsOnDate(date) {
+                return state.events.some(e => sameDay(new Date(e.start), date));
+            }
+
+            window.toggleCalendar = function() {
+                state.showCalendar = !state.showCalendar;
+                render();
+            };
+
+            window.selectDate = function(date) {
+                state.selectedDate = date;
+                state.showCalendar = false;
+                render();
+            };
+
+            window.goToToday = function() {
+                state.selectedDate = new Date();
+                state.currentMonth = new Date();
+                render();
+
+                // Scroll to today after render
+                setTimeout(() => {
+                    const today = new Date();
+                    const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                    const todaySection = document.querySelector(`[data-date="${todayKey}"]`);
+                    if (todaySection) {
+                        todaySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 300);
+            };
+
+            window.prevMonth = function() {
+                state.currentMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth() - 1, 1);
+                render();
+            };
+
+            window.nextMonth = function() {
+                state.currentMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth() + 1, 1);
+                render();
+            };
+
+            window.switchTab = function(tab) {
+                state.activeTab = tab;
+                state.view = 'list';
+                state.showCalendar = false;
+                if (tab === 'todos' && state.todos.length === 0) {
+                    loadTodos();
+                } else {
+                    render();
+                }
+            };
+
+            window.toggleTodo = async function(todoId) {
+                try {
+                    const res = await fetch(`/api/todos/${userId}/${todoId}/toggle`, {
+                        method: 'POST',
+                        headers: {
+                            'X-Telegram-Init-Data': initData
+                        }
+                    });
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                    }
+                    await loadTodos();
+                } catch(e) {
+                    console.error('Error toggling todo:', e);
+                    alert('Ошибка при изменении статуса задачи');
+                }
+            };
+
+            window.editTodo = function(todoId) {
+                const todo = state.todos.find(t => t.id === todoId);
+                if (!todo) return;
+
+                state.editingTodo = { ...todo };
+                state.view = 'todo-edit';
+                render();
+            };
+
+            window.deleteTodo = async function(todoId) {
+                confirmAction('Удалить эту задачу?', async () => {
+                    try {
+                        const res = await fetch(`/api/todos/${userId}/${todoId}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-Telegram-Init-Data': initData
+                            }
+                        });
+                        if (!res.ok) {
+                            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                        }
+                        await loadTodos();
+                        state.view = 'list';
+                        render();
+                    } catch(e) {
+                        console.error('Error deleting todo:', e);
+                        alert('Ошибка при удалении задачи');
+                    }
+                });
+            };
+
+            window.updateTodo = async function() {
+                try {
+                    const res = await fetch(`/api/todos/${userId}/${state.editingTodo.id}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Telegram-Init-Data': initData
+                        },
+                        body: JSON.stringify({
+                            title: state.editingTodo.title,
+                            completed: state.editingTodo.completed,
+                            due_date: state.editingTodo.due_date
+                        })
+                    });
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                    }
+                    await loadTodos();
+                    state.view = 'list';
+                    state.editingTodo = null;
+                    render();
+                } catch(e) {
+                    console.error('Error updating todo:', e);
+                    alert('Ошибка при обновлении задачи');
+                }
+            };
+
+            window.cancelTodoEdit = function() {
+                state.view = 'list';
+                state.editingTodo = null;
+                render();
+            };
+
+            // Confirmation modal
+            let confirmCallback = null;
+
+            function confirmAction(text, callback) {
+                document.getElementById('confirmText').textContent = text;
+                document.getElementById('confirmModal').style.display = 'flex';
+                confirmCallback = callback;
+            }
+
+            window.closeConfirm = function() {
+                document.getElementById('confirmModal').style.display = 'none';
+                confirmCallback = null;
+            };
+
+            window.execConfirm = function() {
+                document.getElementById('confirmModal').style.display = 'none';
+                if (confirmCallback) confirmCallback();
+                confirmCallback = null;
+            };
+
+            // Render function
+            function render() {
+                const app = document.getElementById('app');
+
+                if (state.view === 'list') {
+                    const fromDate = new Date(state.selectedDate);
+                    fromDate.setDate(fromDate.getDate() - 30); // Show 30 days back
+                    fromDate.setHours(0,0,0,0);
+                    const grouped = groupEventsByDay(state.events, fromDate, 90); // 30 back + 60 forward
+                    const dateKeys = Object.keys(grouped);
+
+                    app.innerHTML = `
+                        <div class="min-h-screen">
+                            <div class="secondary-bg p-4 sticky top-0 z-20 shadow-lg">
+                                <!-- Tab switcher -->
+                                <div class="flex gap-2 mb-3">
+                                    <button
+                                        onclick="switchTab('events')"
+                                        class="${state.activeTab === 'events' ? 'button-bg' : 'tertiary-bg'} px-6 py-2 rounded-xl flex-1 font-medium"
+                                    >
+                                        📅 ${t.events}
+                                    </button>
+                                    <button
+                                        onclick="switchTab('todos')"
+                                        class="${state.activeTab === 'todos' ? 'button-bg' : 'tertiary-bg'} px-6 py-2 rounded-xl flex-1 font-medium"
+                                    >
+                                        ✓ ${t.todos}
+                                    </button>
+                                </div>
+
+                                <div class="flex items-center justify-between mb-3">
+                                    <h1 class="text-2xl font-bold">${state.activeTab === 'events' ? t.myEvents : t.myTodos}</h1>
+                                    <span class="text-xs hint-color px-2 py-1 rounded" style="background: rgba(59, 130, 246, 0.1);">v980</span>
+                                </div>
+
+                                ${state.activeTab === 'events' ? `
+                                <div class="flex items-center gap-2">
+                                    <button onclick="toggleCalendar()" class="tertiary-bg px-4 py-2 rounded-xl flex-1 text-left flex items-center justify-between">
+                                        <span>${fmtDate(state.selectedDate)}</span>
+                                        <span class="text-xl">📅</span>
+                                    </button>
+                                    <button onclick="goToToday()" class="tertiary-bg px-4 py-2 rounded-xl">${t.today}</button>
+                                </div>
+                                ` : ''}
+                            </div>
+
+                            ${state.showCalendar && state.activeTab === 'events' ? `
+                                <div class="secondary-bg p-4 border-t border-gray-800">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <button onclick="prevMonth()" class="tertiary-bg w-10 h-10 rounded-xl">←</button>
+                                        <div class="font-semibold">${t.months[state.currentMonth.getMonth()]} ${state.currentMonth.getFullYear()}</div>
+                                        <button onclick="nextMonth()" class="tertiary-bg w-10 h-10 rounded-xl">→</button>
+                                    </div>
+                                    <div class="grid grid-cols-7 gap-1 mb-2">
+                                        ${t.days.map(d => `<div class="text-center text-xs hint-color py-1">${d}</div>`).join('')}
+                                    </div>
+                                    <div class="grid grid-cols-7 gap-1">
+                                        ${getMonthDays(state.currentMonth.getFullYear(), state.currentMonth.getMonth()).map(d => {
+                                            const isToday = sameDay(d.date, new Date());
+                                            const isSelected = sameDay(d.date, state.selectedDate);
+                                            const hasEvents = hasEventsOnDate(d.date);
+                                            return `
+                                                <div
+                                                    onclick="selectDate(new Date(${d.date.getTime()}))"
+                                                    class="calendar-day ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''} ${hasEvents ? 'has-events' : ''} ${!d.current ? 'opacity-30' : ''}"
+                                                >
+                                                    ${d.date.getDate()}
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <div class="p-4">
+                                ${state.activeTab === 'events' ? `
+                                    <button onclick="openEdit()" class="button-bg w-full py-3 rounded-2xl mb-4 font-medium shadow-lg">
+                                        + ${t.newEvent}
+                                    </button>
+
+                                    ${dateKeys.map(dateKey => {
+                                        const dayEvents = grouped[dateKey];
+                                        const [y, m, d] = dateKey.split('-').map(Number);
+                                        const dayDate = new Date(y, m - 1, d);
+                                        const isToday = sameDay(dayDate, new Date());
+
+                                        // Skip empty days UNLESS it's today (always show today for scroll)
+                                        if (dayEvents.length === 0 && !isToday) return '';
+
+                                        return `
+                                            <div class="day-separator py-2 px-2 font-semibold text-sm ${isToday ? 'bg-blue-500/20 rounded-lg' : ''}" data-date="${dateKey}">
+                                                ${fmtDate(dayDate)} ${isToday ? '🔵 Сегодня' : ''} — ${dayEvents.length > 0 ? (dayEvents.length + ' ' + (dayEvents.length === 1 ? 'событие' : 'событий')) : 'событий нет'}
+                                            </div>
+                                            ${dayEvents.map(e => `
+                                                <div onclick="viewEvent('${e.id}')" class="event-card secondary-bg p-4 mb-2 rounded-2xl cursor-pointer">
+                                                    <div class="font-medium text-base mb-1">${e.title}</div>
+                                                    <div class="hint-color text-sm">
+                                                        ${fmtTime(new Date(e.start))} — ${fmtTime(new Date(e.end))}
+                                                        ${e.location ? ` · ${e.location}` : ''}
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        `;
+                                    }).join('')}
+
+                                    ${state.events.length === 0 ? `
+                                        <div class="text-center py-12 hint-color">
+                                            <div class="text-6xl mb-4">📅</div>
+                                            <div class="text-lg">${t.noEvents}</div>
+                                        </div>
+                                    ` : ''}
+                                ` : `
+                                    <!-- Todos view -->
+                                    ${state.todos.length === 0 ? `
+                                        <div class="text-center py-12 hint-color">
+                                            <div class="text-6xl mb-4">📋</div>
+                                            <div class="text-lg">${t.noTodos}</div>
+                                            <div class="text-sm mt-2">Добавьте задачу через бота</div>
+                                        </div>
+                                    ` : `
+                                        ${state.todos.filter(todo => !todo.completed).length > 0 ? `
+                                            <div class="mb-6">
+                                                <div class="text-sm hint-color font-medium mb-2 px-2">${t.active} (${state.todos.filter(todo => !todo.completed).length})</div>
+                                                ${state.todos.filter(todo => !todo.completed).map(todo => `
+                                                    <div class="secondary-bg p-4 mb-2 rounded-2xl flex items-start gap-3">
+                                                        <button onclick="event.stopPropagation(); toggleTodo('${todo.id}')" class="tertiary-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                                            <span class="text-xs opacity-0">✓</span>
+                                                        </button>
+                                                        <div class="flex-1 cursor-pointer" onclick="editTodo('${todo.id}')">
+                                                            <div class="font-medium">${todo.title}</div>
+                                                            ${todo.due_date ? `<div class="text-xs hint-color mt-1">📅 ${new Date(todo.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        ` : ''}
+
+                                        ${state.todos.filter(todo => todo.completed).length > 0 ? `
+                                            <div>
+                                                <div class="text-sm hint-color font-medium mb-2 px-2">${t.completed} (${state.todos.filter(todo => todo.completed).length})</div>
+                                                ${state.todos.filter(todo => todo.completed).map(todo => `
+                                                    <div class="secondary-bg p-4 mb-2 rounded-2xl flex items-start gap-3 opacity-60">
+                                                        <button onclick="event.stopPropagation(); toggleTodo('${todo.id}')" class="button-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                                            <span class="text-xs">✓</span>
+                                                        </button>
+                                                        <div class="flex-1 cursor-pointer" onclick="editTodo('${todo.id}')">
+                                                            <div class="font-medium line-through">${todo.title}</div>
+                                                            ${todo.due_date ? `<div class="text-xs hint-color mt-1">📅 ${new Date(todo.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        ` : ''}
+                                    `}
+                                `}
+                            </div>
+                        </div>
+                    `;
+                } else if (state.view === 'detail') {
+                    const e = state.viewEvent;
+                    app.innerHTML = `
+                        <div class="min-h-screen p-4">
+                            <button onclick="closeEdit()" class="mb-4 hint-color flex items-center gap-2">
+                                <span class="text-xl">←</span> ${t.cancel}
+                            </button>
+                            <div class="secondary-bg p-6 rounded-3xl">
+                                <h2 class="text-2xl font-bold mb-6">${e.title}</h2>
+                                <div class="space-y-4">
+                                    <div class="flex items-start gap-3">
+                                        <span class="text-2xl">📅</span>
+                                        <div class="flex-1">
+                                            <div class="text-sm hint-color mb-1">${t.date}</div>
+                                            <div>${fmtDate(new Date(e.start))}</div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start gap-3">
+                                        <span class="text-2xl">🕐</span>
+                                        <div class="flex-1">
+                                            <div class="text-sm hint-color mb-1">${t.start} — ${t.end}</div>
+                                            <div>${fmtTime(new Date(e.start))} — ${fmtTime(new Date(e.end))}</div>
+                                        </div>
+                                    </div>
+                                    ${e.location ? `
+                                        <div class="flex items-start gap-3">
+                                            <span class="text-2xl">📍</span>
+                                            <div class="flex-1">
+                                                <div class="text-sm hint-color mb-1">${t.location}</div>
+                                                <div>${e.location}</div>
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                    ${e.description ? `
+                                        <div class="flex items-start gap-3">
+                                            <span class="text-2xl">📝</span>
+                                            <div class="flex-1">
+                                                <div class="text-sm hint-color mb-1">${t.note}</div>
+                                                <div>${e.description}</div>
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div class="mt-6 flex gap-3">
+                                <button data-event-id="${e.id}" class="btn-edit button-bg flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                    ${t.edit}
+                                </button>
+                                <button data-event-id="${e.id}" class="btn-delete button-danger flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                    ${t.delete}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                } else if (state.view === 'edit') {
+                    app.innerHTML = `
+                        <div class="min-h-screen p-4">
+                            <button onclick="closeEdit()" class="mb-4 hint-color flex items-center gap-2">
+                                <span class="text-xl">←</span> ${t.cancel}
+                            </button>
+                            <h2 class="text-2xl font-bold mb-6">${state.edit.id ? t.editEvent : t.newEvent}</h2>
+                            <div class="space-y-4">
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">${t.title}</span>
+                                    <input id="editTitle" value="${state.edit.title||''}"
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                        placeholder="${t.title}"/>
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">${t.date}</span>
+                                    <input id="editDate" type="date" value="${toDateInputValue(state.edit.start)}"
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                </label>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <label class="block">
+                                        <span class="text-sm hint-color mb-2 block">${t.start}</span>
+                                        <input id="editStartTime" type="time" value="${toTimeInputValue(state.edit.start)}"
+                                            class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-sm hint-color mb-2 block">${t.end}</span>
+                                        <input id="editEndTime" type="time" value="${toTimeInputValue(state.edit.end)}"
+                                            class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                    </label>
+                                </div>
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">${t.location}</span>
+                                    <input id="editLocation" value="${state.edit.location||''}"
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                        placeholder="${t.location}"/>
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">${t.note}</span>
+                                    <textarea id="editNote" rows="4"
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base resize-none"
+                                        placeholder="${t.note}">${state.edit.description||''}</textarea>
+                                </label>
+                                <div class="flex gap-3 mt-6 pt-4">
+                                    <button onclick="closeEdit()" class="tertiary-bg flex-1 py-4 rounded-2xl font-medium">
+                                        ${t.cancel}
+                                    </button>
+                                    <button onclick="saveEvent()" class="button-bg flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                        ${t.save}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (state.view === 'todo-edit') {
+                    const todo = state.editingTodo;
+                    app.innerHTML = `
+                        <div class="min-h-screen p-4">
+                            <button onclick="cancelTodoEdit()" class="mb-4 hint-color flex items-center gap-2">
+                                <span class="text-xl">←</span> Отмена
+                            </button>
+                            <h2 class="text-2xl font-bold mb-6">Редактировать задачу</h2>
+                            <div class="space-y-4">
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">Название задачи</span>
+                                    <input id="editTodoTitle" value="${todo.title || ''}"
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                        placeholder="Что нужно сделать?"/>
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">Срок выполнения (опционально)</span>
+                                    <input id="editTodoDueDate" type="date" value="${todo.due_date ? new Date(todo.due_date).toISOString().split('T')[0] : ''}"
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                </label>
+                                <div class="flex gap-3 pt-4">
+                                    <button onclick="deleteTodo('${todo.id}')" class="button-danger flex-1 py-3 rounded-2xl font-medium">
+                                        Удалить
+                                    </button>
+                                    <button onclick="
+                                        state.editingTodo.title = document.getElementById('editTodoTitle').value;
+                                        const dueDateInput = document.getElementById('editTodoDueDate').value;
+                                        state.editingTodo.due_date = dueDateInput ? new Date(dueDateInput).toISOString() : null;
+                                        updateTodo();
+                                    " class="button-bg flex-1 py-3 rounded-2xl font-medium">
+                                        Сохранить
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Auto-scroll to today's date (or closest future date) on list view
+                if (state.view === 'list') {
+                    const scrollToToday = () => {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+
+                        // Try exact match first
+                        const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                        let targetSection = document.querySelector(`[data-date="${todayKey}"]`);
+
+                        // DEBUG: Log today info
+                        console.log('[SCROLL] Today:', today.toISOString(), 'Key:', todayKey);
+
+                        // If no exact match, find closest date (minimum time difference)
+                        if (!targetSection) {
+                            console.log('[SCROLL] Today section not found, using fallback');
+                            const allSections = Array.from(document.querySelectorAll('[data-date]'));
+                            console.log('[SCROLL] Available dates:', allSections.map(s => s.getAttribute('data-date')));
+
+                            let minDiff = Infinity;
+                            const diffs = [];  // DEBUG: collect all diffs
+
+                            allSections.forEach(section => {
+                                const sectionDate = new Date(section.getAttribute('data-date'));
+                                const diff = Math.abs(sectionDate.getTime() - today.getTime());
+
+                                // DEBUG: Record all differences
+                                diffs.push({
+                                    date: section.getAttribute('data-date'),
+                                    diff: diff,
+                                    diffDays: (diff / 86400000).toFixed(2)
+                                });
+
+                                if (diff < minDiff) {
+                                    minDiff = diff;
+                                    targetSection = section;
+                                }
+                            });
+
+                            // DEBUG: Show top 5 closest dates
+                            console.log('[SCROLL] Top 5 closest:', diffs.sort((a,b) => a.diff - b.diff).slice(0, 5));
+                            console.log('[SCROLL] Selected:', targetSection?.getAttribute('data-date'));
+                        } else {
+                            console.log('[SCROLL] Found exact match for today');
+                        }
+
+                        if (targetSection) {
+                            console.log('[SCROLL] Scrolling to:', targetSection.getAttribute('data-date'));
+                            targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            return true;
+                        }
+                        console.log('[SCROLL] ERROR: No target section found!');
+                        return false;
+                    };
+
+                    // Try with delays to ensure DOM is ready
+                    setTimeout(() => {
+                        if (!scrollToToday()) {
+                            setTimeout(scrollToToday, 300);
+                        }
+                    }, 500);
+                }
+            }
+
+            // Global event delegation
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('btn-edit') || e.target.closest('.btn-edit')) {
+                    const btn = e.target.classList.contains('btn-edit') ? e.target : e.target.closest('.btn-edit');
+                    const eventId = btn.getAttribute('data-event-id');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openEdit(eventId);
+                    return;
+                }
+
+                if (e.target.classList.contains('btn-delete') || e.target.closest('.btn-delete')) {
+                    const btn = e.target.classList.contains('btn-delete') ? e.target : e.target.closest('.btn-delete');
+                    const eventId = btn.getAttribute('data-event-id');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deleteEvent(eventId);
+                    return;
+                }
+            });
+
+            // Start the app
+            loadEvents();
+        }
+    </script>
+</body>
+</html>

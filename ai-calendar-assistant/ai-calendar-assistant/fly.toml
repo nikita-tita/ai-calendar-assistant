@@ -1,0 +1,22 @@
+# fly.toml app configuration file
+# Documentation: https://fly.io/docs/reference/configuration/
+
+app = "ai-calendar-bot"
+primary_region = "ams"  # Amsterdam (closest to Moscow)
+
+[build]
+  dockerfile = "Dockerfile.bot"
+
+[env]
+  RADICALE_URL = "http://localhost:5232"
+
+# No HTTP service needed for polling bot
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+# Resource limits (free tier: 256MB RAM, shared CPU)
+[vm]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

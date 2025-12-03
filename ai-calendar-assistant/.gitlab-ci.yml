@@ -1,0 +1,174 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  LATEST_TAG: $CI_REGISTRY_IMAGE:latest
+
+# Test stage - run unit and integration tests
+test:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - cd ai-calendar-assistant
+    - apt-get update && apt-get install -y ffmpeg gcc g++
+    - pip install -r requirements.txt
+    - pip install pytest pytest-asyncio pytest-cov
+  script:
+    - pytest tests/ --cov=app --cov-report=term --cov-report=html
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+  only:
+    - branches
+    - merge_requests
+
+# Build Docker images
+build:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - cd ai-calendar-assistant
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # Build main calendar assistant image
+    - docker build -t $IMAGE_TAG -t $LATEST_TAG -f Dockerfile .
+    - docker push $IMAGE_TAG
+    - docker push $LATEST_TAG
+
+    # Build property bot image if exists
+    - |
+      if [ -f "Dockerfile.property-bot" ]; then
+        docker build -t $CI_REGISTRY_IMAGE/property-bot:$CI_COMMIT_REF_SLUG -t $CI_REGISTRY_IMAGE/property-bot:latest -f Dockerfile.property-bot .
+        docker push $CI_REGISTRY_IMAGE/property-bot:$CI_COMMIT_REF_SLUG
+        docker push $CI_REGISTRY_IMAGE/property-bot:latest
+      fi
+  only:
+    - main
+    - develop
+    - tags
+
+# Deploy to production server
+deploy_production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client docker-compose
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan $DEPLOY_SERVER >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    # Copy necessary files to server
+    - |
+      ssh $DEPLOY_USER@$DEPLOY_SERVER << 'ENDSSH'
+        cd /root/ai-calendar-assistant || exit 1
+
+        # Pull latest changes
+        git pull origin main
+
+        # Login to GitLab registry
+        echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+
+        # Pull latest images
+        docker-compose pull
+
+        # Restart services
+        docker-compose down
+        docker-compose up -d
+
+        # Clean up old images
+        docker image prune -af --filter "until=24h"
+
+        # Check health
+        sleep 10
+        docker-compose ps
+        docker-compose logs --tail=50
+      ENDSSH
+  environment:
+    name: production
+    url: https://your-domain.com
+  only:
+    - main
+  when: manual
+
+# Deploy to staging server
+deploy_staging:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client docker-compose
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan $STAGING_SERVER >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - |
+      ssh $DEPLOY_USER@$STAGING_SERVER << 'ENDSSH'
+        cd /root/ai-calendar-assistant-staging || exit 1
+        git pull origin develop
+        echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+        docker-compose pull
+        docker-compose down
+        docker-compose up -d
+        docker image prune -af --filter "until=24h"
+        sleep 10
+        docker-compose ps
+      ENDSSH
+  environment:
+    name: staging
+    url: https://staging.your-domain.com
+  only:
+    - develop
+  when: manual
+
+# Security scanning
+security_scan:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - cd ai-calendar-assistant
+    - pip install safety bandit
+  script:
+    - safety check --json || true
+    - bandit -r app/ -f json -o bandit-report.json || true
+  artifacts:
+    paths:
+      - bandit-report.json
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - branches
+    - merge_requests
+
+# Lint and code quality
+code_quality:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - cd ai-calendar-assistant
+    - pip install flake8 black isort mypy
+  script:
+    - flake8 app/ --max-line-length=120 --exclude=__pycache__,venv || true
+    - black --check app/ || true
+    - isort --check-only app/ || true
+    - mypy app/ --ignore-missing-imports || true
+  allow_failure: true
+  only:
+    - branches
+    - merge_requests

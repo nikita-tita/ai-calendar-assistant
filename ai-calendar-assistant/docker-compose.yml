@@ -1,4 +1,30 @@
+version: '3.8'
+
+# Production configuration for AI Calendar Assistant
+# This is the primary configuration file for production deployment
+
 services:
+  # Redis - for rate limiter persistence and caching
+  redis:
+    image: redis:7-alpine
+    container_name: calendar-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --save 60 1 --loglevel warning
+
   # Radicale CalDAV server - multi-user calendar storage
   radicale:
     image: tomsquest/docker-radicale:latest
@@ -6,8 +32,6 @@ services:
     # Security: Only expose internally, not to public
     expose:
       - "5232"
-    # ports:
-    #   - "5232:5232"  # ❌ Removed public access for security
     volumes:
       - radicale_data:/data
       - ./radicale_config:/config:ro
@@ -25,34 +49,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # PostgreSQL Database for Property Bot
-  property-bot-db:
-    image: postgres:14-alpine
-    container_name: property-bot-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: property_bot
-      POSTGRES_USER: property_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
-    volumes:
-      - property_db_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d:ro
-    expose:
-      - "5432"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U property_user -d property_bot"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
-
   # AI Calendar Assistant API
   calendar-assistant:
     build:
@@ -65,18 +61,20 @@ services:
       - APP_ENV=production
       - DEBUG=False
       - RADICALE_URL=http://radicale:5232
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     volumes:
       - ./credentials:/app/credentials
       - ./logs:/app/logs
-      - calendar_bot_data:/var/lib/calendar-bot  # Shared with telegram-bot-polling
+      - ./data:/app/data
+      - calendar_bot_data:/var/lib/calendar-bot
     restart: unless-stopped
     depends_on:
+      redis:
+        condition: service_healthy
       radicale:
         condition: service_started
-      property-bot-db:
-        condition: service_healthy
     networks:
       - internal
       - external
@@ -86,48 +84,54 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  # Property Search Bot (separate bot)
-  property-bot:
+  # Telegram Bot Polling
+  telegram-bot-polling:
     build:
       context: .
-      dockerfile: Dockerfile.property-bot
-    container_name: property-bot
-    restart: unless-stopped
-    env_file:
-      - .env
+      dockerfile: Dockerfile
+    container_name: telegram-bot-polling
     environment:
       - APP_ENV=production
       - DEBUG=False
-      - DATABASE_URL=postgresql://property_user:${DB_PASSWORD}@property-bot-db:5432/property_bot
+      - RADICALE_URL=http://radicale:5232
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    volumes:
+      - ./credentials:/app/credentials
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./run_polling.py:/app/run_polling.py
+      - calendar_bot_data:/var/lib/calendar-bot
+    restart: unless-stopped
     depends_on:
-      property-bot-db:
+      redis:
         condition: service_healthy
+      radicale:
+        condition: service_started
     networks:
       - internal
+      - external
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'python.*run_property_bot.py' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    command: ["python3", "/app/run_polling.py"]
 
 volumes:
+  redis_data:
+    driver: local
   radicale_data:
-  calendar_bot_data:  # Shared volume for analytics, preferences, reminders
-  property_db_data:  # PostgreSQL data for Property Bot
-  credentials:
-  logs:
+    driver: local
+  calendar_bot_data:
+    driver: local
 
 networks:
   internal:

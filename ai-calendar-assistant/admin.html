@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - AI Calendar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <style>
+        body {font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0;}
+        .stat-card {background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 20px; transition: all 0.2s; cursor: pointer;}
+        .stat-card:hover {transform: translateY(-2px); border-color: #3b82f6; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);}
+        .chart-wrapper {position: relative; height: 300px; width: 100%;}
+        @media (max-width: 768px) {.chart-wrapper {height: 250px;}}
+        .badge-test {background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;}
+        .clickable-row {cursor: pointer; transition: background 0.2s;}
+        .clickable-row:hover {background: #1e293b !important;}
+    </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-gradient-to-br from-slate-800 to-slate-900 p-8 rounded-2xl shadow-2xl border border-slate-700 w-full max-w-md">
+        <h1 class="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Admin Panel</h1>
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-2">Первый пароль</label>
+                <input type="password" id="password1" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-2">Второй пароль</label>
+                <input type="password" id="password2" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors">Войти</button>
+        </form>
+        <div id="loginError" class="hidden mt-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-sm"></div>
+    </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="hidden">
+    <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-10">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <h1 class="text-xl md:text-2xl font-bold">AI Calendar Admin</h1>
+                <button onclick="showDashboard()" id="backBtn" class="hidden px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm">← Назад</button>
+            </div>
+            <button onclick="logout()" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition-colors">Выйти</button>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-4 py-6 max-w-7xl">
+
+        <!-- Main Dashboard View -->
+        <div id="mainView">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="stat-card" onclick="filterByType('users')">
+                    <div class="text-3xl font-bold text-blue-400" id="totalUsers">0</div>
+                    <div class="text-sm text-slate-400 mt-1">👥 Пользователей</div>
+                </div>
+                <div class="stat-card" onclick="filterByType('events')">
+                    <div class="text-3xl font-bold text-green-400" id="totalEvents">0</div>
+                    <div class="text-sm text-slate-400 mt-1">📅 Событий</div>
+                </div>
+                <div class="stat-card" onclick="filterByType('messages')">
+                    <div class="text-3xl font-bold text-purple-400" id="totalMessages">0</div>
+                    <div class="text-sm text-slate-400 mt-1">💬 Сообщений</div>
+                </div>
+                <div class="stat-card" onclick="filterByType('errors')">
+                    <div class="text-3xl font-bold text-red-400" id="totalErrors">0</div>
+                    <div class="text-sm text-slate-400 mt-1">❌ Ошибок</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">Активность пользователей</h3>
+                    <div class="chart-wrapper"><canvas id="activityChart"></canvas></div>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">Распределение действий</h3>
+                    <div class="chart-wrapper"><canvas id="distributionChart"></canvas></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden mb-6">
+                <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">Последние пользователи</h3></div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-900">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium">User ID</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">События</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Сообщения</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Последняя активность</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTable" class="divide-y divide-slate-700">
+                            <tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">Последние действия</h3></div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-900">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Время</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">User ID</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Действие</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Детали</th>
+                            </tr>
+                        </thead>
+                        <tbody id="actionsTable" class="divide-y divide-slate-700">
+                            <tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Profile View -->
+        <div id="userView" class="hidden">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold mb-4">Профиль пользователя <span id="userIdTitle" class="font-mono text-blue-400"></span></h2>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-green-400" id="userEventsCount">0</div>
+                        <div class="text-sm text-slate-400">📅 События</div>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-purple-400" id="userMessagesCount">0</div>
+                        <div class="text-sm text-slate-400">💬 Текст</div>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-blue-400" id="userVoiceCount">0</div>
+                        <div class="text-sm text-slate-400">🎤 Голос</div>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-red-400" id="userErrorsCount">0</div>
+                        <div class="text-sm text-slate-400">❌ Ошибки</div>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-yellow-400" id="userActionsCount">0</div>
+                        <div class="text-sm text-slate-400">📊 Всего</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">История действий</h3></div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-900">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Время</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Действие</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Детали</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userActionsTable" class="divide-y divide-slate-700"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtered View -->
+        <div id="filteredView" class="hidden">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold mb-4" id="filterTitle"></h2>
+                <div class="text-sm text-slate-400" id="filterSubtitle"></div>
+            </div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-900">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Время</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">User ID</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Действие</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Детали</th>
+                            </tr>
+                        </thead>
+                        <tbody id="filteredTable" class="divide-y divide-slate-700"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+const API_BASE = '/api/admin';
+let sessionToken = null;
+let activityChart = null;
+let distributionChart = null;
+let refreshInterval = null;
+let currentView = 'main';
+let allActions = [];
+
+// Get language from URL parameter
+const urlParams = new URLSearchParams(window.location.search);
+const userLang = urlParams.get('lang') || 'ru';
+
+// Translations object
+const translations = {
+    ru: {
+        adminPanel: 'Admin Panel',
+        firstPassword: 'Первый пароль',
+        secondPassword: 'Второй пароль',
+        login: 'Войти',
+        logout: 'Выйти',
+        back: '← Назад',
+        users: 'Пользователей',
+        events: 'Событий',
+        messages: 'Сообщений',
+        errors: 'Ошибок',
+        userActivity: 'Активность пользователей',
+        actionDistribution: 'Распределение действий',
+        recentUsers: 'Последние пользователи',
+        userId: 'User ID',
+        lastActivity: 'Последняя активность',
+        loading: 'Загрузка...',
+        userDetails: 'Детали пользователя',
+        created: 'Создан',
+        totalActions: 'Всего действий',
+        text: 'Текст',
+        voice: 'Голос',
+        actionsHistory: 'История действий',
+        time: 'Время',
+        action: 'Действие',
+        details: 'Детали',
+        status: 'Статус',
+        invalidPassword: 'Неверные пароли',
+        connectionError: 'Ошибка соединения с сервером'
+    },
+    en: {
+        adminPanel: 'Admin Panel',
+        firstPassword: 'First Password',
+        secondPassword: 'Second Password',
+        login: 'Login',
+        logout: 'Logout',
+        back: '← Back',
+        users: 'Users',
+        events: 'Events',
+        messages: 'Messages',
+        errors: 'Errors',
+        userActivity: 'User Activity',
+        actionDistribution: 'Action Distribution',
+        recentUsers: 'Recent Users',
+        userId: 'User ID',
+        lastActivity: 'Last Activity',
+        loading: 'Loading...',
+        userDetails: 'User Details',
+        created: 'Created',
+        totalActions: 'Total Actions',
+        text: 'Text',
+        voice: 'Voice',
+        actionsHistory: 'Actions History',
+        time: 'Time',
+        action: 'Action',
+        details: 'Details',
+        status: 'Status',
+        invalidPassword: 'Invalid passwords',
+        connectionError: 'Server connection error'
+    },
+    es: {
+        adminPanel: 'Panel de Administración',
+        firstPassword: 'Primera Contraseña',
+        secondPassword: 'Segunda Contraseña',
+        login: 'Ingresar',
+        logout: 'Salir',
+        back: '← Atrás',
+        users: 'Usuarios',
+        events: 'Eventos',
+        messages: 'Mensajes',
+        errors: 'Errores',
+        userActivity: 'Actividad de Usuarios',
+        actionDistribution: 'Distribución de Acciones',
+        recentUsers: 'Usuarios Recientes',
+        userId: 'ID de Usuario',
+        lastActivity: 'Última Actividad',
+        loading: 'Cargando...',
+        userDetails: 'Detalles del Usuario',
+        created: 'Creado',
+        totalActions: 'Acciones Totales',
+        text: 'Texto',
+        voice: 'Voz',
+        actionsHistory: 'Historial de Acciones',
+        time: 'Hora',
+        action: 'Acción',
+        details: 'Detalles',
+        status: 'Estado',
+        invalidPassword: 'Contraseñas inválidas',
+        connectionError: 'Error de conexión con el servidor'
+    },
+    ar: {
+        adminPanel: 'لوحة التحكم',
+        firstPassword: 'كلمة المرور الأولى',
+        secondPassword: 'كلمة المرور الثانية',
+        login: 'تسجيل الدخول',
+        logout: 'تسجيل الخروج',
+        back: '→ رجوع',
+        users: 'المستخدمون',
+        events: 'الأحداث',
+        messages: 'الرسائل',
+        errors: 'الأخطاء',
+        userActivity: 'نشاط المستخدمين',
+        actionDistribution: 'توزيع الإجراءات',
+        recentUsers: 'المستخدمون الأخيرون',
+        userId: 'معرف المستخدم',
+        lastActivity: 'آخر نشاط',
+        loading: 'جارٍ التحميل...',
+        userDetails: 'تفاصيل المستخدم',
+        created: 'تم الإنشاء',
+        totalActions: 'إجمالي الإجراءات',
+        text: 'نص',
+        voice: 'صوت',
+        actionsHistory: 'سجل الإجراءات',
+        time: 'الوقت',
+        action: 'الإجراء',
+        details: 'التفاصيل',
+        status: 'الحالة',
+        invalidPassword: 'كلمات مرور غير صحيحة',
+        connectionError: 'خطأ في الاتصال بالخادم'
+    }
+};
+
+// Translation helper function
+function t(key) {
+    return translations[userLang]?.[key] || translations['ru'][key] || key;
+}
+
+const actionLabels = {
+    'user_start': '🚀 ' + t('text'),
+    'event_create': '➕ ' + (userLang === 'ru' ? 'Создание' : userLang === 'en' ? 'Create' : userLang === 'es' ? 'Crear' : 'إنشاء'),
+    'event_update': '✏️ ' + (userLang === 'ru' ? 'Изменение' : userLang === 'en' ? 'Update' : userLang === 'es' ? 'Actualizar' : 'تحديث'),
+    'event_delete': '🗑️ ' + (userLang === 'ru' ? 'Удаление' : userLang === 'en' ? 'Delete' : userLang === 'es' ? 'Eliminar' : 'حذف'),
+    'event_query': '🔍 ' + (userLang === 'ru' ? 'Поиск' : userLang === 'en' ? 'Search' : userLang === 'es' ? 'Buscar' : 'بحث'),
+    'text_message': '💬 ' + t('messages'),
+    'voice_message': '🎤 ' + t('voice'),
+    'error': '❌ ' + (userLang === 'ru' ? 'Ошибка' : userLang === 'en' ? 'Error' : userLang === 'es' ? 'Error' : 'خطأ')
+};
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password1 = document.getElementById('password1').value;
+    const password2 = document.getElementById('password2').value;
+
+    try {
+        const response = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({primary_password: password1, secondary_password: password2})
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            sessionToken = data.session_token;
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            loadDashboard();
+            refreshInterval = setInterval(() => { if (currentView === 'main') loadDashboard(); }, 30000);
+        } else {
+            showError(data.detail || t('invalidPassword'));
+        }
+    } catch (err) {
+        showError(t('connectionError'));
+    }
+});
+
+function showError(message) {
+    const errorEl = document.getElementById('loginError');
+    errorEl.textContent = message;
+    errorEl.classList.remove('hidden');
+}
+
+function logout() {
+    sessionToken = null;
+    if (refreshInterval) clearInterval(refreshInterval);
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('password1').value = '';
+    document.getElementById('password2').value = '';
+}
+
+async function fetchAPI(endpoint) {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        headers: {'Authorization': `Bearer ${sessionToken}`}
+    });
+    if (!response.ok) {
+        if (response.status === 401) logout();
+        throw new Error('API error');
+    }
+    return response.json();
+}
+
+async function loadDashboard() {
+    try {
+        const stats = await fetchAPI('/stats/dashboard');
+        document.getElementById('totalUsers').textContent = stats.total_users;
+        document.getElementById('totalEvents').textContent = stats.total_events;
+        document.getElementById('totalMessages').textContent = stats.total_messages;
+        document.getElementById('totalErrors').textContent = stats.total_errors;
+
+        const timeline = await fetchAPI('/stats/timeline?hours=24');
+        updateActivityChart(timeline);
+
+        const users = await fetchAPI('/stats/users?limit=10');
+        updateUsersTable(users);
+
+        allActions = await fetchAPI('/actions/recent?limit=200');
+        updateActionsTable(allActions.slice(0, 10));
+
+        updateDistributionChart(stats);
+    } catch (err) {
+        console.error('Failed to load dashboard:', err);
+    }
+}
+
+function updateActivityChart(data) {
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    if (activityChart) activityChart.destroy();
+
+    const maxPoints = 24;
+    const labels = data.slice(-maxPoints).map(d => new Date(d.timestamp).getHours() + ':00');
+    const values = data.slice(-maxPoints).map(d => d.value);
+
+    activityChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Действия',
+                data: values,
+                borderColor: 'rgb(59, 130, 246)',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {legend: {display: false}},
+            scales: {
+                y: {beginAtZero: true, ticks: {color: '#94a3b8'}, grid: {color: '#334155'}},
+                x: {ticks: {color: '#94a3b8'}, grid: {color: '#334155'}}
+            }
+        }
+    });
+}
+
+function updateDistributionChart(stats) {
+    const ctx = document.getElementById('distributionChart').getContext('2d');
+    if (distributionChart) distributionChart.destroy();
+
+    distributionChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['События', 'Сообщения', 'Ошибки'],
+            datasets: [{
+                data: [stats.total_events, stats.total_messages, stats.total_errors],
+                backgroundColor: ['rgba(34, 197, 94, 0.8)', 'rgba(168, 85, 247, 0.8)', 'rgba(239, 68, 68, 0.8)'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {legend: {position: 'bottom', labels: {color: '#e2e8f0'}}}
+        }
+    });
+}
+
+function updateUsersTable(users) {
+    const tbody = document.getElementById('usersTable');
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = users.map(u => {
+        const lastSeen = new Date(u.last_seen).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        
+        // Build user display name and Telegram link
+        let userName = u.user_id;
+        let tgLink = '';
+        if (u.username) {
+            userName = `@${u.username}`;
+            tgLink = ` <a href="https://t.me/${u.username}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
+        } else if (u.first_name || u.last_name) {
+            userName = [u.first_name, u.last_name].filter(Boolean).join(' ');
+        }
+        
+        const userDisplay = `<div class="font-mono text-blue-400">${u.user_id}</div>
+                             <div class="text-xs text-slate-500">${userName}${tgLink}</div>`;
+        
+        return `
+            <tr class="clickable-row" onclick="showUserProfile('${u.user_id}')">
+                <td class="px-4 py-3 text-sm">${userDisplay}</td>
+                <td class="px-4 py-3 text-sm">${u.total_events}</td>
+                <td class="px-4 py-3 text-sm">${u.total_messages}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${lastSeen}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function updateActionsTable(actions) {
+    const tbody = document.getElementById('actionsTable');
+    if (actions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = actions.map(a => {
+        const time = new Date(a.timestamp).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        const details = (a.details || '').substring(0, 50) + (a.details?.length > 50 ? '...' : '');
+        const testBadge = a.is_test ? '<span class="badge-test ml-2">ТЕСТ</span>' : '';
+        return `
+            <tr class="clickable-row" onclick="showUserProfile('${a.user_id}')">
+                <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
+                <td class="px-4 py-3 text-sm font-mono text-blue-400">${a.user_id}</td>
+                <td class="px-4 py-3 text-sm">${actionLabels[a.action_type] || a.action_type}${testBadge}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${details}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function showUserProfile(userId) {
+    currentView = 'user';
+    document.getElementById('mainView').classList.add('hidden');
+    document.getElementById('userView').classList.remove('hidden');
+    document.getElementById('filteredView').classList.add('hidden');
+    document.getElementById('backBtn').classList.remove('hidden');
+
+    // Get user info from users list or actions
+        let userInfo = '';
+        const userActions = actions.filter(a => a.username || a.first_name || a.last_name);
+        if (userActions.length > 0) {
+            const a = userActions[0];
+            let parts = [];
+            if (a.first_name) parts.push(a.first_name);
+            if (a.last_name) parts.push(a.last_name);
+            if (a.username) parts.push(`(@${a.username})`);
+            userInfo = parts.length > 0 ? ' - ' + parts.join(' ') : '';
+            
+            // Add Telegram link if username exists
+            if (a.username) {
+                userInfo += ` <a href="https://t.me/${a.username}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm">🔗 Открыть в Telegram</a>`;
+            }
+        }
+        document.getElementById('userIdTitle').innerHTML = userId + userInfo;
+
+    try {
+        const actions = await fetchAPI(`/actions/user/${userId}?limit=500`);
+
+        const events = actions.filter(a => ['event_create', 'event_update', 'event_delete'].includes(a.action_type)).length;
+        const messages = actions.filter(a => a.action_type === 'text_message').length;
+        const voice = actions.filter(a => a.action_type === 'voice_message').length;
+        const errors = actions.filter(a => a.action_type === 'error').length;
+
+        document.getElementById('userEventsCount').textContent = events;
+        document.getElementById('userMessagesCount').textContent = messages;
+        document.getElementById('userVoiceCount').textContent = voice;
+        document.getElementById('userErrorsCount').textContent = errors;
+        document.getElementById('userActionsCount').textContent = actions.length;
+
+        const tbody = document.getElementById('userActionsTable');
+        tbody.innerHTML = actions.map(a => {
+            const time = new Date(a.timestamp).toLocaleString('ru-RU', {
+                day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+            const testBadge = a.is_test ? ' <span class="badge-test">ТЕСТ</span>' : '';
+            const statusIcon = a.success ? '✅' : '❌';
+            return `
+                <tr class="hover:bg-slate-900/50">
+                    <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
+                    <td class="px-4 py-3 text-sm">${actionLabels[a.action_type] || a.action_type}${testBadge}</td>
+                    <td class="px-4 py-3 text-sm text-slate-400">${a.details || '-'}</td>
+                    <td class="px-4 py-3 text-sm text-center">${statusIcon}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Failed to load user profile:', err);
+    }
+}
+
+async function filterByType(type) {
+    currentView = 'filter';
+    document.getElementById('mainView').classList.add('hidden');
+    document.getElementById('userView').classList.add('hidden');
+    document.getElementById('filteredView').classList.remove('hidden');
+    document.getElementById('backBtn').classList.remove('hidden');
+
+    let filtered = [];
+    let title = '';
+    let subtitle = '';
+
+    if (type === 'events') {
+        title = '📅 Все события';
+        filtered = allActions.filter(a => ['event_create', 'event_update', 'event_delete'].includes(a.action_type));
+        subtitle = `Создано: ${filtered.filter(a => a.action_type === 'event_create').length}, Изменено: ${filtered.filter(a => a.action_type === 'event_update').length}, Удалено: ${filtered.filter(a => a.action_type === 'event_delete').length}`;
+    } else if (type === 'messages') {
+        title = '💬 Все сообщения';
+        filtered = allActions.filter(a => ['text_message', 'voice_message'].includes(a.action_type));
+        subtitle = `Текстовых: ${filtered.filter(a => a.action_type === 'text_message').length}, Голосовых: ${filtered.filter(a => a.action_type === 'voice_message').length}`;
+    } else if (type === 'errors') {
+        title = '❌ Все ошибки';
+        filtered = allActions.filter(a => a.action_type === 'error' || !a.success);
+        subtitle = `Всего найдено ошибок: ${filtered.length}`;
+    } else if (type === 'users') {
+        try {
+            const users = await fetchAPI('/stats/users?limit=100');
+            showUsersDetailed(users);
+            return;
+        } catch (err) {
+            console.error('Failed to load users:', err);
+            return;
+        }
+    }
+
+    document.getElementById('filterTitle').textContent = title;
+    document.getElementById('filterSubtitle').textContent = subtitle;
+
+    const tbody = document.getElementById('filteredTable');
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(a => {
+        const time = new Date(a.timestamp).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        const testBadge = a.is_test ? ' <span class="badge-test">ТЕСТ</span>' : '';
+        const errorClass = (a.action_type === 'error' || !a.success) ? 'text-red-400' : '';
+        return `
+            <tr class="clickable-row ${errorClass}" onclick="showUserProfile('${a.user_id}')">
+                <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
+                <td class="px-4 py-3 text-sm font-mono text-blue-400">${a.user_id}</td>
+                <td class="px-4 py-3 text-sm">${actionLabels[a.action_type] || a.action_type}${testBadge}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${a.details || '-'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function showUsersDetailed(users) {
+    document.getElementById('filterTitle').textContent = '👥 Все пользователи';
+    document.getElementById('filterSubtitle').textContent = `Всего пользователей: ${users.length}`;
+    
+    const tbody = document.getElementById('filteredTable');
+    tbody.innerHTML = users.map(u => {
+        const firstSeen = new Date(u.first_seen).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+        const lastSeen = new Date(u.last_seen).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        
+        // Build user name
+        let userName = u.user_id;
+        let tgLink = '';
+        if (u.username) {
+            userName = `@${u.username}`;
+            tgLink = ` <a href="https://t.me/${u.username}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
+        } else if (u.first_name || u.last_name) {
+            userName = [u.first_name, u.last_name].filter(Boolean).join(' ');
+        }
+        
+        const userDisplay = `<div class="font-mono text-blue-400">${u.user_id}</div>
+                             <div class="text-xs text-slate-500">${userName}${tgLink}</div>`;
+        
+        return `
+            <tr class="clickable-row" onclick="showUserProfile('${u.user_id}')">
+                <td class="px-4 py-3 text-sm">${firstSeen}</td>
+                <td class="px-4 py-3 text-sm">${userDisplay}</td>
+                <td class="px-4 py-3 text-sm">События: ${u.total_events}, Сообщения: ${u.total_messages}, Ошибки: ${u.total_errors}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${lastSeen}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function showDashboard() {
+    currentView = 'main';
+    document.getElementById('mainView').classList.remove('hidden');
+    document.getElementById('userView').classList.add('hidden');
+    document.getElementById('filteredView').classList.add('hidden');
+    document.getElementById('backBtn').classList.add('hidden');
+    loadDashboard();
+}
+
+// Initialize translations on page load
+function initTranslations() {
+    // Set page title
+    document.title = t('adminPanel') + ' - AI Calendar';
+
+    // Login screen
+    document.querySelector('h1').textContent = t('adminPanel');
+    const labels = document.querySelectorAll('label');
+    if (labels[0]) labels[0].textContent = t('firstPassword');
+    if (labels[1]) labels[1].textContent = t('secondPassword');
+    document.querySelector('button[type="submit"]').textContent = t('login');
+
+    // Dashboard header
+    document.querySelector('#dashboard button[onclick="logout()"]').textContent = t('logout');
+    document.querySelector('#backBtn').textContent = t('back');
+
+    // Stat cards
+    const statCards = document.querySelectorAll('.stat-card .text-sm');
+    if (statCards[0]) statCards[0].textContent = '👥 ' + t('users');
+    if (statCards[1]) statCards[1].textContent = '📅 ' + t('events');
+    if (statCards[2]) statCards[2].textContent = '💬 ' + t('messages');
+    if (statCards[3]) statCards[3].textContent = '❌ ' + t('errors');
+
+    // Chart titles
+    const chartTitles = document.querySelectorAll('.bg-slate-800 h3');
+    if (chartTitles[0]) chartTitles[0].textContent = t('userActivity');
+    if (chartTitles[1]) chartTitles[1].textContent = t('actionDistribution');
+    if (chartTitles[2]) chartTitles[2].textContent = t('recentUsers');
+
+    // Table headers - Recent Users
+    const userTableHeaders = document.querySelectorAll('#usersTable').parentElement.previousElementSibling.querySelectorAll('th');
+    if (userTableHeaders[0]) userTableHeaders[0].textContent = t('userId');
+    if (userTableHeaders[1]) userTableHeaders[1].textContent = t('events');
+    if (userTableHeaders[2]) userTableHeaders[2].textContent = t('messages');
+    if (userTableHeaders[3]) userTableHeaders[3].textContent = t('lastActivity');
+
+    // User details section
+    const userDetailHeaders = document.querySelectorAll('#userView .text-sm.text-slate-400');
+    if (userDetailHeaders[0]) userDetailHeaders[0].textContent = '📅 ' + t('created');
+    if (userDetailHeaders[1]) userDetailHeaders[1].textContent = '💬 ' + t('text');
+    if (userDetailHeaders[2]) userDetailHeaders[2].textContent = '🎤 ' + t('voice');
+    if (userDetailHeaders[3]) userDetailHeaders[3].textContent = '❌ ' + t('errors');
+    if (userDetailHeaders[4]) userDetailHeaders[4].textContent = '📊 ' + t('totalActions');
+
+    // Actions history table headers
+    const actionsHeaders = document.querySelectorAll('#userActionsTable').parentElement.previousElementSibling.querySelectorAll('th');
+    if (actionsHeaders[0]) actionsHeaders[0].textContent = t('time');
+    if (actionsHeaders[1]) actionsHeaders[1].textContent = t('action');
+    if (actionsHeaders[2]) actionsHeaders[2].textContent = t('details');
+    if (actionsHeaders[3]) actionsHeaders[3].textContent = t('status');
+}
+
+// Run translations when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTranslations);
+} else {
+    initTranslations();
+}
+</script>
+
+</body>
+</html>

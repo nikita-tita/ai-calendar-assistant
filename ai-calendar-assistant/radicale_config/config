@@ -13,12 +13,10 @@ request = utf-8
 stock = utf-8
 
 [auth]
-# Allow anonymous access or use htpasswd
-type = none
-# Если нужна аутентификация:
-# type = htpasswd
-# htpasswd_filename = /config/users
-# htpasswd_encryption = bcrypt
+# SECURITY: htpasswd authentication with bcrypt encryption
+type = htpasswd
+htpasswd_filename = /config/users
+htpasswd_encryption = bcrypt
 
 [rights]
 # Full access for all users (use 'owner_only' in production)

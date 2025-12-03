@@ -1,20 +1,30 @@
-"""Admin API router with 3-password authentication and fake mode."""
+"""Admin API router with 3-password authentication, rate limiting and fake mode."""
 
 from typing import List
-from fastapi import APIRouter, HTTPException, Header, Query, Body
+from fastapi import APIRouter, HTTPException, Header, Query, Body, Request
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import structlog
-import hashlib
+import bcrypt
+import secrets
 import os
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.services.analytics_service import analytics_service
 from app.services.calendar_radicale import calendar_service
 from app.models.analytics import (
     AdminDashboardStats, UserDetail, UserDialogEntry
 )
+from app.config import settings
 
 logger = structlog.get_logger()
+
+# Rate limiter for admin endpoints (stricter than general API)
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=getattr(settings, 'redis_url', 'memory://'),
+)
 
 router = APIRouter()
 
@@ -27,16 +37,18 @@ router = APIRouter()
 # Support both old and new env var names for backward compatibility
 PASSWORD_1 = os.getenv("ADMIN_PASSWORD_1") or os.getenv("ADMIN_PRIMARY_PASSWORD", "")
 PASSWORD_2 = os.getenv("ADMIN_PASSWORD_2") or os.getenv("ADMIN_SECONDARY_PASSWORD", "")
-PASSWORD_3 = os.getenv("ADMIN_PASSWORD_3") or os.getenv("ADMIN_TERTIARY_PASSWORD") or "default_tertiary"  # Optional third password
+PASSWORD_3 = os.getenv("ADMIN_PASSWORD_3") or os.getenv("ADMIN_TERTIARY_PASSWORD", "")
 
-if not PASSWORD_1 or not PASSWORD_2:
+# SECURITY: All three passwords are now required
+if not PASSWORD_1 or not PASSWORD_2 or not PASSWORD_3:
     logger.error("admin_passwords_not_configured",
-                message="ADMIN_PASSWORD_1 and ADMIN_PASSWORD_2 must be set in environment")
-    raise ValueError("Admin passwords not configured. Set ADMIN_PASSWORD_1 and ADMIN_PASSWORD_2 in .env file")
+                message="ADMIN_PASSWORD_1, ADMIN_PASSWORD_2 and ADMIN_PASSWORD_3 must be set in environment")
+    raise ValueError("Admin passwords not configured. Set ADMIN_PASSWORD_1, ADMIN_PASSWORD_2 and ADMIN_PASSWORD_3 in .env file")
 
-PASSWORD_1_HASH = hashlib.sha256(PASSWORD_1.encode('utf-8')).hexdigest()
-PASSWORD_2_HASH = hashlib.sha256(PASSWORD_2.encode('utf-8')).hexdigest()
-PASSWORD_3_HASH = hashlib.sha256(PASSWORD_3.encode('utf-8')).hexdigest()
+# SECURITY: Use bcrypt instead of SHA-256 (resistant to rainbow tables, includes salt)
+PASSWORD_1_HASH = bcrypt.hashpw(PASSWORD_1.encode('utf-8'), bcrypt.gensalt(rounds=12))
+PASSWORD_2_HASH = bcrypt.hashpw(PASSWORD_2.encode('utf-8'), bcrypt.gensalt(rounds=12))
+PASSWORD_3_HASH = bcrypt.hashpw(PASSWORD_3.encode('utf-8'), bcrypt.gensalt(rounds=12))
 
 
 class LoginRequest(BaseModel):
@@ -46,14 +58,14 @@ class LoginRequest(BaseModel):
     password3: str
 
 
-def hash_password(password: str) -> str:
-    """Hash password with SHA-256."""
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+def verify_password(password: str, hashed: bytes) -> bool:
+    """Verify password against bcrypt hash (timing-safe comparison)."""
+    return bcrypt.checkpw(password.encode('utf-8'), hashed)
 
 
 def verify_three_passwords(pwd1: str, pwd2: str, pwd3: str) -> str:
     """
-    Verify all three admin passwords.
+    Verify all three admin passwords using bcrypt.
 
     Logic:
     - All 3 correct -> "real" (full access)
@@ -65,13 +77,10 @@ def verify_three_passwords(pwd1: str, pwd2: str, pwd3: str) -> str:
         - "fake" if passwords 1 & 2 correct, password 3 wrong
         - "invalid" for any other combination
     """
-    hash1 = hash_password(pwd1)
-    hash2 = hash_password(pwd2)
-    hash3 = hash_password(pwd3)
-
-    pwd1_correct = (hash1 == PASSWORD_1_HASH)
-    pwd2_correct = (hash2 == PASSWORD_2_HASH)
-    pwd3_correct = (hash3 == PASSWORD_3_HASH)
+    # Use bcrypt timing-safe comparison
+    pwd1_correct = verify_password(pwd1, PASSWORD_1_HASH)
+    pwd2_correct = verify_password(pwd2, PASSWORD_2_HASH)
+    pwd3_correct = verify_password(pwd3, PASSWORD_3_HASH)
 
     # All 3 correct -> real access
     if pwd1_correct and pwd2_correct and pwd3_correct:
@@ -85,58 +94,78 @@ def verify_three_passwords(pwd1: str, pwd2: str, pwd3: str) -> str:
     return "invalid"
 
 
+# Session token storage (in production, use Redis or database)
+_valid_tokens: dict = {}
+
+
+def generate_session_token() -> str:
+    """Generate cryptographically secure session token."""
+    return secrets.token_urlsafe(32)
+
+
 def verify_token(token: str) -> str:
     """
     Verify token from Authorization header.
-
-    Token is SHA256 hash of "password1:password2:password3"
 
     Returns:
         - "real" if valid real token
         - "fake" if valid fake token
         - None if invalid
     """
-    # Generate valid tokens
-    real_token = hashlib.sha256(f"{PASSWORD_1}:{PASSWORD_2}:{PASSWORD_3}".encode()).hexdigest()
-
-    # For fake mode: any combination with pwd1 & pwd2 correct but pwd3 wrong
-    # We'll accept the token if it matches the real one, otherwise return None
-    # (fake mode is only during login, for API calls we only check if token is valid)
-
-    if token == real_token:
-        return "real"
-
-    # For simplicity, we'll only support real tokens in API calls
-    # Fake mode shows error on login, not in API
+    if token in _valid_tokens:
+        token_data = _valid_tokens[token]
+        # Check expiration (1 hour)
+        if datetime.now() - token_data['created'] < timedelta(hours=1):
+            return token_data['mode']
+        else:
+            # Token expired, remove it
+            del _valid_tokens[token]
+            return None
     return None
 
 
+def create_session_token(mode: str) -> str:
+    """Create a new session token for the given mode."""
+    token = generate_session_token()
+    _valid_tokens[token] = {
+        'mode': mode,
+        'created': datetime.now()
+    }
+    return token
+
+
 @router.post("/verify")
-async def verify_passwords(request: LoginRequest):
+@limiter.limit("5/minute")  # SECURITY: Strict rate limit to prevent brute-force attacks
+async def verify_passwords(request: Request, login_request: LoginRequest):
     """
     Verify all three admin passwords.
 
+    Rate limited to 5 attempts per minute per IP to prevent brute-force attacks.
+
     Returns:
-        - {"valid": true, "mode": "real"} if all 3 correct
-        - {"valid": true, "mode": "fake"} if passwords 1&2 correct, 3 wrong
+        - {"valid": true, "mode": "real", "token": "..."} if all 3 correct
+        - {"valid": true, "mode": "fake", "token": "..."} if passwords 1&2 correct, 3 wrong
         - {"valid": false, "error": "invalid_credentials"} for any other combination
     """
     try:
         auth_type = verify_three_passwords(
-            request.password1,
-            request.password2,
-            request.password3
+            login_request.password1,
+            login_request.password2,
+            login_request.password3
         )
 
         if auth_type == "invalid":
-            logger.warning("admin_login_failed", reason="invalid_credentials")
+            logger.warning("admin_login_failed",
+                          reason="invalid_credentials",
+                          ip=request.client.host if request.client else "unknown")
             return {"valid": False, "error": "invalid_credentials"}
 
-        logger.info("admin_login_success", mode=auth_type)
+        logger.info("admin_login_success",
+                   mode=auth_type,
+                   ip=request.client.host if request.client else "unknown")
 
-        # Generate combined token for subsequent requests
-        combined = f"{request.password1}:{request.password2}:{request.password3}"
-        token = hashlib.sha256(combined.encode()).hexdigest()
+        # Generate cryptographically secure session token (not derived from passwords)
+        token = create_session_token(auth_type)
 
         return {"valid": True, "mode": auth_type, "token": token}
 

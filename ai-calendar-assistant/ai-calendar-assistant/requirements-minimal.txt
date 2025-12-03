@@ -1,0 +1,34 @@
+# Минимальные зависимости для работы бота (без Whisper)
+
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Telegram Bot
+python-telegram-bot>=21.0
+
+# Calendar
+caldav>=1.3.0
+icalendar>=5.0.0
+
+# Anthropic Claude API
+anthropic>=0.8.0
+
+# Date/Time parsing
+python-dateutil==2.8.2
+dateparser==1.2.0
+pytz==2023.3
+
+# Configuration
+pydantic==2.5.2
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# HTTP Client
+httpx>=0.25.0
+aiohttp>=3.9.0
+
+# Utilities
+tenacity==8.2.3
+structlog==23.2.0
