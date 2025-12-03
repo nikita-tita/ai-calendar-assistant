@@ -242,7 +242,7 @@ class TelegramHandler:
         """Ask for advertising consent."""
         message = """Для дальнейшего взаимодействия с ботом необходимо дать согласие на получение новостей и рекламных рассылок.
 
-[Соглашение на получение рекламы](https://m2.ru/doc/realtors/soglasiya/advertising-agreement/)"""
+[Соглашение на получение рекламы](https://housler.ru/doc/clients/soglasiya/advertising-agreement/)"""
 
         keyboard = InlineKeyboardMarkup([
             [
@@ -257,7 +257,7 @@ class TelegramHandler:
         """Ask for privacy policy consent."""
         message = """Для дальнейшего взаимодействия с ботом необходимо дать согласие на обработку персональных данных.
 
-[Политика конфиденциальности](https://m2.ru/doc/realtors/politiki/privacy-policy/)"""
+[Политика конфиденциальности](https://housler.ru/doc/clients/politiki/)"""
 
         keyboard = InlineKeyboardMarkup([
             [
