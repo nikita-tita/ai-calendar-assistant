@@ -1,0 +1,51 @@
+#!/bin/bash
+# Команды для обновления остальных файлов на сервере
+# Выполняй ПОСЛЕ создания llm_agent_yandex.py
+
+# 1. Обновить telegram_handler.py (изменить import на строке 9)
+sed -i 's/from app.services.llm_agent_openai import llm_agent_openai as llm_agent/from app.services.llm_agent_yandex import llm_agent_yandex as llm_agent/' /root/ai-calendar-assistant/app/services/telegram_handler.py
+
+echo "✅ telegram_handler.py обновлен"
+
+# 2. Обновить config.py (добавить Yandex GPT настройки)
+# Найти строку с "# Database" и вставить перед ней
+sed -i '/# Database/i\    # Yandex GPT (for regions where Claude\/OpenAI are blocked)\n    yandex_gpt_api_key: Optional[str] = None\n    yandex_gpt_folder_id: Optional[str] = None\n' /root/ai-calendar-assistant/app/config.py
+
+echo "✅ config.py обновлен"
+
+# 3. Обновить requirements.txt (добавить requests)
+echo "requests>=2.31.0" >> /root/ai-calendar-assistant/requirements.txt
+
+echo "✅ requirements.txt обновлен"
+
+# 4. Добавить Yandex GPT ключи в .env
+cat >> /root/ai-calendar-assistant/.env << 'ENDOFENV'
+
+# Yandex GPT (работает из России без VPN)
+YANDEX_GPT_API_KEY=YOUR_API_KEY_HERE
+YANDEX_GPT_FOLDER_ID=YOUR_FOLDER_ID_HERE
+ENDOFENV
+
+echo "✅ .env обновлен (не забудь заменить YOUR_API_KEY_HERE и YOUR_FOLDER_ID_HERE)"
+
+# 5. Перезапустить бота
+cd /root/ai-calendar-assistant
+docker-compose -f docker-compose.production.yml down
+docker-compose -f docker-compose.production.yml up -d --build
+
+echo "⏳ Ждём 5 секунд для запуска..."
+sleep 5
+
+echo "📋 Логи бота:"
+docker logs telegram-bot --tail 50
+
+echo ""
+echo "✅ Деплой завершён!"
+echo ""
+echo "⚠️  ВАЖНО: Не забудь получить API ключи Yandex Cloud и обновить .env:"
+echo "   1. Иди на https://console.cloud.yandex.ru/"
+echo "   2. Создай Service Account с ролью ai.languageModels.user"
+echo "   3. Получи API Key"
+echo "   4. Скопируй Folder ID"
+echo "   5. Обнови .env: nano /root/ai-calendar-assistant/.env"
+echo "   6. Перезапусти: docker-compose -f docker-compose.production.yml restart"

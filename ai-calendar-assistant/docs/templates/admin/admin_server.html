@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - AI Calendar Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0b0b0b;
+            color: #ffffff;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .card { background: #1a1a1a; border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+        .stat-card { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); }
+        .btn { padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover { background: #1e40af; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-secondary { background: #374151; color: white; }
+        .input { background: #262626; border: 1px solid #404040; border-radius: 12px; padding: 12px 16px; color: white; width: 100%; }
+        .input:focus { outline: none; border-color: #2563eb; }
+        .table { width: 100%; border-collapse: collapse; }
+        .table th { text-align: left; padding: 12px; border-bottom: 2px solid #404040; color: #9ca3af; font-weight: 600; }
+        .table td { padding: 12px; border-bottom: 1px solid #262626; }
+        .table tr:hover { background: #1f1f1f; }
+        .badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; display: inline-block; }
+        .badge-success { background: #10b981; color: white; }
+        .badge-warning { background: #f59e0b; color: white; }
+        .badge-danger { background: #ef4444; color: white; }
+        .badge-info { background: #3b82f6; color: white; }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .modal.active { display: flex; }
+        .modal-content { background: #1a1a1a; border-radius: 24px; padding: 32px; max-width: 900px; max-height: 80vh; overflow-y: auto; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 2px solid #262626; }
+        .tab { padding: 12px 24px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+        .tab.active { border-bottom-color: #2563eb; color: #2563eb; }
+        .error-banner { background: #dc2626; color: white; padding: 16px; border-radius: 12px; margin-bottom: 20px; display: none; }
+        .error-banner.active { display: block; }
+        .loading { display: none; text-align: center; padding: 40px; }
+        .loading.active { display: block; }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid #fff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none !important; }
+        a { color: #3b82f6; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .password-field { position: relative; }
+        .password-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block; }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="container">
+        <div class="card" style="max-width: 600px; margin: 80px auto;">
+            <h1 class="text-3xl font-bold mb-2 text-center">🔐 Secure Access</h1>
+            <p class="text-center text-gray-400 mb-8">Требуется трёхфакторная аутентификация</p>
+            <div id="errorBanner" class="error-banner"></div>
+            <div class="space-y-5">
+                <div class="password-field">
+                    <label class="password-label">Пароль 1 (Primary Key)</label>
+                    <input type="password" id="password1Input" class="input" placeholder="Введите первый пароль" autocomplete="off" />
+                </div>
+                <div class="password-field">
+                    <label class="password-label">Пароль 2 (Secondary Key)</label>
+                    <input type="password" id="password2Input" class="input" placeholder="Введите второй пароль" autocomplete="off" />
+                </div>
+                <div class="password-field">
+                    <label class="password-label">Пароль 3 (Tertiary Code)</label>
+                    <input type="password" id="password3Input" class="input" placeholder="Введите третий пароль" autocomplete="off" />
+                </div>
+                <button onclick="login()" class="btn btn-primary w-full mt-6">Авторизоваться</button>
+            </div>
+            <div class="text-center mt-6 text-xs text-gray-500">
+                <p>⚠️ Все три пароля должны быть введены корректно</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Admin Panel -->
+    <div id="adminPanel" class="hidden">
+        <div class="container">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold">📊 Admin Dashboard</h1>
+                <div class="flex gap-4">
+                    <span id="authMode" class="text-gray-400"></span>
+                    <button onclick="logout()" class="btn btn-secondary">Выйти</button>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <div class="tab active" onclick="showTab('stats')">Статистика</div>
+                <div class="tab" onclick="showTab('users')">Пользователи</div>
+            </div>
+
+            <!-- Stats Tab -->
+            <div id="statsTab" class="tab-content">
+                <div class="loading active" id="statsLoading">
+                    <div class="spinner"></div>
+                    <p class="mt-4">Загрузка статистики...</p>
+                </div>
+
+                <div id="statsContent" class="hidden">
+                    <!-- Main Stats -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div class="card stat-card">
+                            <div class="text-sm opacity-80 mb-2">Всего авторизаций</div>
+                            <div class="text-3xl font-bold" id="totalLogins">0</div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="text-sm opacity-80 mb-2">Активных сегодня</div>
+                            <div class="text-3xl font-bold" id="activeToday">0</div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="text-sm opacity-80 mb-2">Активных за неделю</div>
+                            <div class="text-3xl font-bold" id="activeWeek">0</div>
+                            <div class="text-xs opacity-80 mt-1">3+ дней активности</div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="text-sm opacity-80 mb-2">Активных за месяц</div>
+                            <div class="text-3xl font-bold" id="activeMonth">0</div>
+                            <div class="text-xs opacity-80 mt-1">3+ дней/неделю</div>
+                        </div>
+                    </div>
+
+                    <!-- Additional Stats -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="card">
+                            <div class="text-sm text-gray-400 mb-2">Всего пользователей</div>
+                            <div class="text-2xl font-bold" id="totalUsers">0</div>
+                        </div>
+                        <div class="card">
+                            <div class="text-sm text-gray-400 mb-2">Всего действий</div>
+                            <div class="text-2xl font-bold" id="totalActions">0</div>
+                        </div>
+                        <div class="card">
+                            <div class="text-sm text-gray-400 mb-2">Создано событий</div>
+                            <div class="text-2xl font-bold" id="totalEvents">0</div>
+                        </div>
+                        <div class="card">
+                            <div class="text-sm text-gray-400 mb-2">Отправлено сообщений</div>
+                            <div class="text-2xl font-bold" id="totalMessages">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="usersTab" class="tab-content hidden">
+                <div class="loading active" id="usersLoading">
+                    <div class="spinner"></div>
+                    <p class="mt-4">Загрузка пользователей...</p>
+                </div>
+
+                <div id="usersContent" class="hidden">
+                    <div class="card">
+                        <h2 class="text-xl font-bold mb-4">Все пользователи</h2>
+                        <div class="overflow-x-auto">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Пользователь</th>
+                                        <th>Telegram</th>
+                                        <th>Первый вход</th>
+                                        <th>Последний вход</th>
+                                        <th>Действия<br/><span class="text-xs">День/Неделя/Месяц</span></th>
+                                        <th>Статус</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Detail Modal -->
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold" id="modalUserTitle"></h2>
+                <button onclick="closeUserModal()" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+            </div>
+
+            <div class="tabs" style="margin-bottom: 20px;">
+                <div class="tab active" onclick="showModalTab('dialog')">Диалоги</div>
+                <div class="tab" onclick="showModalTab('calendar')">Календарь</div>
+            </div>
+
+            <!-- Dialog Tab -->
+            <div id="modalDialogTab">
+                <div class="loading active" id="dialogLoading">
+                    <div class="spinner"></div>
+                </div>
+                <div id="dialogContent" class="hidden" style="max-height: 500px; overflow-y: auto;">
+                    <!-- Dialog entries will be populated here -->
+                </div>
+            </div>
+
+            <!-- Calendar Tab -->
+            <div id="modalCalendarTab" class="hidden">
+                <div class="loading active" id="calendarLoading">
+                    <div class="spinner"></div>
+                </div>
+                <div id="calendarContent" class="hidden" style="max-height: 500px; overflow-y: auto;">
+                    <!-- Calendar events will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/admin';
+        let authToken = null;
+        let authMode = 'real'; // 'real' or 'fake'
+        let currentUserId = null;
+
+        async function login() {
+            const password1 = document.getElementById('password1Input').value;
+            const password2 = document.getElementById('password2Input').value;
+            const password3 = document.getElementById('password3Input').value;
+            const errorBanner = document.getElementById('errorBanner');
+
+            if (!password1 || !password2 || !password3) {
+                showError('Все три пароля обязательны для ввода');
+                return;
+            }
+
+            try {
+                // Verify passwords
+                const response = await fetch(`${API_BASE}/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        password1: password1,
+                        password2: password2,
+                        password3: password3
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.valid) {
+                    authMode = result.mode;
+                    authToken = result.token;
+
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('adminPanel').classList.remove('hidden');
+                    
+                    // Show auth mode
+                    const modeText = authMode === 'real' ? '✅ Полный доступ' : '⚠️ Ограниченный доступ';
+                    document.getElementById('authMode').textContent = modeText;
+
+                    // Load initial data
+                    await loadStats();
+                } else {
+                    showError('Неверная комбинация паролей. Проверьте все три пароля и попробуйте снова.');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Ошибка входа: ' + error.message);
+            }
+        }
+
+        function showError(message) {
+            const errorBanner = document.getElementById('errorBanner');
+            errorBanner.textContent = message;
+            errorBanner.classList.add('active');
+            setTimeout(() => errorBanner.classList.remove('active'), 5000);
+        }
+
+        function logout() {
+            authToken = null;
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('adminPanel').classList.add('hidden');
+            document.getElementById('password1Input').value = '';
+            document.getElementById('password2Input').value = '';
+            document.getElementById('password3Input').value = '';
+        }
+
+        function showTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tabs .tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.getElementById('statsTab').classList.add('hidden');
+            document.getElementById('usersTab').classList.add('hidden');
+
+            if (tabName === 'stats') {
+                document.getElementById('statsTab').classList.remove('hidden');
+            } else if (tabName === 'users') {
+                document.getElementById('usersTab').classList.remove('hidden');
+                if (document.getElementById('usersContent').classList.contains('hidden')) {
+                    loadUsers();
+                }
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (authMode === 'fake') {
+                        showFakeError();
+                        return;
+                    }
+                    throw new Error('Failed to load stats');
+                }
+
+                const stats = await response.json();
+
+                // Update stats display
+                document.getElementById('totalLogins').textContent = stats.total_logins;
+                document.getElementById('activeToday').textContent = stats.active_users_today;
+                document.getElementById('activeWeek').textContent = stats.active_users_week;
+                document.getElementById('activeMonth').textContent = stats.active_users_month;
+                document.getElementById('totalUsers').textContent = stats.total_users;
+                document.getElementById('totalActions').textContent = stats.total_actions;
+                document.getElementById('totalEvents').textContent = stats.total_events_created;
+                document.getElementById('totalMessages').textContent = stats.total_messages;
+
+                document.getElementById('statsLoading').classList.remove('active');
+                document.getElementById('statsContent').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                document.getElementById('statsLoading').innerHTML = '<p class="text-red-500">Ошибка загрузки статистики</p>';
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/users`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (authMode === 'fake') {
+                        showFakeError();
+                        return;
+                    }
+                    throw new Error('Failed to load users');
+                }
+
+                const users = await response.json();
+                const tbody = document.getElementById('usersTableBody');
+                tbody.innerHTML = '';
+
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400">Нет данных</td></tr>';
+                    document.getElementById('usersLoading').classList.remove('active');
+                    document.getElementById('usersContent').classList.remove('hidden');
+                    return;
+                }
+
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    const displayName = user.first_name || user.username || `User ${user.user_id}`;
+                    const telegramLink = user.telegram_link || '#';
+
+                    // Status badge
+                    let statusBadge = '';
+                    if (user.is_active_today) {
+                        statusBadge = '<span class="badge badge-success">Активен сегодня</span>';
+                    } else if (user.is_active_week) {
+                        statusBadge = '<span class="badge badge-info">Активен неделю</span>';
+                    } else if (user.is_active_month) {
+                        statusBadge = '<span class="badge badge-warning">Активен месяц</span>';
+                    } else {
+                        statusBadge = '<span class="badge badge-danger">Неактивен</span>';
+                    }
+
+                    row.innerHTML = `
+                        <td>
+                            <div class="font-semibold">${displayName}</div>
+                            <div class="text-sm text-gray-400">ID: ${user.user_id}</div>
+                        </td>
+                        <td>${user.telegram_link ? `<a href="${telegramLink}" target="_blank">@${user.username || user.user_id}</a>` : '-'}</td>
+                        <td class="text-sm">${new Date(user.first_seen).toLocaleDateString('ru-RU')}</td>
+                        <td class="text-sm">${new Date(user.last_seen).toLocaleDateString('ru-RU')}</td>
+                        <td>${user.actions_today} / ${user.actions_week} / ${user.actions_month}</td>
+                        <td>${statusBadge}</td>
+                        <td><button onclick="openUserModal('${user.user_id}')" class="btn btn-primary btn-sm">Подробнее</button></td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                document.getElementById('usersLoading').classList.remove('active');
+                document.getElementById('usersContent').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading users:', error);
+                document.getElementById('usersLoading').innerHTML = '<p class="text-red-500">Ошибка загрузки пользователей</p>';
+            }
+        }
+
+        async function openUserModal(userId) {
+            currentUserId = userId;
+            document.getElementById('userModal').classList.add('active');
+            document.getElementById('modalUserTitle').textContent = `Пользователь ${userId}`;
+
+            // Load dialog
+            await loadUserDialog(userId);
+        }
+
+        function closeUserModal() {
+            document.getElementById('userModal').classList.remove('active');
+            currentUserId = null;
+        }
+
+        function showModalTab(tabName) {
+            // Update tabs
+            document.querySelectorAll('#userModal .tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            document.getElementById('modalDialogTab').classList.add('hidden');
+            document.getElementById('modalCalendarTab').classList.add('hidden');
+
+            if (tabName === 'dialog') {
+                document.getElementById('modalDialogTab').classList.remove('hidden');
+            } else if (tabName === 'calendar') {
+                document.getElementById('modalCalendarTab').classList.remove('hidden');
+                if (document.getElementById('calendarContent').classList.contains('hidden')) {
+                    loadUserCalendar(currentUserId);
+                }
+            }
+        }
+
+        async function loadUserDialog(userId) {
+            try {
+                const response = await fetch(`${API_BASE}/users/${userId}/dialog?limit=1000`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (authMode === 'fake') {
+                        showFakeError();
+                        return;
+                    }
+                    throw new Error('Failed to load dialog');
+                }
+
+                const dialog = await response.json();
+                const content = document.getElementById('dialogContent');
+                content.innerHTML = '';
+
+                if (dialog.length === 0) {
+                    content.innerHTML = '<p class="text-center text-gray-400">Нет записей</p>';
+                } else {
+                    dialog.forEach(entry => {
+                        const div = document.createElement('div');
+                        div.className = 'border-b border-gray-800 pb-3 mb-3';
+                        const timestamp = new Date(entry.timestamp).toLocaleString('ru-RU');
+                        const actionType = entry.action_type;
+                        const details = entry.details || '-';
+                        const statusIcon = entry.success ? '✅' : '❌';
+
+                        div.innerHTML = `
+                            <div class="flex justify-between items-start mb-1">
+                                <span class="text-sm text-gray-400">${timestamp}</span>
+                                <span class="badge badge-info">${actionType}</span>
+                            </div>
+                            <div class="text-sm">${statusIcon} ${details}</div>
+                            ${entry.error_message ? `<div class="text-xs text-red-400 mt-1">${entry.error_message}</div>` : ''}
+                        `;
+                        content.appendChild(div);
+                    });
+                }
+
+                document.getElementById('dialogLoading').classList.remove('active');
+                content.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading dialog:', error);
+                document.getElementById('dialogLoading').innerHTML = '<p class="text-red-500">Ошибка загрузки диалога</p>';
+            }
+        }
+
+        async function loadUserCalendar(userId) {
+            try {
+                const response = await fetch(`${API_BASE}/users/${userId}/events`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (authMode === 'fake') {
+                        showFakeError();
+                        return;
+                    }
+                    throw new Error('Failed to load calendar');
+                }
+
+                const events = await response.json();
+                const content = document.getElementById('calendarContent');
+                content.innerHTML = '';
+
+                if (events.length === 0) {
+                    content.innerHTML = '<p class="text-center text-gray-400">Нет событий</p>';
+                } else {
+                    events.sort((a, b) => new Date(a.start) - new Date(b.start));
+                    events.forEach(event => {
+                        const div = document.createElement('div');
+                        div.className = 'border-b border-gray-800 pb-3 mb-3';
+                        const start = new Date(event.start).toLocaleString('ru-RU');
+                        const end = new Date(event.end).toLocaleString('ru-RU');
+
+                        div.innerHTML = `
+                            <div class="font-semibold mb-1">${event.title}</div>
+                            <div class="text-sm text-gray-400">📅 ${start} - ${end}</div>
+                            ${event.location ? `<div class="text-sm text-gray-400">📍 ${event.location}</div>` : ''}
+                            ${event.description ? `<div class="text-sm mt-2">${event.description}</div>` : ''}
+                        `;
+                        content.appendChild(div);
+                    });
+                }
+
+                document.getElementById('calendarLoading').classList.remove('active');
+                content.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading calendar:', error);
+                document.getElementById('calendarLoading').innerHTML = '<p class="text-red-500">Ошибка загрузки календаря</p>';
+            }
+        }
+
+        function showFakeError() {
+            // Show fake database error for fake mode
+            const allLoadings = document.querySelectorAll('.loading.active');
+            allLoadings.forEach(loading => {
+                loading.innerHTML = '<p class="text-red-500">⚠️ Ошибка подключения к базе данных</p>';
+            });
+        }
+
+        // Allow Enter key on password inputs
+        ['password1Input', 'password2Input', 'password3Input'].forEach(id => {
+            document.getElementById(id)?.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') login();
+            });
+        });
+    </script>
+</body>
+</html>

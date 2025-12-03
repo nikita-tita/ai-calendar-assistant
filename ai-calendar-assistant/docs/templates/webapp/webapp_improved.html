@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Calendar Assistant</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--tg-theme-bg-color, #0b0b0b); color: var(--tg-theme-text-color, #ffffff); overscroll-behavior: none; touch-action: pan-y; }
+        .secondary-bg { background: var(--tg-theme-secondary-bg-color, #111111); }
+        .button-bg { background: var(--tg-theme-button-color, #2563eb); color: var(--tg-theme-button-text-color, #ffffff); }
+        .button-danger { background: #dc2626; color: #ffffff; }
+        .hint-color { color: var(--tg-theme-hint-color, #9ca3af); }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid #fff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div id="loading" class="modal" style="display:none;"><div class="spinner"></div></div>
+    <div id="confirmModal" class="modal" style="display:none;">
+        <div class="secondary-bg rounded-3xl p-6 max-w-sm mx-4">
+            <div id="confirmText" class="text-lg mb-4"></div>
+            <div class="flex gap-2">
+                <button onclick="closeConfirm()" class="secondary-bg px-4 py-3 rounded-2xl flex-1"></button>
+                <button id="confirmBtn" class="button-bg px-4 py-3 rounded-2xl flex-1"></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('user_id') || tg.initDataUnsafe?.user?.id || '2296243';
+        const userLang = urlParams.get('lang') || 'ru';
+
+        // Translations
+        const i18n = {
+            ru: {
+                today: 'Сегодня', tomorrow: 'Завтра', loading: 'Загрузка...', save: 'Сохранить', cancel: 'Отмена',
+                delete: 'Удалить', edit: 'Редактировать', newEvent: 'Новое событие', editEvent: 'Редактировать',
+                title: 'Название', date: 'Дата', start: 'Начало', end: 'Конец', location: 'Локация', note: 'Заметка',
+                color: 'Цвет', confirm: 'Подтвердить', no: 'Нет', yes: 'Да',
+                confirmDelete: 'Удалить это событие?', confirmSave: 'Сохранить изменения?',
+                months: ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
+                monthsGen: ["Января","Февраля","Марта","Апреля","Мая","Июня","Июля","Августа","Сентября","Октября","Ноября","Декабря"],
+                days: ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+            },
+            en: {
+                today: 'Today', tomorrow: 'Tomorrow', loading: 'Loading...', save: 'Save', cancel: 'Cancel',
+                delete: 'Delete', edit: 'Edit', newEvent: 'New Event', editEvent: 'Edit Event',
+                title: 'Title', date: 'Date', start: 'Start', end: 'End', location: 'Location', note: 'Note',
+                color: 'Color', confirm: 'Confirm', no: 'No', yes: 'Yes',
+                confirmDelete: 'Delete this event?', confirmSave: 'Save changes?',
+                months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+                monthsGen: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+                days: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+            },
+            es: {
+                today: 'Hoy', tomorrow: 'Mañana', loading: 'Cargando...', save: 'Guardar', cancel: 'Cancelar',
+                delete: 'Eliminar', edit: 'Editar', newEvent: 'Nuevo Evento', editEvent: 'Editar Evento',
+                title: 'Título', date: 'Fecha', start: 'Inicio', end: 'Fin', location: 'Ubicación', note: 'Nota',
+                color: 'Color', confirm: 'Confirmar', no: 'No', yes: 'Sí',
+                confirmDelete: '¿Eliminar este evento?', confirmSave: '¿Guardar cambios?',
+                months: ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
+                monthsGen: ["de Enero","de Febrero","de Marzo","de Abril","de Mayo","de Junio","de Julio","de Agosto","de Septiembre","de Octubre","de Noviembre","de Diciembre"],
+                days: ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+            },
+            ar: {
+                today: 'اليوم', tomorrow: 'غداً', loading: 'جاري التحميل...', save: 'حفظ', cancel: 'إلغاء',
+                delete: 'حذف', edit: 'تعديل', newEvent: 'حدث جديد', editEvent: 'تعديل الحدث',
+                title: 'العنوان', date: 'التاريخ', start: 'البداية', end: 'النهاية', location: 'الموقع', note: 'ملاحظة',
+                color: 'اللون', confirm: 'تأكيد', no: 'لا', yes: 'نعم',
+                confirmDelete: 'حذف هذا الحدث؟', confirmSave: 'حفظ التغييرات؟',
+                months: ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"],
+                monthsGen: ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"],
+                days: ["إثنين","ثلاثاء","أربعاء","خميس","جمعة","سبت","أحد"]
+            }
+        };
+
+        const t = i18n[userLang] || i18n.ru;
+
+        let state = { view: 'list', events: [], edit: null, viewEvent: null };
+        let confirmCallback = null;
+
+        function showLoading() { document.getElementById('loading').style.display = 'flex'; }
+        function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+
+        function showConfirm(text, onConfirm) {
+            document.getElementById('confirmText').textContent = text;
+            document.getElementById('confirmBtn').textContent = t.yes;
+            document.querySelector('#confirmModal button:first-child').textContent = t.no;
+            document.getElementById('confirmModal').style.display = 'flex';
+            confirmCallback = onConfirm;
+        }
+
+        function closeConfirm() {
+            document.getElementById('confirmModal').style.display = 'none';
+            confirmCallback = null;
+        }
+
+        function execConfirm() {
+            closeConfirm();
+            if (confirmCallback) confirmCallback();
+        }
+
+        document.getElementById('confirmBtn').onclick = execConfirm;
+
+        async function loadEvents() {
+            showLoading();
+            try {
+                const start = new Date();
+                start.setHours(0,0,0,0);
+                const end = new Date(start);
+                end.setDate(end.getDate() + 30);
+                const res = await fetch(`/api/events/${userId}?start=${start.toISOString()}&end=${end.toISOString()}`);
+                state.events = await res.json();
+                render();
+            } catch(e) {
+                console.error(e);
+                alert('Error loading events');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function viewEvent(id) {
+            state.viewEvent = state.events.find(e => e.id === id);
+            state.view = 'detail';
+            render();
+        }
+
+        function openEdit(id = null) {
+            if (id) {
+                const e = state.events.find(ev => ev.id === id);
+                state.edit = { ...e, start: new Date(e.start), end: new Date(e.end) };
+            } else {
+                const now = new Date();
+                now.setMinutes(0,0,0);
+                const end = new Date(now);
+                end.setHours(end.getHours()+1);
+                state.edit = { id: null, title: '', start: now, end, location: '', description: '', color: 'blue' };
+            }
+            state.view = 'edit';
+            render();
+        }
+
+        function closeEdit() {
+            state.edit = null;
+            state.view = 'list';
+            render();
+        }
+
+        function closeDetail() {
+            state.viewEvent = null;
+            state.view = 'list';
+            render();
+        }
+
+        async function saveEvent() {
+            const title = document.getElementById('editTitle').value.trim() || 'No title';
+            const date = new Date(document.getElementById('editDate').value);
+            const [startHH, startMM] = document.getElementById('editStartTime').value.split(':');
+            const [endHH, endMM] = document.getElementById('editEndTime').value.split(':');
+            const start = new Date(date); start.setHours(parseInt(startHH), parseInt(startMM), 0, 0);
+            const end = new Date(date); end.setHours(parseInt(endHH), parseInt(endMM), 0, 0);
+
+            const event = {
+                title,
+                start: start.toISOString(),
+                end: end.toISOString(),
+                location: document.getElementById('editLocation').value,
+                description: document.getElementById('editNote').value,
+                color: document.getElementById('editColor').value
+            };
+
+            showConfirm(t.confirmSave, async () => {
+                showLoading();
+                try {
+                    const url = state.edit.id ? `/api/events/${userId}/${state.edit.id}` : `/api/events/${userId}`;
+                    const method = state.edit.id ? 'PUT' : 'POST';
+                    await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(event) });
+                    closeEdit();
+                    await loadEvents();
+                } catch(e) {
+                    console.error(e);
+                    alert('Error saving event');
+                } finally {
+                    hideLoading();
+                }
+            });
+        }
+
+        async function deleteEvent(id) {
+            showConfirm(t.confirmDelete, async () => {
+                showLoading();
+                try {
+                    await fetch(`/api/events/${userId}/${id}`, { method: 'DELETE' });
+                    closeEdit();
+                    closeDetail();
+                    await loadEvents();
+                } catch(e) {
+                    console.error(e);
+                    alert('Error deleting event');
+                } finally {
+                    hideLoading();
+                }
+            });
+        }
+
+        function pad(n) { return String(n).padStart(2,'0'); }
+        function fmtDate(d) {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const dt = new Date(d); dt.setHours(0,0,0,0);
+            if (dt.getTime() === today.getTime()) return t.today;
+            const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+            if (dt.getTime() === tomorrow.getTime()) return t.tomorrow;
+            return `${dt.getDate()} ${t.monthsGen[dt.getMonth()]}`;
+        }
+        function fmtTime(d) { const dt = new Date(d); return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+        function toDateInputValue(d) { const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`; }
+        function toTimeInputValue(d) { const dt = new Date(d); return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+
+        function render() {
+            const app = document.getElementById('app');
+
+            if (state.view === 'list') {
+                const sorted = state.events.sort((a,b) => new Date(a.start) - new Date(b.start));
+                app.innerHTML = `
+                    <div class="p-4">
+                        <h1 class="text-2xl font-bold mb-4">${t.title}</h1>
+                        <button onclick="openEdit()" class="button-bg w-full py-3 rounded-2xl mb-4">${t.newEvent}</button>
+                        <div class="space-y-2">
+                            ${sorted.map(e => `
+                                <div onclick="viewEvent('${e.id}')" class="secondary-bg p-4 rounded-2xl cursor-pointer">
+                                    <div class="font-semibold">${e.title}</div>
+                                    <div class="hint-color text-sm">${fmtDate(e.start)} • ${fmtTime(e.start)}–${fmtTime(e.end)}</div>
+                                    ${e.location ? `<div class="hint-color text-sm">📍 ${e.location}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (state.view === 'detail' && state.viewEvent) {
+                const e = state.viewEvent;
+                app.innerHTML = `
+                    <div class="p-4">
+                        <button onclick="closeDetail()" class="mb-4">← ${t.cancel}</button>
+                        <div class="secondary-bg p-4 rounded-2xl">
+                            <h2 class="text-xl font-bold mb-2">${e.title}</h2>
+                            <div class="hint-color mb-1">${fmtDate(e.start)} • ${fmtTime(e.start)}–${fmtTime(e.end)}</div>
+                            ${e.location ? `<div class="mb-1">📍 ${e.location}</div>` : ''}
+                            ${e.description ? `<div class="mt-2">${e.description}</div>` : ''}
+                        </div>
+                        <div class="mt-4 flex gap-2">
+                            <button onclick="openEdit('${e.id}')" class="button-bg flex-1 py-3 rounded-2xl">${t.edit}</button>
+                            <button onclick="deleteEvent('${e.id}')" class="button-danger flex-1 py-3 rounded-2xl">${t.delete}</button>
+                        </div>
+                    </div>
+                `;
+            } else if (state.view === 'edit') {
+                app.innerHTML = `
+                    <div class="p-4">
+                        <h2 class="text-xl font-bold mb-4">${state.edit.id ? t.editEvent : t.newEvent}</h2>
+                        <div class="space-y-3">
+                            <label class="block"><span class="text-sm">${t.title}</span>
+                                <input id="editTitle" value="${state.edit.title||''}" class="secondary-bg w-full mt-1 px-3 py-3 rounded-2xl outline-none"/>
+                            </label>
+                            <label class="block"><span class="text-sm">${t.date}</span>
+                                <input id="editDate" type="date" value="${toDateInputValue(state.edit.start)}" class="secondary-bg w-full mt-1 px-3 py-3 rounded-2xl outline-none"/>
+                            </label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <label class="block"><span class="text-sm">${t.start}</span>
+                                    <input id="editStartTime" type="time" value="${toTimeInputValue(state.edit.start)}" class="secondary-bg w-full mt-1 px-3 py-3 rounded-2xl outline-none"/>
+                                </label>
+                                <label class="block"><span class="text-sm">${t.end}</span>
+                                    <input id="editEndTime" type="time" value="${toTimeInputValue(state.edit.end)}" class="secondary-bg w-full mt-1 px-3 py-3 rounded-2xl outline-none"/>
+                                </label>
+                            </div>
+                            <label class="block"><span class="text-sm">${t.location}</span>
+                                <input id="editLocation" value="${state.edit.location||''}" class="secondary-bg w-full mt-1 px-3 py-3 rounded-2xl outline-none"/>
+                            </label>
+                            <label class="block"><span class="text-sm">${t.note}</span>
+                                <textarea id="editNote" rows="3" class="secondary-bg w-full mt-1 px-3 py-3 rounded-2xl outline-none">${state.edit.description||''}</textarea>
+                            </label>
+                            <label class="block"><span class="text-sm">${t.color}</span>
+                                <select id="editColor" class="secondary-bg w-full mt-1 px-3 py-3 rounded-2xl outline-none">
+                                    <option value="blue">Blue</option>
+                                    <option value="green">Green</option>
+                                    <option value="red">Red</option>
+                                </select>
+                            </label>
+                            <div class="flex gap-2 mt-4">
+                                <button onclick="closeEdit()" class="secondary-bg flex-1 py-3 rounded-2xl">${t.cancel}</button>
+                                <button onclick="saveEvent()" class="button-bg flex-1 py-3 rounded-2xl">${t.save}</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        loadEvents();
+    </script>
+</body>
+</html>

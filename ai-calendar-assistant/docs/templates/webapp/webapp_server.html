@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Calendar Assistant</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--tg-theme-bg-color, #0b0b0b);
+            color: var(--tg-theme-text-color, #ffffff);
+            overscroll-behavior: none;
+            touch-action: pan-y;
+            padding-bottom: 20px;
+        }
+        .secondary-bg { background: var(--tg-theme-secondary-bg-color, #1a1a1a); }
+        .tertiary-bg { background: rgba(255,255,255,0.05); }
+        .button-bg { background: var(--tg-theme-button-color, #2563eb); color: var(--tg-theme-button-text-color, #ffffff); }
+        .button-danger { background: #dc2626; color: #ffffff; }
+        .hint-color { color: var(--tg-theme-hint-color, #9ca3af); }
+
+        /* Light theme adaptations */
+        body.light-theme .secondary-bg { background: var(--tg-theme-secondary-bg-color, #f5f5f5); }
+        body.light-theme .tertiary-bg { background: rgba(0,0,0,0.05); }
+        body.light-theme .calendar-day:hover { background: rgba(0,0,0,0.08); }
+        body.light-theme .day-separator { background: rgba(255, 255, 255, 0.95); }
+        body.light-theme .modal { background: rgba(0,0,0,0.5); }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid #fff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .day-separator { 
+            position: sticky; 
+            top: 0; 
+            z-index: 10; 
+            backdrop-filter: blur(10px);
+            background: rgba(11, 11, 11, 0.95);
+        }
+        .calendar-day { 
+            width: 40px; 
+            height: 40px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .calendar-day:hover { background: rgba(255,255,255,0.1); }
+        .calendar-day.selected { background: var(--tg-theme-button-color, #2563eb); }
+        .calendar-day.today { border: 2px solid var(--tg-theme-button-color, #2563eb); }
+        .calendar-day.has-events { position: relative; }
+        .calendar-day.has-events::after { 
+            content: ''; 
+            position: absolute; 
+            bottom: 4px; 
+            width: 4px; 
+            height: 4px; 
+            background: var(--tg-theme-button-color, #2563eb); 
+            border-radius: 50%;
+        }
+        .event-card {
+            position: relative;
+            overflow: hidden;
+        }
+        .event-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--tg-theme-button-color, #2563eb);
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div id="loading" class="modal" style="display:none;"><div class="spinner"></div></div>
+    <div id="confirmModal" class="modal" style="display:none;">
+        <div class="secondary-bg rounded-3xl p-6 max-w-sm mx-4 shadow-2xl">
+            <div id="confirmText" class="text-lg mb-6 text-center"></div>
+            <div class="flex gap-3">
+                <button onclick="closeConfirm()" class="tertiary-bg px-6 py-3 rounded-2xl flex-1 font-medium"></button>
+                <button id="confirmBtn" onclick="execConfirm()" class="button-bg px-6 py-3 rounded-2xl flex-1 font-medium"></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Version: 2025-10-28-17:20 - Fixed event click and edit handlers
+        const APP_VERSION = '2025-10-28-17:20';
+        console.log('WebApp loaded, version:', APP_VERSION);
+
+        // Force reload if version changed (stored in localStorage)
+        const storedVersion = localStorage.getItem('app_version');
+        if (storedVersion && storedVersion !== APP_VERSION) {
+            console.log('New version detected, clearing cache');
+            localStorage.setItem('app_version', APP_VERSION);
+            // Force hard reload on next run
+            if (!localStorage.getItem('version_reloaded')) {
+                localStorage.setItem('version_reloaded', 'true');
+                window.location.reload(true);
+            }
+        } else {
+            localStorage.setItem('app_version', APP_VERSION);
+            localStorage.removeItem('version_reloaded');
+        }
+
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        // Detect and apply Telegram theme
+        function applyTheme() {
+            const colorScheme = tg.colorScheme || 'dark'; // 'light' or 'dark'
+            if (colorScheme === 'light') {
+                document.body.classList.add('light-theme');
+            } else {
+                document.body.classList.remove('light-theme');
+            }
+            console.log('Theme applied:', colorScheme);
+        }
+        applyTheme();
+
+        // Listen for theme changes
+        tg.onEvent('themeChanged', applyTheme);
+
+        const urlParams = new URLSearchParams(window.location.search);
+
+        // Security: ONLY allow access through Telegram WebApp
+        const userId = tg.initDataUnsafe?.user?.id || urlParams.get('user_id');
+
+        if (!userId) {
+            document.body.innerHTML = `
+                <div style="padding: 40px; text-align: center; font-family: Arial;">
+                    <h2>⚠️ Доступ запрещён</h2>
+                    <p>Это приложение доступно только через Telegram бота.</p>
+                    <p>Откройте бота и нажмите кнопку "📅 Открыть календарь"</p>
+                </div>
+            `;
+            return;
+        }
+
+        const userLang = urlParams.get('lang') || 'ru';
+
+        // Translations
+        const i18n = {
+            ru: {
+                today: 'Сегодня', tomorrow: 'Завтра', yesterday: 'Вчера', loading: 'Загрузка...', 
+                save: 'Сохранить', cancel: 'Отмена', delete: 'Удалить', edit: 'Редактировать', 
+                newEvent: 'Новое событие', editEvent: 'Редактировать событие',
+                title: 'Название', date: 'Дата', start: 'Начало', end: 'Конец', 
+                location: 'Локация', note: 'Заметка', color: 'Цвет', 
+                confirm: 'Подтвердить', no: 'Нет', yes: 'Да', noEvents: 'Нет событий',
+                confirmDelete: 'Удалить это событие?', confirmSave: 'Сохранить изменения?',
+                selectDate: 'Выберите дату', myEvents: 'Мои события',
+                months: ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
+                monthsGen: ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"],
+                days: ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+            },
+            en: {
+                today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', loading: 'Loading...', 
+                save: 'Save', cancel: 'Cancel', delete: 'Delete', edit: 'Edit', 
+                newEvent: 'New Event', editEvent: 'Edit Event',
+                title: 'Title', date: 'Date', start: 'Start', end: 'End', 
+                location: 'Location', note: 'Note', color: 'Color', 
+                confirm: 'Confirm', no: 'No', yes: 'Yes', noEvents: 'No events',
+                confirmDelete: 'Delete this event?', confirmSave: 'Save changes?',
+                selectDate: 'Select date', myEvents: 'My Events',
+                months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+                monthsGen: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+                days: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+            },
+            es: {
+                today: 'Hoy', tomorrow: 'Mañana', yesterday: 'Ayer', loading: 'Cargando...', 
+                save: 'Guardar', cancel: 'Cancelar', delete: 'Eliminar', edit: 'Editar', 
+                newEvent: 'Nuevo Evento', editEvent: 'Editar Evento',
+                title: 'Título', date: 'Fecha', start: 'Inicio', end: 'Fin', 
+                location: 'Ubicación', note: 'Nota', color: 'Color', 
+                confirm: 'Confirmar', no: 'No', yes: 'Sí', noEvents: 'Sin eventos',
+                confirmDelete: '¿Eliminar este evento?', confirmSave: '¿Guardar cambios?',
+                selectDate: 'Seleccionar fecha', myEvents: 'Mis Eventos',
+                months: ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
+                monthsGen: ["de enero","de febrero","de marzo","de abril","de mayo","de junio","de julio","de agosto","de septiembre","de octubre","de noviembre","de diciembre"],
+                days: ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+            },
+            ar: {
+                today: 'اليوم', tomorrow: 'غداً', yesterday: 'أمس', loading: 'جاري التحميل...', 
+                save: 'حفظ', cancel: 'إلغاء', delete: 'حذف', edit: 'تعديل', 
+                newEvent: 'حدث جديد', editEvent: 'تعديل الحدث',
+                title: 'العنوان', date: 'التاريخ', start: 'البداية', end: 'النهاية', 
+                location: 'الموقع', note: 'ملاحظة', color: 'اللون', 
+                confirm: 'تأكيد', no: 'لا', yes: 'نعم', noEvents: 'لا توجد أحداث',
+                confirmDelete: 'حذف هذا الحدث؟', confirmSave: 'حفظ التغييرات؟',
+                selectDate: 'اختر التاريخ', myEvents: 'أحداثي',
+                months: ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"],
+                monthsGen: ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"],
+                days: ["إثنين","ثلاثاء","أربعاء","خميس","جمعة","سبت","أحد"]
+            }
+        };
+
+        const t = i18n[userLang] || i18n.ru;
+
+        let state = { 
+            view: 'list', 
+            events: [], 
+            edit: null, 
+            viewEvent: null,
+            selectedDate: new Date(),
+            currentMonth: new Date(),
+            showCalendar: false
+        };
+        let confirmCallback = null;
+
+        function showLoading() { document.getElementById('loading').style.display = 'flex'; }
+        function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+
+        function showConfirm(text, onConfirm) {
+            document.getElementById('confirmText').textContent = text;
+            document.getElementById('confirmBtn').textContent = t.yes;
+            const cancelBtn = document.querySelector('#confirmModal button:first-child');
+            if (cancelBtn) {
+                cancelBtn.textContent = t.no;
+            }
+            document.getElementById('confirmModal').style.display = 'flex';
+            confirmCallback = onConfirm;
+        }
+
+        function closeConfirm() {
+            document.getElementById('confirmModal').style.display = 'none';
+            confirmCallback = null;
+        }
+
+        function execConfirm() {
+            // Save callback before closing (closeConfirm sets it to null!)
+            const callback = confirmCallback;
+            closeConfirm();
+
+            if (callback) {
+                callback();
+            }
+        }
+
+        async function loadEvents() {
+            showLoading();
+            try {
+                // Load from 90 days ago to 90 days ahead
+                const start = new Date();
+                start.setDate(start.getDate() - 90);
+                start.setHours(0,0,0,0);
+                const end = new Date();
+                end.setDate(end.getDate() + 90);
+                end.setHours(23,59,59,999);
+                
+                const res = await fetch(`/api/events/${userId}?start=${start.toISOString()}&end=${end.toISOString()}`);
+                state.events = await res.json();
+                render();
+            } catch(e) {
+                console.error(e);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function viewEvent(id) {
+            console.log('viewEvent called with id:', id);
+            const event = state.events.find(e => e.id === id);
+            console.log('Found event:', event);
+            if (!event) {
+                console.error('Event not found:', id);
+                return;
+            }
+            state.viewEvent = event;
+            state.view = 'detail';
+            console.log('Switching to detail view');
+            render();
+        }
+
+        function openEdit(id = null) {
+            console.log('openEdit called with id:', id);
+            if (id) {
+                const e = state.events.find(ev => ev.id === id);
+                console.log('Found event for editing:', e);
+                if (!e) {
+                    console.error('Event not found for editing:', id);
+                    return;
+                }
+                state.edit = { ...e, start: new Date(e.start), end: new Date(e.end) };
+            } else {
+                console.log('Creating new event');
+                const now = new Date(state.selectedDate);
+                now.setHours(9,0,0,0);
+                const end = new Date(now);
+                end.setHours(10,0,0,0);
+                state.edit = { id: null, title: '', start: now, end, location: '', description: '', color: 'blue' };
+            }
+            state.view = 'edit';
+            console.log('Switching to edit view');
+            render();
+        }
+
+        function closeEdit() {
+            state.edit = null;
+            state.view = 'list';
+            render();
+        }
+
+        function closeDetail() {
+            state.viewEvent = null;
+            state.view = 'list';
+            render();
+        }
+
+        function toggleCalendar() {
+            state.showCalendar = !state.showCalendar;
+            render();
+        }
+
+        function selectDate(date) {
+            state.selectedDate = new Date(date);
+            state.showCalendar = false;
+            render();
+        }
+
+        function prevMonth() {
+            state.currentMonth.setMonth(state.currentMonth.getMonth() - 1);
+            render();
+        }
+
+        function nextMonth() {
+            state.currentMonth.setMonth(state.currentMonth.getMonth() + 1);
+            render();
+        }
+
+        function goToToday() {
+            state.selectedDate = new Date();
+            state.currentMonth = new Date();
+            state.showCalendar = false;
+            render();
+        }
+
+        async function saveEvent() {
+            try {
+                const title = document.getElementById('editTitle')?.value.trim() || 'No title';
+                const dateInput = document.getElementById('editDate')?.value;
+                const startTimeInput = document.getElementById('editStartTime')?.value;
+                const endTimeInput = document.getElementById('editEndTime')?.value;
+
+                if (!dateInput || !startTimeInput || !endTimeInput) {
+                    alert('Пожалуйста, заполните все поля');
+                    return;
+                }
+
+                const date = new Date(dateInput);
+                const [startHH, startMM] = startTimeInput.split(':');
+                const [endHH, endMM] = endTimeInput.split(':');
+                const start = new Date(date); start.setHours(parseInt(startHH), parseInt(startMM), 0, 0);
+                const end = new Date(date); end.setHours(parseInt(endHH), parseInt(endMM), 0, 0);
+
+                const event = {
+                    title,
+                    start: start.toISOString(),
+                    end: end.toISOString(),
+                    location: document.getElementById('editLocation')?.value || '',
+                    description: document.getElementById('editNote')?.value || '',
+                    color: 'blue'
+                };
+
+                showConfirm(t.confirmSave, async () => {
+                    showLoading();
+                    try {
+                        const url = state.edit.id ? `/api/events/${userId}/${state.edit.id}` : `/api/events/${userId}`;
+                        const method = state.edit.id ? 'PUT' : 'POST';
+                        const response = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(event) });
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`HTTP ${response.status}: ${errorText}`);
+                        }
+
+                        // Clear both edit and detail state to return to list view
+                        state.edit = null;
+                        state.viewEvent = null;
+                        state.view = 'list';
+                        // Set selected date to the event's date so user sees it in the list
+                        state.selectedDate = new Date(start);
+                        state.selectedDate.setHours(0, 0, 0, 0);
+                        await loadEvents();
+                    } catch(e) {
+                        console.error(e);
+                        alert('Ошибка сохранения: ' + e.message);
+                    } finally {
+                        hideLoading();
+                    }
+                });
+            } catch(e) {
+                console.error(e);
+                alert('Ошибка: ' + e.message);
+            }
+        }
+
+        async function deleteEvent(id) {
+            showConfirm(t.confirmDelete, async () => {
+                showLoading();
+                try {
+                    const url = `/api/events/${userId}/${id}`;
+                    const response = await fetch(url, { method: 'DELETE' });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    }
+
+                    closeEdit();
+                    closeDetail();
+                    await loadEvents();
+                } catch(e) {
+                    console.error(e);
+                    alert('Ошибка удаления: ' + e.message);
+                } finally {
+                    hideLoading();
+                }
+            });
+        }
+
+        function pad(n) { return String(n).padStart(2,'0'); }
+        function sameDay(d1, d2) { 
+            const a = new Date(d1); a.setHours(0,0,0,0);
+            const b = new Date(d2); b.setHours(0,0,0,0);
+            return a.getTime() === b.getTime();
+        }
+        function fmtDate(d) {
+            const today = new Date(); today.setHours(0,0,0,0);
+            const dt = new Date(d); dt.setHours(0,0,0,0);
+            if (dt.getTime() === today.getTime()) return t.today;
+            const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+            if (dt.getTime() === tomorrow.getTime()) return t.tomorrow;
+            const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+            if (dt.getTime() === yesterday.getTime()) return t.yesterday;
+            return `${dt.getDate()} ${t.monthsGen[dt.getMonth()]}`;
+        }
+        function fmtTime(d) { const dt = new Date(d); return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+        function toDateInputValue(d) { const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`; }
+        function toTimeInputValue(d) { const dt = new Date(d); return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+
+        function getMonthDays(year, month) {
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startDay = (firstDay.getDay() + 6) % 7; // Monday = 0
+            const days = [];
+            
+            // Previous month padding
+            const prevMonthDays = new Date(year, month, 0).getDate();
+            for (let i = startDay - 1; i >= 0; i--) {
+                days.push({ date: new Date(year, month - 1, prevMonthDays - i), current: false });
+            }
+            
+            // Current month
+            for (let i = 1; i <= lastDay.getDate(); i++) {
+                days.push({ date: new Date(year, month, i), current: true });
+            }
+            
+            // Next month padding
+            const remaining = 42 - days.length;
+            for (let i = 1; i <= remaining; i++) {
+                days.push({ date: new Date(year, month + 1, i), current: false });
+            }
+            
+            return days;
+        }
+
+        function hasEventsOnDate(date) {
+            return state.events.some(e => sameDay(new Date(e.start), date));
+        }
+
+        function groupEventsByDay(events, fromDate, daysCount = 30) {
+            const grouped = {};
+
+            // Create entries for all days in range
+            const currentDate = new Date(fromDate);
+            for (let i = 0; i < daysCount; i++) {
+                const dateKey = toDateInputValue(currentDate);
+                grouped[dateKey] = [];
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            // Fill with events
+            const sorted = events
+                .filter(e => new Date(e.start) >= fromDate)
+                .sort((a,b) => new Date(a.start) - new Date(b.start));
+
+            sorted.forEach(e => {
+                const dateKey = toDateInputValue(new Date(e.start));
+                if (grouped[dateKey]) {
+                    grouped[dateKey].push(e);
+                }
+            });
+
+            return grouped;
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+
+            if (state.view === 'list') {
+                const fromDate = new Date(state.selectedDate);
+                fromDate.setHours(0,0,0,0);
+                const grouped = groupEventsByDay(state.events, fromDate, 30);
+                const dateKeys = Object.keys(grouped); // All 30 days
+
+                app.innerHTML = `
+                    <div class="min-h-screen">
+                        <!-- Header -->
+                        <div class="secondary-bg p-4 sticky top-0 z-20 shadow-lg">
+                            <h1 class="text-2xl font-bold mb-3">${t.myEvents}</h1>
+                            <div class="flex items-center gap-2">
+                                <button onclick="toggleCalendar()" class="tertiary-bg px-4 py-2 rounded-xl flex-1 text-left flex items-center justify-between">
+                                    <span>${fmtDate(state.selectedDate)}</span>
+                                    <span class="text-xl">📅</span>
+                                </button>
+                                <button onclick="goToToday()" class="tertiary-bg px-4 py-2 rounded-xl">${t.today}</button>
+                            </div>
+                        </div>
+
+                        ${state.showCalendar ? `
+                            <div class="secondary-bg p-4 border-t border-gray-800">
+                                <div class="flex items-center justify-between mb-4">
+                                    <button onclick="prevMonth()" class="tertiary-bg w-10 h-10 rounded-xl">←</button>
+                                    <div class="font-semibold">${t.months[state.currentMonth.getMonth()]} ${state.currentMonth.getFullYear()}</div>
+                                    <button onclick="nextMonth()" class="tertiary-bg w-10 h-10 rounded-xl">→</button>
+                                </div>
+                                <div class="grid grid-cols-7 gap-1 mb-2">
+                                    ${t.days.map(d => `<div class="text-center text-xs hint-color py-1">${d}</div>`).join('')}
+                                </div>
+                                <div class="grid grid-cols-7 gap-1">
+                                    ${getMonthDays(state.currentMonth.getFullYear(), state.currentMonth.getMonth()).map(d => {
+                                        const isToday = sameDay(d.date, new Date());
+                                        const isSelected = sameDay(d.date, state.selectedDate);
+                                        const hasEvents = hasEventsOnDate(d.date);
+                                        return `
+                                            <div 
+                                                onclick="selectDate(new Date(${d.date.getTime()}))"
+                                                class="calendar-day ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''} ${hasEvents ? 'has-events' : ''} ${!d.current ? 'opacity-30' : ''}"
+                                            >
+                                                ${d.date.getDate()}
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        <!-- Events List -->
+                        <div class="p-4">
+                            <button onclick="openEdit()" class="button-bg w-full py-3 rounded-2xl mb-4 font-medium shadow-lg">
+                                + ${t.newEvent}
+                            </button>
+
+                            ${dateKeys.map(dateKey => {
+                                const dayEvents = grouped[dateKey];
+                                const dayDate = new Date(dateKey);
+                                return `
+                                    <div class="mb-6">
+                                        <div class="day-separator px-2 py-2 mb-2">
+                                            <div class="font-semibold text-lg">${fmtDate(dayDate)}</div>
+                                            <div class="hint-color text-sm">${t.days[(dayDate.getDay() + 6) % 7]}</div>
+                                        </div>
+                                        ${dayEvents.length === 0 ? `
+                                            <div class="text-center hint-color py-4 text-sm">
+                                                ${t.noEvents}
+                                            </div>
+                                        ` : `
+                                            <div class="space-y-2">
+                                                ${dayEvents.map(e => `
+                                                    <div onclick="viewEvent('${e.id}')" class="event-card secondary-bg p-4 rounded-2xl cursor-pointer hover:opacity-80 transition pl-6">
+                                                        <div class="flex items-start justify-between">
+                                                            <div class="flex-1">
+                                                                <div class="font-semibold mb-1">${e.title}</div>
+                                                                <div class="hint-color text-sm">${fmtTime(e.start)} – ${fmtTime(e.end)}</div>
+                                                                ${e.location ? `<div class="hint-color text-sm mt-1">📍 ${e.location}</div>` : ''}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        `}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (state.view === 'detail' && state.viewEvent) {
+                const e = state.viewEvent;
+                app.innerHTML = `
+                    <div class="min-h-screen p-4">
+                        <button onclick="closeDetail()" class="mb-4 hint-color flex items-center gap-2">
+                            <span class="text-xl">←</span> ${t.cancel}
+                        </button>
+                        <div class="secondary-bg p-6 rounded-3xl shadow-xl">
+                            <h2 class="text-2xl font-bold mb-4">${e.title}</h2>
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">📅</span>
+                                    <div>
+                                        <div class="font-medium">${fmtDate(e.start)}</div>
+                                        <div class="hint-color text-sm">${fmtTime(e.start)} – ${fmtTime(e.end)}</div>
+                                    </div>
+                                </div>
+                                ${e.location ? `
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-2xl">📍</span>
+                                        <div class="font-medium">${e.location}</div>
+                                    </div>
+                                ` : ''}
+                                ${e.description ? `
+                                    <div class="flex items-start gap-3 mt-4">
+                                        <span class="text-2xl">📝</span>
+                                        <div class="flex-1">${e.description}</div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <div class="mt-6 flex gap-3">
+                            <button data-event-id="${e.id}" class="btn-edit button-bg flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                ${t.edit}
+                            </button>
+                            <button data-event-id="${e.id}" class="btn-delete button-danger flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                ${t.delete}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else if (state.view === 'edit') {
+                app.innerHTML = `
+                    <div class="min-h-screen p-4">
+                        <button onclick="closeEdit()" class="mb-4 hint-color flex items-center gap-2">
+                            <span class="text-xl">←</span> ${t.cancel}
+                        </button>
+                        <h2 class="text-2xl font-bold mb-6">${state.edit.id ? t.editEvent : t.newEvent}</h2>
+                        <div class="space-y-4">
+                            <label class="block">
+                                <span class="text-sm hint-color mb-2 block">${t.title}</span>
+                                <input id="editTitle" value="${state.edit.title||''}" 
+                                    class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                    placeholder="${t.title}"/>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm hint-color mb-2 block">${t.date}</span>
+                                <input id="editDate" type="date" value="${toDateInputValue(state.edit.start)}" 
+                                    class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                            </label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">${t.start}</span>
+                                    <input id="editStartTime" type="time" value="${toTimeInputValue(state.edit.start)}" 
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                </label>
+                                <label class="block">
+                                    <span class="text-sm hint-color mb-2 block">${t.end}</span>
+                                    <input id="editEndTime" type="time" value="${toTimeInputValue(state.edit.end)}" 
+                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                </label>
+                            </div>
+                            <label class="block">
+                                <span class="text-sm hint-color mb-2 block">${t.location}</span>
+                                <input id="editLocation" value="${state.edit.location||''}" 
+                                    class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                    placeholder="${t.location}"/>
+                            </label>
+                            <label class="block">
+                                <span class="text-sm hint-color mb-2 block">${t.note}</span>
+                                <textarea id="editNote" rows="4" 
+                                    class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base resize-none"
+                                    placeholder="${t.note}">${state.edit.description||''}</textarea>
+                            </label>
+                            <div class="flex gap-3 mt-6 pt-4">
+                                <button onclick="closeEdit()" class="tertiary-bg flex-1 py-4 rounded-2xl font-medium">
+                                    ${t.cancel}
+                                </button>
+                                <button onclick="saveEvent()" class="button-bg flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                    ${t.save}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+        }
+
+        // Global event delegation - setup once on page load
+        document.addEventListener('click', function(e) {
+            console.log('Click detected on:', e.target);
+
+            // Check if clicked element is edit button
+            if (e.target.classList.contains('btn-edit') || e.target.closest('.btn-edit')) {
+                console.log('Edit button clicked');
+                const btn = e.target.classList.contains('btn-edit') ? e.target : e.target.closest('.btn-edit');
+                const eventId = btn.getAttribute('data-event-id');
+                console.log('Event ID from edit button:', eventId);
+                e.preventDefault();
+                e.stopPropagation();
+                openEdit(eventId);
+                return;
+            }
+
+            // Check if clicked element is delete button
+            if (e.target.classList.contains('btn-delete') || e.target.closest('.btn-delete')) {
+                console.log('Delete button clicked');
+                const btn = e.target.classList.contains('btn-delete') ? e.target : e.target.closest('.btn-delete');
+                const eventId = btn.getAttribute('data-event-id');
+                console.log('Event ID from delete button:', eventId);
+                e.preventDefault();
+                e.stopPropagation();
+                deleteEvent(eventId);
+                return;
+            }
+        });
+
+        loadEvents();
+    </script>
+</body>
+</html>
