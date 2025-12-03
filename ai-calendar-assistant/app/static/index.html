@@ -94,9 +94,8 @@
     </div>
 
     <script>
-        // Version: 2025-10-28-18:15 - Added Telegram HMAC authentication
-        const APP_VERSION = '2025-11-29-16:00';
-        console.log('WebApp loaded, version:', APP_VERSION);
+        // Version: 2025-12-04 - Fixed scroll + added todo create button
+        const APP_VERSION = '2025-12-04-v1';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -200,6 +199,9 @@
                 activeTab: 'events', // 'events' | 'todos'
                 editingTodo: null // Currently editing todo
             };
+
+            // Flag to prevent scroll on every render (only scroll on initial load)
+            let initialScrollDone = false;
 
             // Utility functions
             function fmtDate(d) {
@@ -584,6 +586,53 @@
                 render();
             };
 
+            window.openNewTodo = function() {
+                state.editingTodo = { id: null, title: '', completed: false, due_date: null };
+                state.view = 'todo-edit';
+                render();
+            };
+
+            window.createTodo = async function() {
+                const title = document.getElementById('editTodoTitle').value.trim();
+                if (!title) {
+                    tg.showAlert('Введите название задачи');
+                    return;
+                }
+
+                const dueDateInput = document.getElementById('editTodoDueDate').value;
+                const todoData = {
+                    title: title,
+                    completed: false,
+                    due_date: dueDateInput ? new Date(dueDateInput).toISOString() : null
+                };
+
+                showLoading();
+                try {
+                    const res = await fetch(`/api/todos/${userId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Telegram-Init-Data': initData
+                        },
+                        body: JSON.stringify(todoData)
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                    }
+
+                    await loadTodos();
+                    state.view = 'list';
+                    state.editingTodo = null;
+                    render();
+                } catch(e) {
+                    console.error('Error creating todo:', e);
+                    tg.showAlert('Ошибка при создании задачи');
+                } finally {
+                    hideLoading();
+                }
+            };
+
             // Confirmation modal
             let confirmCallback = null;
 
@@ -717,11 +766,13 @@
                                     ` : ''}
                                 ` : `
                                     <!-- Todos view -->
+                                    <button onclick="openNewTodo()" class="button-bg w-full py-3 rounded-2xl mb-4 font-medium shadow-lg">
+                                        + Новая задача
+                                    </button>
                                     ${state.todos.length === 0 ? `
                                         <div class="text-center py-12 hint-color">
                                             <div class="text-6xl mb-4">📋</div>
                                             <div class="text-lg">${t.noTodos}</div>
-                                            <div class="text-sm mt-2">Добавьте задачу через бота</div>
                                         </div>
                                     ` : `
                                         ${state.todos.filter(todo => !todo.completed).length > 0 ? `
@@ -872,12 +923,13 @@
                     `;
                 } else if (state.view === 'todo-edit') {
                     const todo = state.editingTodo;
+                    const isNew = !todo.id;
                     app.innerHTML = `
                         <div class="min-h-screen p-4">
                             <button onclick="cancelTodoEdit()" class="mb-4 hint-color flex items-center gap-2">
                                 <span class="text-xl">←</span> Отмена
                             </button>
-                            <h2 class="text-2xl font-bold mb-6">Редактировать задачу</h2>
+                            <h2 class="text-2xl font-bold mb-6">${isNew ? 'Новая задача' : 'Редактировать задачу'}</h2>
                             <div class="space-y-4">
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">Название задачи</span>
@@ -891,84 +943,64 @@
                                         class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
                                 </label>
                                 <div class="flex gap-3 pt-4">
-                                    <button onclick="deleteTodo('${todo.id}')" class="button-danger flex-1 py-3 rounded-2xl font-medium">
-                                        Удалить
-                                    </button>
-                                    <button onclick="
-                                        state.editingTodo.title = document.getElementById('editTodoTitle').value;
-                                        const dueDateInput = document.getElementById('editTodoDueDate').value;
-                                        state.editingTodo.due_date = dueDateInput ? new Date(dueDateInput).toISOString() : null;
-                                        updateTodo();
-                                    " class="button-bg flex-1 py-3 rounded-2xl font-medium">
-                                        Сохранить
-                                    </button>
+                                    ${isNew ? `
+                                        <button onclick="cancelTodoEdit()" class="tertiary-bg flex-1 py-3 rounded-2xl font-medium">
+                                            Отмена
+                                        </button>
+                                        <button onclick="createTodo()" class="button-bg flex-1 py-3 rounded-2xl font-medium">
+                                            Создать
+                                        </button>
+                                    ` : `
+                                        <button onclick="deleteTodo('${todo.id}')" class="button-danger flex-1 py-3 rounded-2xl font-medium">
+                                            Удалить
+                                        </button>
+                                        <button onclick="
+                                            state.editingTodo.title = document.getElementById('editTodoTitle').value;
+                                            const dueDateInput = document.getElementById('editTodoDueDate').value;
+                                            state.editingTodo.due_date = dueDateInput ? new Date(dueDateInput).toISOString() : null;
+                                            updateTodo();
+                                        " class="button-bg flex-1 py-3 rounded-2xl font-medium">
+                                            Сохранить
+                                        </button>
+                                    `}
                                 </div>
                             </div>
                         </div>
                     `;
                 }
 
-                // Auto-scroll to today's date (or closest future date) on list view
-                if (state.view === 'list') {
+                // Auto-scroll to today's date on FIRST load only (events tab)
+                if (state.view === 'list' && state.activeTab === 'events' && !initialScrollDone) {
                     const scrollToToday = () => {
                         const today = new Date();
                         today.setHours(0, 0, 0, 0);
-
-                        // Try exact match first
                         const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
                         let targetSection = document.querySelector(`[data-date="${todayKey}"]`);
 
-                        // DEBUG: Log today info
-                        console.log('[SCROLL] Today:', today.toISOString(), 'Key:', todayKey);
-
-                        // If no exact match, find closest date (minimum time difference)
+                        // If no exact match, find closest date
                         if (!targetSection) {
-                            console.log('[SCROLL] Today section not found, using fallback');
                             const allSections = Array.from(document.querySelectorAll('[data-date]'));
-                            console.log('[SCROLL] Available dates:', allSections.map(s => s.getAttribute('data-date')));
-
                             let minDiff = Infinity;
-                            const diffs = [];  // DEBUG: collect all diffs
-
                             allSections.forEach(section => {
                                 const sectionDate = new Date(section.getAttribute('data-date'));
                                 const diff = Math.abs(sectionDate.getTime() - today.getTime());
-
-                                // DEBUG: Record all differences
-                                diffs.push({
-                                    date: section.getAttribute('data-date'),
-                                    diff: diff,
-                                    diffDays: (diff / 86400000).toFixed(2)
-                                });
-
                                 if (diff < minDiff) {
                                     minDiff = diff;
                                     targetSection = section;
                                 }
                             });
-
-                            // DEBUG: Show top 5 closest dates
-                            console.log('[SCROLL] Top 5 closest:', diffs.sort((a,b) => a.diff - b.diff).slice(0, 5));
-                            console.log('[SCROLL] Selected:', targetSection?.getAttribute('data-date'));
-                        } else {
-                            console.log('[SCROLL] Found exact match for today');
                         }
 
                         if (targetSection) {
-                            console.log('[SCROLL] Scrolling to:', targetSection.getAttribute('data-date'));
                             targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            initialScrollDone = true;
                             return true;
                         }
-                        console.log('[SCROLL] ERROR: No target section found!');
                         return false;
                     };
 
-                    // Try with delays to ensure DOM is ready
-                    setTimeout(() => {
-                        if (!scrollToToday()) {
-                            setTimeout(scrollToToday, 300);
-                        }
-                    }, 500);
+                    // Single attempt after DOM ready
+                    setTimeout(scrollToToday, 150);
                 }
             }
 
