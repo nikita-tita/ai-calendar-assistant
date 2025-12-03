@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    container_name: telegram-bot
+    build:
+      context: .
+      dockerfile: Dockerfile.bot.minimal
+    env_file:
+      - .env
+    restart: always
+    volumes:
+      - ./logs:/app/logs
+      - ./credentials:/app/credentials
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

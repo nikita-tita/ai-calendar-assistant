@@ -1,0 +1,105 @@
+version: '3.8'
+
+# Secure production configuration with Redis and Radicale
+
+services:
+  # Main application
+  telegram-bot:
+    container_name: telegram-bot
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    env_file:
+      - .env
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/var/lib/calendar-bot
+    depends_on:
+      - redis
+      - radicale
+    networks:
+      - calendar-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    environment:
+      # Override with internal service URLs
+      - RADICALE_URL=http://radicale:5232
+      - REDIS_URL=redis://redis:6379/0
+
+  # Redis for rate limiting and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: calendar-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - calendar-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # Radicale CalDAV server with authentication
+  radicale:
+    image: tomsquest/docker-radicale:latest
+    container_name: radicale
+    restart: unless-stopped
+    volumes:
+      - radicale-data:/data
+      - radicale-config:/config
+      - ./radicale/config.ini:/config/config:ro
+      - ./radicale/users:/config/users:ro
+      - ./radicale/rights:/config/rights:ro
+    networks:
+      - calendar-network
+    environment:
+      # Enable authentication
+      - AUTH_TYPE=htpasswd
+      - AUTH_HTPASSWD_FILENAME=/config/users
+      - AUTH_HTPASSWD_ENCRYPTION=bcrypt
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5232/.web/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    # DO NOT expose port 5232 externally - only internal access
+    # ports:
+    #   - "5232:5232"  # SECURITY: Commented out
+
+networks:
+  calendar-network:
+    driver: bridge
+    internal: false  # Set to true if no external access needed
+
+volumes:
+  redis-data:
+    driver: local
+  radicale-data:
+    driver: local
+  radicale-config:
+    driver: local

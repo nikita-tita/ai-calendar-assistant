@@ -42,9 +42,15 @@ async def telegram_webhook(
     """
     Handle incoming Telegram webhooks.
 
-    Security: Validates webhook secret token.
+    Security: Validates webhook secret token (REQUIRED in production).
     """
-    # Verify webhook secret (only if configured)
+    # SECURITY: Webhook secret is REQUIRED in production
+    if settings.app_env == "production" and not settings.telegram_webhook_secret:
+        logger.error("webhook_secret_missing_production",
+                    message="CRITICAL: TELEGRAM_WEBHOOK_SECRET must be set in production!")
+        raise HTTPException(status_code=500, detail="Webhook not configured securely")
+
+    # Verify webhook secret
     if settings.telegram_webhook_secret:
         if x_telegram_bot_api_secret_token != settings.telegram_webhook_secret:
             logger.warning(
@@ -54,6 +60,7 @@ async def telegram_webhook(
             )
             raise HTTPException(status_code=401, detail="Unauthorized")
     else:
+        # Only warn in non-production environments
         logger.warning("webhook_secret_not_configured", message="TELEGRAM_WEBHOOK_SECRET not set - webhook is not protected!")
 
     # Parse update
