@@ -153,8 +153,15 @@ async def root():
 
 @app.get("/app")
 async def webapp():
-    """WebApp endpoint - serve index.html."""
-    return FileResponse("app/static/index.html")
+    """WebApp endpoint - serve index.html with no-cache headers."""
+    return FileResponse(
+        "app/static/index.html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 
 if __name__ == "__main__":
