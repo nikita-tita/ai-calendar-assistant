@@ -94,8 +94,8 @@
     </div>
 
     <script>
-        // Version: 2025-12-04 - Fixed scroll + added todo create button
-        const APP_VERSION = '2025-12-04-v1';
+        // Version: 2025-12-04-v2 - Fixed scroll to today, calendar click, improved date handling
+        const APP_VERSION = '2025-12-04-v2';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -457,7 +457,9 @@
             }
 
             window.toggleCalendar = function() {
+                console.log('toggleCalendar called, showCalendar was:', state.showCalendar);
                 state.showCalendar = !state.showCalendar;
+                console.log('showCalendar is now:', state.showCalendar);
                 render();
             };
 
@@ -975,27 +977,55 @@
                         const today = new Date();
                         today.setHours(0, 0, 0, 0);
                         const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                        console.log('Looking for today section:', todayKey);
                         let targetSection = document.querySelector(`[data-date="${todayKey}"]`);
 
-                        // If no exact match, find closest date
+                        // If no exact match for today, find closest FUTURE date (not past)
                         if (!targetSection) {
+                            console.log('Today section not found, looking for closest future date');
                             const allSections = Array.from(document.querySelectorAll('[data-date]'));
                             let minDiff = Infinity;
+
                             allSections.forEach(section => {
-                                const sectionDate = new Date(section.getAttribute('data-date'));
-                                const diff = Math.abs(sectionDate.getTime() - today.getTime());
-                                if (diff < minDiff) {
+                                const dateStr = section.getAttribute('data-date');
+                                // Parse date string correctly: YYYY-MM-DD
+                                const [y, m, d] = dateStr.split('-').map(Number);
+                                const sectionDate = new Date(y, m - 1, d); // month is 0-indexed
+                                sectionDate.setHours(0, 0, 0, 0);
+
+                                // Calculate difference (prefer future dates)
+                                const diff = sectionDate.getTime() - today.getTime();
+
+                                // Only consider today or future dates, find closest
+                                if (diff >= 0 && diff < minDiff) {
                                     minDiff = diff;
                                     targetSection = section;
                                 }
                             });
+
+                            // If no future dates found, use closest past date
+                            if (!targetSection && allSections.length > 0) {
+                                allSections.forEach(section => {
+                                    const dateStr = section.getAttribute('data-date');
+                                    const [y, m, d] = dateStr.split('-').map(Number);
+                                    const sectionDate = new Date(y, m - 1, d);
+                                    sectionDate.setHours(0, 0, 0, 0);
+                                    const diff = Math.abs(sectionDate.getTime() - today.getTime());
+                                    if (diff < minDiff) {
+                                        minDiff = diff;
+                                        targetSection = section;
+                                    }
+                                });
+                            }
                         }
 
                         if (targetSection) {
+                            console.log('Scrolling to section:', targetSection.getAttribute('data-date'));
                             targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             initialScrollDone = true;
                             return true;
                         }
+                        console.log('No section found to scroll to');
                         return false;
                     };
 
