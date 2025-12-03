@@ -6,6 +6,36 @@
 
 ---
 
+## [2025-12-04] - Production Cleanup & Git-only Workflow
+
+### Changed
+- **Полная реорганизация production сервера** - удалены все дубликаты файлов
+- **Git-only workflow** - теперь работаем ТОЛЬКО через git, без локальных копий
+- Чистый git clone на сервере без лишних файлов
+
+### Added
+- `Dockerfile.bot` добавлен в git (раньше был только на сервере)
+- `CLAUDE.md` - инструкции для AI-ассистента
+- Обновлённый `DEPLOY.md` с актуальными командами
+
+### Technical
+- Рабочая директория: `/root/ai-calendar-assistant/ai-calendar-assistant/`
+- Docker запускается из рабочей директории
+- Бэкап старой конфигурации: `/root/backup_before_cleanup_20251204/`
+
+### Deployment
+```bash
+# Новый деплой (одна команда)
+ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+  cd /root/ai-calendar-assistant/ai-calendar-assistant &&
+  git pull origin main &&
+  docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
+  docker-compose -f docker-compose.secure.yml up -d telegram-bot
+'
+```
+
+---
+
 ## [2025-12-04] - WebApp Fixes v1
 
 ### Fixed
