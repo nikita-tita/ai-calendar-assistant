@@ -1,11 +1,9 @@
-"""Analytics service for tracking user actions."""
+"""Analytics service for tracking user actions with encrypted storage."""
 
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from collections import defaultdict
-import json
 import structlog
-from pathlib import Path
 
 from app.models.analytics import (
     UserAction, ActionType, UserStats, DashboardStats,
@@ -13,60 +11,55 @@ from app.models.analytics import (
     AdminDashboardStats, UserDetail, UserDialogEntry
 )
 from app.utils.pii_masking import safe_log_params
+from app.services.encrypted_storage import EncryptedStorage
 
 logger = structlog.get_logger()
 
 
 class AnalyticsService:
-    """Service for tracking and analyzing user actions."""
+    """Service for tracking and analyzing user actions with encrypted storage."""
 
-    def __init__(self, data_file: str = "/var/lib/calendar-bot/analytics_data.json"):
-        """Initialize analytics service with JSON file storage."""
-        self.data_file = Path(data_file)
+    def __init__(self, data_dir: str = "/var/lib/calendar-bot"):
+        """Initialize analytics service with encrypted storage."""
+        self.storage = EncryptedStorage(data_dir=data_dir)
+        self.data_filename = "analytics_data.json"
         self.actions: List[UserAction] = []
         self._load_data()
 
     def _load_data(self):
-        """Load analytics data from JSON file."""
+        """Load analytics data from encrypted storage."""
         try:
-            if self.data_file.exists():
-                with open(self.data_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.actions = [
-                        UserAction(**action) for action in data.get('actions', [])
-                    ]
-                logger.info("analytics_data_loaded", count=len(self.actions))
-            else:
-                logger.info("analytics_data_file_not_found", creating_new=True)
-                self._save_data()
+            data = self.storage.load(self.data_filename, default={'actions': []})
+            self.actions = [
+                UserAction(**action) for action in data.get('actions', [])
+            ]
+            logger.info("analytics_data_loaded_encrypted", count=len(self.actions))
         except Exception as e:
             logger.error("analytics_load_error", error=str(e), exc_info=True)
             self.actions = []
 
     def _save_data(self):
-        """Save analytics data to JSON file."""
+        """Save analytics data to encrypted storage."""
         try:
-            self.data_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.data_file, 'w', encoding='utf-8') as f:
-                data = {
-                    'actions': [
-                        {
-                            'user_id': action.user_id,
-                            'action_type': action.action_type,
-                            'timestamp': action.timestamp.isoformat(),
-                            'details': action.details,
-                            'event_id': action.event_id,
-                            'success': action.success,
-                            'error_message': action.error_message,
-                            'is_test': action.is_test,
-                            'username': action.username,
-                            'first_name': action.first_name,
-                            'last_name': action.last_name
-                        }
-                        for action in self.actions
-                    ]
-                }
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            data = {
+                'actions': [
+                    {
+                        'user_id': action.user_id,
+                        'action_type': action.action_type,
+                        'timestamp': action.timestamp.isoformat(),
+                        'details': action.details,
+                        'event_id': action.event_id,
+                        'success': action.success,
+                        'error_message': action.error_message,
+                        'is_test': action.is_test,
+                        'username': action.username,
+                        'first_name': action.first_name,
+                        'last_name': action.last_name
+                    }
+                    for action in self.actions
+                ]
+            }
+            self.storage.save(data, self.data_filename, encrypt=True)
         except Exception as e:
             logger.error("analytics_save_error", error=str(e), exc_info=True)
 

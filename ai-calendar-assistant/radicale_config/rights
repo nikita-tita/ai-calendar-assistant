@@ -1,11 +1,26 @@
 # Rights file for Radicale
+# SECURITY: Each user can only access their own collections
 # Format: [section]
-#         user: .+
-#         collection: .*
-#         permissions: RrWw
+#         user: regex
+#         collection: regex
+#         permissions: R(read) r(read props) W(write) w(write props)
 
-# Allow all users full access to all collections
-[allow-all]
-user: .+
+# Bot service account has full access to all calendars
+[bot-full-access]
+user: calendar_bot
 collection: .*
 permissions: RrWw
+
+# Users can only access their own calendars (telegram_{user_id})
+[user-own-calendars]
+user: .+
+collection: {user}/.*
+permissions: RrWw
+
+# Users can create their own root collection
+[user-create-own]
+user: .+
+collection: {user}
+permissions: RrWw
+
+# Deny access to other users' collections (implicit - no matching rule = no access)

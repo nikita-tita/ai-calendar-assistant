@@ -1,67 +1,62 @@
-"""Service for managing todos."""
+"""Service for managing todos with encrypted storage."""
 
-import json
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import List, Optional, Dict
 import structlog
 from threading import Lock
 
 from app.schemas.todos import Todo, TodoDTO, TodoPriority
+from app.services.encrypted_storage import EncryptedStorage
 
 logger = structlog.get_logger()
 
 
 class TodosService:
-    """Service for storing and managing user todos."""
+    """Service for storing and managing user todos with encrypted storage."""
 
-    def __init__(self, storage_path: str = "./data/todos"):
+    def __init__(self, data_dir: str = "/var/lib/calendar-bot/todos"):
         """
-        Initialize todos service.
+        Initialize todos service with encrypted storage.
 
         Args:
-            storage_path: Directory path for storing todo files
+            data_dir: Directory path for storing encrypted todo files
         """
-        self.storage_path = Path(storage_path)
-        self.storage_path.mkdir(parents=True, exist_ok=True)
+        self.storage = EncryptedStorage(data_dir=data_dir)
         self._lock = Lock()
-        logger.info("todos_service_initialized", storage_path=str(self.storage_path))
+        logger.info("todos_service_initialized_encrypted", data_dir=data_dir)
 
-    def _get_user_file(self, user_id: str) -> Path:
-        """Get path to user's todos file."""
-        return self.storage_path / f"user_{user_id}.json"
+    def _get_user_filename(self, user_id: str) -> str:
+        """Get filename for user's todos."""
+        return f"user_{user_id}.json"
 
     def _load_todos(self, user_id: str) -> Dict[str, dict]:
         """
-        Load todos for a user from file.
+        Load todos for a user from encrypted storage.
 
         Returns:
             Dictionary mapping todo_id to todo data
         """
-        user_file = self._get_user_file(user_id)
-        if not user_file.exists():
-            return {}
-
         try:
-            with open(user_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # Convert datetime strings back to datetime objects
-                for todo_id, todo_data in data.items():
-                    if todo_data.get('due_date'):
-                        todo_data['due_date'] = datetime.fromisoformat(todo_data['due_date'])
-                    if todo_data.get('created_at'):
-                        todo_data['created_at'] = datetime.fromisoformat(todo_data['created_at'])
-                    if todo_data.get('updated_at'):
-                        todo_data['updated_at'] = datetime.fromisoformat(todo_data['updated_at'])
-                return data
+            filename = self._get_user_filename(user_id)
+            data = self.storage.load(filename, default={})
+
+            # Convert datetime strings back to datetime objects
+            for todo_id, todo_data in data.items():
+                if todo_data.get('due_date'):
+                    todo_data['due_date'] = datetime.fromisoformat(todo_data['due_date'])
+                if todo_data.get('created_at'):
+                    todo_data['created_at'] = datetime.fromisoformat(todo_data['created_at'])
+                if todo_data.get('updated_at'):
+                    todo_data['updated_at'] = datetime.fromisoformat(todo_data['updated_at'])
+            return data
         except Exception as e:
             logger.error("load_todos_error", user_id=user_id, error=str(e))
             return {}
 
     def _save_todos(self, user_id: str, todos: Dict[str, dict]) -> bool:
         """
-        Save todos for a user to file.
+        Save todos for a user to encrypted storage.
 
         Args:
             user_id: User ID
@@ -70,8 +65,6 @@ class TodosService:
         Returns:
             True if successful
         """
-        user_file = self._get_user_file(user_id)
-
         try:
             with self._lock:
                 # Convert datetime objects to strings for JSON serialization
@@ -86,8 +79,8 @@ class TodosService:
                         todo_copy['updated_at'] = todo_copy['updated_at'].isoformat()
                     serializable_todos[todo_id] = todo_copy
 
-                with open(user_file, 'w', encoding='utf-8') as f:
-                    json.dump(serializable_todos, f, ensure_ascii=False, indent=2)
+                filename = self._get_user_filename(user_id)
+                self.storage.save(serializable_todos, filename, encrypt=True)
             return True
         except Exception as e:
             logger.error("save_todos_error", user_id=user_id, error=str(e))

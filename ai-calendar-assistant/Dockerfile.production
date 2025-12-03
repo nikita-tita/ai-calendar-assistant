@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Установка системных зависимостей для аудио
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем зависимости
+COPY requirements-full.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем код приложения
+COPY app/ ./app/
+COPY run_polling.py .
+COPY .env* ./
+
+CMD ["python", "run_polling.py"]
