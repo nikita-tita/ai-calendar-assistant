@@ -937,6 +937,10 @@ Housler.ru сделал подборку сервисов, которые пом
             await self._handle_delete_duplicates(update, user_id, event_dto)
             return
 
+
+        if event_dto.intent == IntentType.TODO:
+            await self._handle_create_todo(update, user_id, event_dto)
+            return
         # Other intents not yet implemented
         await update.message.reply_text(
             "Эта функция пока в разработке. Скоро будет доступна!"
@@ -1418,6 +1422,23 @@ Housler.ru сделал подборку сервисов, которые пом
 
         await update.message.reply_text(message, reply_markup=keyboard)
 
+
+    async def _handle_create_todo(self, update: Update, user_id: str, event_dto) -> None:
+        """Handle todo creation from LLM intent."""
+        from app.schemas.todos import TodoDTO
+        
+        title = event_dto.title or event_dto.raw_text
+        if not title:
+            await update.message.reply_text("Не понял, что добавить в задачи.")
+            return
+        
+        todo_dto = TodoDTO(title=title)
+        todo_id = await todos_service.create_todo(user_id, todo_dto)
+        
+        if todo_id:
+            await update.message.reply_text(f"✅ Добавил в задачи: {title}")
+        else:
+            await update.message.reply_text("Не получилось создать задачу. Попробуйте ещё раз.")
 
 # Global instance (will be initialized in router)
 telegram_handler: Optional[TelegramHandler] = None
