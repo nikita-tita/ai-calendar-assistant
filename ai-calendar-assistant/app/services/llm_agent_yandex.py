@@ -39,7 +39,7 @@ Your task is to understand user commands in natural language (Russian, English, 
 and convert them into structured calendar actions.
 
 Possible actions (intent):
-- create: create a single new event
+- create: create a single new event WITH specific time
 - create_recurring: create recurring events (daily, weekly, monthly patterns)
 - update: modify an existing event
 - delete: delete an event
@@ -48,13 +48,50 @@ Possible actions (intent):
 - batch_confirm: confirm multiple specific events (for deletions or custom lists)
 - delete_by_criteria: delete events matching criteria (title contains, date range)
 - delete_duplicates: delete duplicate events (same title and time). Use when user says "удали дубликаты", "удали повторяющиеся", "удали одинаковые события"
+- todo: create a task WITHOUT specific time slot (for tasks that need to be done but aren't tied to a calendar slot)
 - clarify: ask for clarification if information is insufficient
+
+DISTINGUISHING EVENTS vs TASKS (TODO):
+Use intent="todo" when:
+- Action verbs WITHOUT specific time: написать (write), позвонить (call), купить (buy), изучить (study), сделать (do), подготовить (prepare), обновить (update), проверить (check), поменять (change), заменить (replace), исправить (fix), согласовать (coordinate), договориться (arrange), уточнить (clarify), обсудить (discuss), назначить (schedule/arrange)
+- User says "завтра", "в понедельник", "на неделе" but NO specific time mentioned
+- Request is about completing something, not scheduling something
+- Keywords: "надо", "нужно", "не забыть", "сделать", "список дел", "задача", "task"
+- CRITICAL: Word "задача" (task) ALWAYS means intent="todo", even if "встреча" is mentioned
+- Abbreviations: "пнд" = персональные данные (personal data), "перс данные" = персональные данные
+- CRITICAL: If no time specified → ALWAYS use intent="todo", NEVER use intent="clarify" for missing time
+
+Use intent="create" (calendar event) when:
+- Specific time mentioned: "в 15:00", "at 3pm", "завтра в 10 утра", "в понедельник в 14:00"
+- Meeting/appointment words WITH time: встреча (meeting), показ (showing), просмотр (viewing), звонок с указанием времени (scheduled call)
+- Events that occupy a specific time slot
+- IMPORTANT: "встреча" WITHOUT specific time → intent="todo" (task to arrange meeting)
+
+Examples:
+- "Написать отчет завтра" → intent="todo" (no specific time)
+- "Встреча завтра в 15:00" → intent="create" (specific time)
+- "Позвонить Ивану" → intent="todo" (no time specified)
+- "Звонок с Иваном завтра в 10:00" → intent="create" (specific time)
+- "Купить молоко" → intent="todo"
+- "Показ квартиры завтра в 14:00" → intent="create"
+- "Обновить пнд" → intent="todo", title="Обновить персональные данные" (no time, abbreviation expanded)
+- "Обновить перс данные" → intent="todo", title="Обновить персональные данные" (no time)
+- "Поменять пнд и оферту на Ип" → intent="todo", title="Поменять персональные данные и оферту на ИП" (no time)
+- "Проверить почту в понедельник" → intent="todo", due_date=Monday (no specific time)
+- "Встреча в понедельник в 10:00" → intent="create" (specific time)
+- "Задача на завтра: согласовать встречу с Рафетом" → intent="todo", title="Согласовать встречу с Рафетом", due_date=tomorrow (keyword "задача" = always todo)
+- "Задача: позвонить клиенту" → intent="todo" (keyword "задача")
+- "Согласовать встречу с Максимом" → intent="todo" (action verb "согласовать", no time)
+- "Договориться о встрече завтра" → intent="todo", due_date=tomorrow (action verb, no specific time)
+- "Встреча завтра" → intent="todo" (no specific time, task to arrange)
 
 Rules:
 1. Always return time in ISO 8601 format with the user's timezone
-2. If information is missing (date, time, title) - use intent=clarify
+2. For EVENTS (create/update): If information is missing (date, time, title) - use intent=clarify
+2a. For TODO: Only title is required. If user says "завтра" for todo, set due_date to tomorrow midnight
+2b. For TODO: start_time and end_time should be NULL (tasks don't have specific time slots)
 3. IMPORTANT: For relative dates (tomorrow, next Friday) calculate the exact date relative to CURRENT DATE
-4. IMPORTANT: If date is NOT explicitly stated and NOT relative - use intent=clarify
+4. IMPORTANT: For EVENTS - if date is NOT explicitly stated and NOT relative, use intent=clarify. For TODO - date is optional
 5. IMPORTANT: Use context from previous messages - if user is answering a clarification question, supplement with history
 6. Default duration is 60 minutes if not specified
 7. Extract attendees from text (names, emails)
@@ -74,11 +111,14 @@ RECURRING EVENTS (Creating Multiple Events with Patterns):
    - "until Friday" or "до пятницы" → recurrence_end_date = next Friday
    - "always" or "всегда" → recurrence_end_date = {end_of_year_date}
    - "for a week" or "на неделю" → recurrence_end_date = today + 7 days
-11. EXAMPLES with current date {today_str}:
-   - User: "Every day at 9am" → create_recurring with recurrence_type="daily", recurrence_end_date={end_of_year_date}
-   - User: "каждый день в 9 утра" → create_recurring with recurrence_type="daily", recurrence_end_date={end_of_year_date}
-   - User: "Daily for 5 days" → create_recurring with recurrence_type="daily", recurrence_end_date = today + 5 days
-   - User: "Every Monday and Wednesday at 10am" → create_recurring with recurrence_type="weekly", recurrence_days=["mon", "wed"]
+11. RECURRING PATTERNS - Natural Language Examples:
+   - "бег по утрам в 9 часов" → create_recurring, recurrence_type="daily", start_time=9:00, title="Бег"
+   - "поставь бег каждое утро в 9" → create_recurring, recurrence_type="daily", start_time=9:00
+   - "каждый вторник в 14 совещание" → create_recurring, recurrence_type="weekly", recurrence_days=["tue"], start_time=14:00, title="Совещание"
+   - "Every day at 9am" → create_recurring with recurrence_type="daily", recurrence_end_date={end_of_year_date}
+   - "каждый день в 9 утра" → create_recurring with recurrence_type="daily", recurrence_end_date={end_of_year_date}
+   - "Daily for 5 days" → create_recurring with recurrence_type="daily", recurrence_end_date = today + 5 days
+   - "Every Monday and Wednesday at 10am" → create_recurring with recurrence_type="weekly", recurrence_days=["mon", "wed"]
 12. System will generate ALL events automatically from recurrence pattern
 13. User will see summary and confirm before creation
 
@@ -115,9 +155,25 @@ BATCH SCHEDULE CREATION (Multiple Events from Schedule Format):
     - Do NOT automatically assume next year - ALWAYS ask user to confirm
     - For dates with explicit year (23.10.2025) - no clarification needed
 
+MULTIPLE EVENTS IN ONE COMMAND (Sequential Actions):
+26. CRITICAL: When user mentions MULTIPLE events/tasks in ONE message with connectors, create batch_actions array
+27. Connectors to detect: "потом", "затем", "а потом", "после этого", "потім", "then", "and then", "after that", "также", "еще"
+28. Mixed events and tasks detection:
+   - Parse each part separately
+   - Events (with time) → intent="create"
+   - Tasks (no time) → intent="todo"
+   - Return batch_actions array with ALL actions
+29. EXAMPLES:
+   - "В 17 встреча, в 19 ужин и еще позвонить маме" → batch_actions: [{{create at 17}}, {{create at 19}}, {{todo: call}}]
+   - "Сегодня в 18 забрать вещи, потом в 19 сходить в магазин" → batch_actions: [{{create at 18}}, {{create at 19}}]
+   - "Завтра встреча в 10, потом обед в 13, а потом нужно проверить почту" → batch_actions: [{{create at 10}}, {{create at 13}}, {{todo}}]
+   - "At 2pm call John, then at 4pm team meeting" → batch_actions: [{{create at 14:00}}, {{create at 16:00}}]
+30. IMPORTANT: Even if message is long/complex, try to extract ALL events/tasks into batch_actions
+31. If more than 10 actions detected, ask for confirmation via intent="clarify"
+
 OTHER OPERATIONS:
-26. For single updates - return ONE action without batch_actions
-27. For complex commands ("delete X and create Y") - use clarify to ask for one at a time
+32. For single updates - return ONE action without batch_actions
+33. For complex commands mixing different intent types (delete + create) - use clarify to ask for one at a time
 
 Time recognition examples:
 - "meeting at 10" or "at 10" -> 10:00 (morning)
@@ -126,17 +182,37 @@ Time recognition examples:
 - "reschedule to 3" -> new time 15:00 (NOT a date!)
 - "reschedule to the 15th" -> new date 15th of month
 
-Example commands:
-- "Team meeting tomorrow at 10" -> create, title="Team meeting", start=tomorrow 10:00
-- "What do I have tomorrow?" -> query, query_date_start=tomorrow
-- "What do I have today?" -> query, query_date_start=today
-- "What do I have this week?" -> query, query_date_start=today, query_date_end=end_of_week (7 days from today)
-- "Какие планы на эту неделю?" -> query, query_date_start=today, query_date_end=end_of_week (7 days from today)
-- "Free time on Friday" -> find_free_slots, query_date_start=Friday
-- "Reschedule meeting with Kate to 2 PM" -> update, find "meeting with Kate", new start_time=14:00 SAME DAY
-- "Reschedule to Wednesday" -> clarify (need to know which meeting)
-- "Meeting at 9am every day until Friday" -> batch_confirm with batch_actions array (5 events)
-- "Cold calling at 8am until end of week" -> batch_confirm with batch_actions array
+Example commands (NATURAL LANGUAGE):
+
+Creating events:
+- "Team meeting tomorrow at 10" → create, title="Team meeting", start=tomorrow 10:00
+- "В 17 встреча с клиентом" → create, start=today 17:00, title="Встреча с клиентом"
+- "Завтра в 14 презентация" → create, start=tomorrow 14:00, title="Презентация"
+
+Querying schedule (recognize various formulations):
+- "What do I have tomorrow?" → query, query_date_start=tomorrow
+- "What do I have today?" → query, query_date_start=today
+- "Какие планы на эту неделю?" → query, query_date_start=today, query_date_end=today+7 days
+- "Что у меня сегодня?" → query, query_date_start=today
+- "Скажи мне во сколько я занят сегодня" → query, query_date_start=today
+- "Когда я свободен завтра?" → find_free_slots, query_date_start=tomorrow
+- "Когда я свободен завтра после 16?" → find_free_slots, query_date_start=tomorrow, query_time_start=16:00
+- "Свободное время в пятницу" → find_free_slots, query_date_start=Friday
+- "When am I free after 4pm today?" → find_free_slots, query_date_start=today, query_time_start=16:00
+
+Recurring events (natural language):
+- "Бег по утрам в 9 часов" → create_recurring, daily, 9:00, title="Бег"
+- "Каждый вторник в 14 совещание" → create_recurring, weekly, tue, 14:00, title="Совещание"
+- "Every Monday at 10 standup" → create_recurring, weekly, mon, 10:00, title="Standup"
+
+Multiple actions in one command:
+- "В 17 встреча, в 19 ужин и позвонить маме" → batch_actions: [create 17:00, create 19:00, todo]
+- "Сегодня в 18 забрать вещи, потом в 19 в магазин" → batch_actions: [create 18:00, create 19:00]
+
+Updating/Deleting:
+- "Reschedule meeting with Kate to 2 PM" → update, find "meeting with Kate", new start_time=14:00 SAME DAY
+- "Reschedule to Wednesday" → clarify (need to know which meeting)
+- "Удали встречу завтра" → clarify or delete if only one event tomorrow
 
 IMPORTANT: Your response must be ONLY in JSON format with fields from set_calendar_action function schema.
 Do not add any text before or after JSON.
@@ -500,13 +576,10 @@ For batch_confirm intent, include "batch_actions" array field with all events to
             end_of_year_date = end_of_year.strftime('%Y-%m-%d')  # Format: 2025-12-31 or 2026-12-31
 
             # Prepare events list to prepend to user message
-            # Limit to first 10 events to avoid content moderation triggers
             events_prefix = ""
             if existing_events and len(existing_events) > 0:
-                max_events_in_context = 10
-                limited_events = existing_events[:max_events_in_context]
                 events_prefix = "<existing_calendar_events>\n"
-                for event in limited_events:
+                for event in existing_events:
                     event_time = event.start.strftime('%d.%m.%Y %H:%M') if hasattr(event, 'start') else 'Unknown'
                     event_title = event.summary if hasattr(event, 'summary') else 'No title'
                     event_id = event.id if hasattr(event, 'id') else 'unknown'
@@ -617,12 +690,9 @@ Ejemplos de fechas relativas desde la FECHA ACTUAL ({current_date_str}):
             start_time, end_time, duration = parse_datetime_range(user_text)
 
             # Build dynamic enum for event_id with real IDs from existing events
-            # Limit to first 10 events to match events_prefix and avoid large prompts
             event_id_enum = ["none"]  # default value for create/query
             if existing_events and len(existing_events) > 0:
-                max_events_in_context = 10
-                limited_events = existing_events[:max_events_in_context]
-                for event in limited_events:
+                for event in existing_events:
                     if hasattr(event, 'id') and event.id:
                         event_id_enum.append(str(event.id))
 
@@ -638,7 +708,7 @@ Ejemplos de fechas relativas desde la FECHA ACTUAL ({current_date_str}):
                     "properties": {
                         "intent": {
                             "type": "string",
-                            "enum": ["create", "create_recurring", "update", "delete", "query", "find_free_slots", "clarify", "batch_confirm", "delete_by_criteria", "delete_duplicates"],
+                            "enum": ["create", "create_recurring", "update", "delete", "query", "find_free_slots", "clarify", "batch_confirm", "delete_by_criteria", "delete_duplicates", "todo"],
                             "description": "Тип действия"
                         },
                         "title": {
@@ -915,8 +985,38 @@ Respuesta JSON:""",
         # Build EventDTO
         raw_intent = input_data.get("intent", "clarify")
         logger.info("yandex_gpt_building_dto", raw_intent=raw_intent, input_data_keys=list(input_data.keys()))
-        intent = IntentType(raw_intent)
 
+        # FALLBACK: If LLM returns clarify asking for date/time, but text looks like a simple task
+        # Convert to todo intent instead
+        if raw_intent == "clarify":
+            clarify_q = input_data.get("clarify_question", "").lower()
+            text_lower = user_text.lower()
+            
+            # Check if clarify is asking for date/time
+            date_time_keywords = ["дату", "время", "когда", "date", "time", "when"]
+            asking_for_datetime = any(kw in clarify_q for kw in date_time_keywords)
+            
+            # Check if text has action verbs typical for tasks (without specific time)
+            task_verbs = ["позвонить", "написать", "купить", "сделать", "проверить", 
+                         "обновить", "согласовать", "подготовить", "отправить", "найти",
+                         "изучить", "узнать", "договориться", "поменять", "заменить",
+                         "задача", "напомнить", "записать"]
+            has_task_verb = any(verb in text_lower for verb in task_verbs)
+            
+            # Check if there is NO specific time in user text
+            import re
+            time_pattern = r"\d{1,2}[:\.]?\d{0,2}\s*(утра|вечера|ночи|дня|am|pm)"
+            has_time = bool(re.search(time_pattern, text_lower)) or bool(re.search(r"\d{1,2}:\d{2}", text_lower))
+            
+            if asking_for_datetime and has_task_verb and not has_time:
+                logger.info("todo_fallback_activated", user_text=user_text, clarify_question=clarify_q)
+                raw_intent = "todo"
+                intent = IntentType.TODO
+                input_data["title"] = user_text.strip()
+                input_data["intent"] = "todo"
+
+
+        intent = IntentType(raw_intent)
         # Parse datetimes
         start_time = None
         end_time = None
@@ -924,7 +1024,7 @@ Respuesta JSON:""",
         if "start_time" in input_data:
             try:
                 start_time = datetime.fromisoformat(input_data["start_time"])
-            except (ValueError, TypeError) as e:
+            except:
                 # Try parsing as time-only (HH:MM) for recurring events
                 import re
                 import pytz
@@ -943,12 +1043,11 @@ Respuesta JSON:""",
                                timezone=str(start_time.tzinfo))
                 else:
                     start_time = parsed_start
-                    logger.warning("start_time_parse_failed", input=input_data["start_time"], error=str(e))
 
         if "end_time" in input_data:
             try:
                 end_time = datetime.fromisoformat(input_data["end_time"])
-            except (ValueError, TypeError) as e:
+            except:
                 # Try parsing as time-only (HH:MM)
                 import re
                 time_match = re.match(r'^(\d{1,2}):(\d{2})$', str(input_data["end_time"]))
@@ -958,7 +1057,6 @@ Respuesta JSON:""",
                     end_time = start_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 else:
                     end_time = parsed_end
-                    logger.warning("end_time_parse_failed", input=input_data["end_time"], error=str(e))
 
         # Use parsed values as fallback
         if not start_time:
@@ -1044,16 +1142,16 @@ Respuesta JSON:""",
                 dt = self._parse_optional_datetime(first_date_str)
                 if dt:
                     first_date = format_datetime_human(dt, locale=language)
-        except Exception as e:
-            logger.warning("first_date_format_error", date=first_date_str, error=str(e))
+        except:
+            pass
 
         try:
             if last_date_str:
                 dt = self._parse_optional_datetime(last_date_str)
                 if dt:
                     last_date = format_datetime_human(dt, locale=language)
-        except Exception as e:
-            logger.warning("last_date_format_error", date=last_date_str, error=str(e))
+        except:
+            pass
 
         # Build compact summary based on action type
         # Get last event title too
@@ -1111,8 +1209,7 @@ Respuesta JSON:""",
                                     date_str = start_dt.strftime("%d.%m")
                                     time_str = f"{start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')}"
                                     summary += f"• {act_title}\n  📅 {date_str} | 🕐 {time_str}\n"
-                            except Exception as e:
-                                logger.debug("batch_summary_format_error", index=i, error=str(e))
+                            except:
                                 summary += f"• {act_title}\n"
 
                         if action_count > 10:
@@ -1146,8 +1243,7 @@ Respuesta JSON:""",
                                     date_str = start_dt.strftime("%d.%m")
                                     time_str = f"{start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')}"
                                     summary += f"• {act_title}\n  📅 {date_str} | 🕐 {time_str}\n"
-                            except Exception as e:
-                                logger.debug("batch_summary_format_error", index=i, error=str(e))
+                            except:
                                 summary += f"• {act_title}\n"
 
                         if action_count > 10:
@@ -1191,8 +1287,7 @@ Respuesta JSON:""",
                 tz = pytz.timezone(settings.default_timezone)
                 dt = tz.localize(dt)
             return dt
-        except (ValueError, TypeError) as e:
-            logger.debug("datetime_parse_failed", input=dt_str, error=str(e))
+        except:
             return None
 
 
