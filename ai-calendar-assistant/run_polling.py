@@ -34,12 +34,15 @@ async def main():
 
     # Create wrapper for handle_update that accepts context
     async def handle_with_context(update: Update, context):
-        # Register user for reminders on /start
-        if update.message and update.message.text and update.message.text.startswith('/start'):
+        # Register user for reminders on ANY message (idempotent - won't duplicate)
+        if update.effective_user and update.effective_chat:
             user_id = str(update.effective_user.id)
             chat_id = update.effective_chat.id
-            reminders.register_user(user_id, chat_id)
-            event_reminders.register_user(user_id, chat_id)
+            # Only register if not already in active_users (avoid unnecessary file writes)
+            if user_id not in reminders.active_users:
+                reminders.register_user(user_id, chat_id)
+            if user_id not in event_reminders.active_users:
+                event_reminders.register_user(user_id, chat_id)
 
         await handler.handle_update(update)
 

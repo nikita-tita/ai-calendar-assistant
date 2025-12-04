@@ -1,7 +1,7 @@
 """Daily reminders service for morning and evening messages."""
 
 import asyncio
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Dict
 import json
 from pathlib import Path
@@ -22,6 +22,11 @@ logger = structlog.get_logger()
 # When TEST_MODE is True, only TEST_USER_IDS will receive reminders at test times
 TEST_MODE = False  # Production mode - all users receive reminders at their configured times
 TEST_USER_IDS = {"2296243"}  # @nikita_tita - test user IDs (only used when TEST_MODE=True)
+
+
+def is_time_match(current: time, target: time) -> bool:
+    """Check if current time matches target time (same hour and minute)."""
+    return current.hour == target.hour and current.minute == target.minute
 
 
 class DailyRemindersService:
@@ -78,7 +83,6 @@ class DailyRemindersService:
             today = now_user_tz.date()
 
             # Get today's events - define time range for today
-            from datetime import timedelta
             start_of_day = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = start_of_day + timedelta(days=1)
 
@@ -166,7 +170,6 @@ class DailyRemindersService:
             today = now_user_tz.date()
 
             # Get today's events count - define time range for today
-            from datetime import timedelta
             start_of_day = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = start_of_day + timedelta(days=1)
 
@@ -298,10 +301,6 @@ class DailyRemindersService:
 
                         else:
                             # PRODUCTION SCHEDULE - uses user's configured times
-                            # Helper function to check if current time matches target time (same hour and minute)
-                            def is_time_match(current: time, target: time) -> bool:
-                                return current.hour == target.hour and current.minute == target.minute
-
                             current_minute_time = time(user_time.hour, user_time.minute)
 
                             # Morning reminder at user's configured time
@@ -310,8 +309,8 @@ class DailyRemindersService:
                                     await self.send_morning_reminder(user_id, chat_id)
                                     await asyncio.sleep(1)  # Rate limiting
 
-                            # Morning motivation at 10:00 (1 hour after default morning time)
-                            if not in_quiet_hours and is_time_match(current_minute_time, time(10, 0)):
+                            # Morning motivation at 10:00 (only if morning reminders enabled)
+                            if morning_enabled and not in_quiet_hours and is_time_match(current_minute_time, time(10, 0)):
                                 user_date_key = f"{user_id}:{user_local_time.date()}"
                                 if user_date_key not in motivation_sent_today:
                                     await self.send_morning_motivation(user_id, chat_id)
