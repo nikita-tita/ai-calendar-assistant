@@ -453,9 +453,9 @@ Housler.ru сделал подборку сервисов, которые пом
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📰 Новости", url="https://housler.ru/blog")],
             [InlineKeyboardButton("🏷 Оценить рыночную стоимость", url="https://housler.ru/calculator")],
-            [InlineKeyboardButton("💰 Ипотечный брокер", url="https://m2.ru/ipoteka/calculator/")],
-            [InlineKeyboardButton("🛡 Защита сделки", url="https://m2.ru/services/guaranteed-deal/")],
-            [InlineKeyboardButton("📋 Регистрация и безопасные расчеты", url="https://m2.ru/services/deal/")],
+            [InlineKeyboardButton("💰 Ипотечный брокер", url="https://m2.ru/ipoteka/calculator/?utm_source=telegram&utm_medium=message&utm_campaign=inhouse_nobrand_rassmotr_ipoteka_b2b_internal_chatbot")],
+            [InlineKeyboardButton("🛡 Защита сделки", url="https://m2.ru/services/guaranteed-deal/?utm_source=telegram&utm_medium=message&utm_campaign=inhouse_nobrand_rassmotr_guaranteed-deal_b2b_internal_chatbot")],
+            [InlineKeyboardButton("📋 Регистрация и безопасные расчеты", url="https://m2.ru/services/deal/?utm_source=telegram&utm_medium=message&utm_campaign=inhouse_nobrand_rassmotr_sdelka_b2b_internal_chatbot")],
             [InlineKeyboardButton("🏠 Аренда", url="https://arenda.yandex.ru/pages/for-agents/?utm_source=menu_landing")]
         ])
 
