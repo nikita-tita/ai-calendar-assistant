@@ -950,12 +950,14 @@ Housler.ru сделал подборку сервисов, которые пом
         )
         _total_duration_ms = (time.perf_counter() - _handle_start) * 1000
         _llm_duration_ms = _total_duration_ms - _events_duration_ms
+        # Get intent as string (may be enum or already string)
+        _intent_str = event_dto.intent.value if hasattr(event_dto.intent, 'value') else str(event_dto.intent) if event_dto.intent else "unknown"
         logger.info("handle_text_llm_done",
                    user_id=user_id,
                    events_ms=round(_events_duration_ms, 1),
                    llm_ms=round(_llm_duration_ms, 1),
                    total_ms=round(_total_duration_ms, 1),
-                   intent=event_dto.intent.value if event_dto.intent else "unknown")
+                   intent=_intent_str)
 
         # Update conversation history based on intent
         if event_dto.intent == IntentType.CLARIFY:

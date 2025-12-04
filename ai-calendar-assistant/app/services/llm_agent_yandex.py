@@ -853,7 +853,9 @@ Respuesta JSON:""",
 
             try:
                 _http_start = time.perf_counter()
-                response = requests.post(
+                # Run blocking HTTP call in thread pool to avoid blocking event loop
+                response = await asyncio.to_thread(
+                    requests.post,
                     self.api_url,
                     headers=headers,
                     json=payload,
