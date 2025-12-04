@@ -1,6 +1,7 @@
 """LLM Agent service using Yandex GPT (YandexGPT Foundation Models)."""
 
 from typing import Optional, List
+import asyncio
 import json
 import time
 from datetime import datetime, timedelta
@@ -852,7 +853,9 @@ Respuesta JSON:""",
 
             try:
                 _http_start = time.perf_counter()
-                response = requests.post(
+                # Run blocking HTTP call in thread pool to avoid blocking event loop
+                response = await asyncio.to_thread(
+                    requests.post,
                     self.api_url,
                     headers=headers,
                     json=payload,
