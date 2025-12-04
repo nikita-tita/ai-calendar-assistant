@@ -2,6 +2,7 @@
 
 from typing import Optional, List
 import json
+import time
 from datetime import datetime, timedelta
 import requests
 import structlog
@@ -850,12 +851,15 @@ Respuesta JSON:""",
             }
 
             try:
+                _http_start = time.perf_counter()
                 response = requests.post(
                     self.api_url,
                     headers=headers,
                     json=payload,
                     timeout=30
                 )
+                _http_duration_ms = (time.perf_counter() - _http_start) * 1000
+                logger.info("yandex_gpt_http_duration", duration_ms=round(_http_duration_ms, 1))
             except requests.exceptions.Timeout as e:
                 logger.error("yandex_gpt_timeout", error=str(e))
                 # Log timeout error to analytics
