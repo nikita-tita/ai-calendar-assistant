@@ -168,7 +168,7 @@ class TelegramHandler:
             try:
                 analytics_service.log_action(
                     user_id=user_id,
-                    action_type="user_start",
+                    action_type="user_login",
                     details="/start command",
                     success=True,
                     username=update.effective_user.username if update.effective_user else None,
@@ -313,8 +313,8 @@ class TelegramHandler:
             # Show transcribed text
             await update.message.reply_text(f'Вы: "{text}"')
 
-            # Process as text (will route to correct handler based on mode)
-            await self._handle_text(update, user_id, text)
+            # Process as text (from_voice=True to skip double logging)
+            await self._handle_text(update, user_id, text, from_voice=True)
 
         except Exception as e:
             logger.error("voice_transcription_failed", user_id=user_id, error=str(e))
@@ -756,12 +756,16 @@ Housler.ru сделал подборку сервисов, которые пом
         user_id = str(update.effective_user.id)
         return user_preferences.get_timezone(user_id)
 
-    async def _handle_text(self, update: Update, user_id: str, text: str) -> None:
-        """Handle text message - only calendar mode."""
-        logger.info("text_message_received", user_id=user_id, text=text)
+    async def _handle_text(self, update: Update, user_id: str, text: str, from_voice: bool = False) -> None:
+        """Handle text message - only calendar mode.
 
-        # Log message to analytics
-        if ANALYTICS_ENABLED and analytics_service:
+        Args:
+            from_voice: If True, skip analytics logging (already logged as voice_message)
+        """
+        logger.info("text_message_received", user_id=user_id, text=text, from_voice=from_voice)
+
+        # Log message to analytics (skip if from voice - already logged as voice_message)
+        if ANALYTICS_ENABLED and analytics_service and not from_voice:
             try:
                 analytics_service.log_action(
                     user_id=user_id,
@@ -1128,6 +1132,22 @@ Housler.ru сделал подборку сервисов, которые пом
     async def _handle_query(self, update: Update, user_id: str, event_dto) -> None:
         """Handle events query."""
         from datetime import datetime, timedelta
+
+        # Log query to analytics
+        if ANALYTICS_ENABLED and analytics_service:
+            try:
+                from app.models.analytics import ActionType
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.EVENT_QUERY,
+                    details=f"Query: {event_dto.query_date_start} to {event_dto.query_date_end}",
+                    success=True,
+                    username=update.effective_user.username if update.effective_user else None,
+                    first_name=update.effective_user.first_name if update.effective_user else None,
+                    last_name=update.effective_user.last_name if update.effective_user else None
+                )
+            except Exception as e:
+                logger.warning("analytics_log_failed", error=str(e))
 
         # Default to today if no date specified
         start_date = event_dto.query_date_start or datetime.now()

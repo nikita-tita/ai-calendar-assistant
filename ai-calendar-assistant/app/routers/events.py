@@ -1,6 +1,6 @@
 """Events API router for web application."""
 
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -10,10 +10,15 @@ from app.services.calendar_radicale import calendar_service
 from app.services.analytics_service import analytics_service
 from app.models.analytics import ActionType
 from app.schemas.events import EventDTO, CalendarEvent
+from app.middleware.telegram_auth import verify_telegram_webapp_auth_full
 
 logger = structlog.get_logger()
 
 router = APIRouter()
+
+# Rate limiting for webapp_open logging - only log once per user per 5 minutes
+_webapp_open_cache: Dict[str, datetime] = {}
+WEBAPP_OPEN_COOLDOWN = timedelta(minutes=5)
 
 
 # Pydantic models for API
@@ -86,12 +91,21 @@ async def get_user_events(
 
         logger.info("fetching_events", user_id=user_id, start=start, end=end)
 
-        # Log WebApp open (first API call indicates WebApp usage)
-        analytics_service.log_action(
-            user_id=user_id,
-            action_type=ActionType.WEBAPP_OPEN,
-            details=f"WebApp: Fetched events {start} to {end}"
-        )
+        # Log WebApp open with rate limiting (once per user per 5 minutes)
+        now = datetime.now()
+        last_logged = _webapp_open_cache.get(user_id)
+        if last_logged is None or (now - last_logged) > WEBAPP_OPEN_COOLDOWN:
+            # Get full user info for analytics
+            user_info = await verify_telegram_webapp_auth_full(request)
+            analytics_service.log_action(
+                user_id=user_id,
+                action_type=ActionType.WEBAPP_OPEN,
+                details="WebApp opened",
+                username=user_info.get('username') if user_info else None,
+                first_name=user_info.get('first_name') if user_info else None,
+                last_name=user_info.get('last_name') if user_info else None
+            )
+            _webapp_open_cache[user_id] = now
 
         events = await calendar_service.list_events(user_id, start, end)
 
@@ -164,12 +178,16 @@ async def create_event(request: Request, user_id: str, event: EventCreateRequest
 
         logger.info("event_created", user_id=user_id, uid=event_uid)
 
-        # Log to analytics
+        # Log to analytics with user info
+        user_info = await verify_telegram_webapp_auth_full(request)
         analytics_service.log_action(
             user_id=user_id,
             action_type=ActionType.EVENT_CREATE,
             details=f"API: Created {event.title}",
-            event_id=event_uid
+            event_id=event_uid,
+            username=user_info.get('username') if user_info else None,
+            first_name=user_info.get('first_name') if user_info else None,
+            last_name=user_info.get('last_name') if user_info else None
         )
 
         # Return created event

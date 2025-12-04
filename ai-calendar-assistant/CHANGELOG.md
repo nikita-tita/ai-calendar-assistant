@@ -6,6 +6,31 @@
 
 ---
 
+## [2025-12-04] - Analytics Data Quality Fixes
+
+### Fixed
+- **`total_logins` теперь работает** — изменён action_type с `user_start` на `user_login`
+- **Голосовые сообщения не дублируются** — добавлен флаг `from_voice` чтобы не логировать `text_message` после STT
+- **webapp_open не спамит** — добавлен rate limit (1 раз в 5 минут на пользователя)
+
+### Added
+- **EVENT_QUERY теперь логируется** — отслеживание когда пользователи проверяют расписание
+- **Username в WebApp логах** — теперь при открытии WebApp и создании событий через API сохраняется username/first_name/last_name
+- **Функция `verify_telegram_webapp_auth_full()`** — возвращает полную информацию о пользователе из Telegram initData
+
+### Technical
+- Файлы изменены:
+  - `app/services/telegram_handler.py` — user_login, from_voice flag, EVENT_QUERY logging
+  - `app/routers/events.py` — rate limit cache, user info в логах
+  - `app/middleware/telegram_auth.py` — новая функция для полной user info
+
+### Влияние на данные
+- Старые данные с `user_start` останутся, новые будут `user_login`
+- Статистика `total_logins` начнёт расти с новых пользователей
+- Меньше мусорных записей `webapp_open` (раньше: каждый API запрос, теперь: раз в 5 мин)
+
+---
+
 ## [2025-12-04] - Admin Panel Session Persistence (Deployed)
 
 ### Fixed
