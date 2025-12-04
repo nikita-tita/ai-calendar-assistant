@@ -32,6 +32,10 @@
                 <label class="block text-sm font-medium mb-2">Второй пароль</label>
                 <input type="password" id="password2" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
             </div>
+            <div>
+                <label class="block text-sm font-medium mb-2">Третий пароль</label>
+                <input type="password" id="password3" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
+            </div>
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors">Войти</button>
         </form>
         <div id="loginError" class="hidden mt-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-sm"></div>
@@ -353,17 +357,18 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const password1 = document.getElementById('password1').value;
     const password2 = document.getElementById('password2').value;
+    const password3 = document.getElementById('password3')?.value || '';
 
     try {
-        const response = await fetch(`${API_BASE}/login`, {
+        const response = await fetch(`${API_BASE}/verify`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({primary_password: password1, secondary_password: password2})
+            body: JSON.stringify({password1: password1, password2: password2, password3: password3})
         });
 
         const data = await response.json();
-        if (response.ok) {
-            sessionToken = data.session_token;
+        if (response.ok && data.valid) {
+            sessionToken = data.token;
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
             loadDashboard();
@@ -404,22 +409,42 @@ async function fetchAPI(endpoint) {
 
 async function loadDashboard() {
     try {
-        const stats = await fetchAPI('/stats/dashboard');
+        // Use correct API endpoints that match admin.py
+        const stats = await fetchAPI('/stats');
         document.getElementById('totalUsers').textContent = stats.total_users;
-        document.getElementById('totalEvents').textContent = stats.total_events;
+        document.getElementById('totalEvents').textContent = stats.total_events_created;
         document.getElementById('totalMessages').textContent = stats.total_messages;
-        document.getElementById('totalErrors').textContent = stats.total_errors;
+        document.getElementById('totalErrors').textContent = 0; // Not tracked in current API
 
-        const timeline = await fetchAPI('/stats/timeline?hours=24');
-        updateActivityChart(timeline);
+        // Timeline - use new endpoint
+        try {
+            const timeline = await fetchAPI('/timeline?hours=24');
+            updateActivityChart(timeline);
+        } catch (e) {
+            console.log('Timeline not available:', e);
+            updateActivityChart([]);
+        }
 
-        const users = await fetchAPI('/stats/users?limit=10');
-        updateUsersTable(users);
+        // Users list
+        const users = await fetchAPI('/users');
+        updateUsersTable(users.slice(0, 10));
 
-        allActions = await fetchAPI('/actions/recent?limit=200');
-        updateActionsTable(allActions.slice(0, 10));
+        // Actions - use new endpoint
+        try {
+            allActions = await fetchAPI('/actions?limit=200');
+            updateActionsTable(allActions.slice(0, 10));
+        } catch (e) {
+            console.log('Actions not available:', e);
+            allActions = [];
+            updateActionsTable([]);
+        }
 
-        updateDistributionChart(stats);
+        // Distribution chart with available data
+        updateDistributionChart({
+            total_events: stats.total_events_created,
+            total_messages: stats.total_messages,
+            total_errors: 0
+        });
     } catch (err) {
         console.error('Failed to load dashboard:', err);
     }
@@ -482,16 +507,16 @@ function updateDistributionChart(stats) {
 
 function updateUsersTable(users) {
     const tbody = document.getElementById('usersTable');
-    if (users.length === 0) {
+    if (!users || users.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
         return;
     }
 
     tbody.innerHTML = users.map(u => {
-        const lastSeen = new Date(u.last_seen).toLocaleString('ru-RU', {
+        const lastSeen = u.last_seen ? new Date(u.last_seen).toLocaleString('ru-RU', {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-        });
-        
+        }) : '-';
+
         // Build user display name and Telegram link
         let userName = u.user_id;
         let tgLink = '';
@@ -501,15 +526,19 @@ function updateUsersTable(users) {
         } else if (u.first_name || u.last_name) {
             userName = [u.first_name, u.last_name].filter(Boolean).join(' ');
         }
-        
+
         const userDisplay = `<div class="font-mono text-blue-400">${u.user_id}</div>
                              <div class="text-xs text-slate-500">${userName}${tgLink}</div>`;
-        
+
+        // Use fields from UserDetail model
+        const totalEvents = u.total_actions || 0;
+        const totalMessages = u.actions_today || 0;
+
         return `
             <tr class="clickable-row" onclick="showUserProfile('${u.user_id}')">
                 <td class="px-4 py-3 text-sm">${userDisplay}</td>
-                <td class="px-4 py-3 text-sm">${u.total_events}</td>
-                <td class="px-4 py-3 text-sm">${u.total_messages}</td>
+                <td class="px-4 py-3 text-sm">${totalEvents}</td>
+                <td class="px-4 py-3 text-sm">${totalMessages}</td>
                 <td class="px-4 py-3 text-sm text-slate-400">${lastSeen}</td>
             </tr>
         `;
@@ -547,26 +576,11 @@ async function showUserProfile(userId) {
     document.getElementById('filteredView').classList.add('hidden');
     document.getElementById('backBtn').classList.remove('hidden');
 
-    // Get user info from users list or actions
-        let userInfo = '';
-        const userActions = actions.filter(a => a.username || a.first_name || a.last_name);
-        if (userActions.length > 0) {
-            const a = userActions[0];
-            let parts = [];
-            if (a.first_name) parts.push(a.first_name);
-            if (a.last_name) parts.push(a.last_name);
-            if (a.username) parts.push(`(@${a.username})`);
-            userInfo = parts.length > 0 ? ' - ' + parts.join(' ') : '';
-            
-            // Add Telegram link if username exists
-            if (a.username) {
-                userInfo += ` <a href="https://t.me/${a.username}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm">🔗 Открыть в Telegram</a>`;
-            }
-        }
-        document.getElementById('userIdTitle').innerHTML = userId + userInfo;
+    document.getElementById('userIdTitle').textContent = userId;
 
     try {
-        const actions = await fetchAPI(`/actions/user/${userId}?limit=500`);
+        // Use correct endpoint: /users/{id}/dialog
+        const actions = await fetchAPI(`/users/${userId}/dialog?limit=500`);
 
         const events = actions.filter(a => ['event_create', 'event_update', 'event_delete'].includes(a.action_type)).length;
         const messages = actions.filter(a => a.action_type === 'text_message').length;
@@ -625,7 +639,7 @@ async function filterByType(type) {
         subtitle = `Всего найдено ошибок: ${filtered.length}`;
     } else if (type === 'users') {
         try {
-            const users = await fetchAPI('/stats/users?limit=100');
+            const users = await fetchAPI('/users');
             showUsersDetailed(users);
             return;
         } catch (err) {
