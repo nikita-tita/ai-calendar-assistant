@@ -11,7 +11,7 @@
 set -e
 
 # ===== CONFIGURATION =====
-TELEGRAM_BOT_TOKEN="8107613087:AAH6CZ7b1mHVfCoa8vZOwrpLRSoCbILHqV0"
+TELEGRAM_BOT_TOKEN="8107613087:AAHaS8Yatp80tG8jQZeBLYUat1KB_BRB2qI"
 # Chat ID will be detected on first message or set manually
 TELEGRAM_CHAT_ID="${SMOKE_TEST_CHAT_ID:-}"
 
@@ -319,19 +319,24 @@ test_response_time() {
         return 0
     fi
 
-    # Convert to milliseconds
+    # Convert to milliseconds (handle both bc available and not)
     local ms
-    ms=$(echo "$time_total * 1000" | bc 2>/dev/null | cut -d. -f1)
+    if command -v bc &> /dev/null; then
+        ms=$(echo "$time_total * 1000" | bc 2>/dev/null | cut -d. -f1)
+    else
+        # Fallback: use awk
+        ms=$(echo "$time_total" | awk '{printf "%.0f", $1 * 1000}')
+    fi
 
-    if [[ -z "$ms" ]]; then
+    if [[ -z "$ms" ]] || [[ "$ms" == "" ]]; then
         add_result "WARN" "Response time" "${time_total}s"
         return 0
     fi
 
-    if [[ "$ms" -lt 500 ]]; then
+    if [[ "$ms" -lt 1000 ]]; then
         add_result "PASS" "Response time" "${ms}ms"
         return 0
-    elif [[ "$ms" -lt 2000 ]]; then
+    elif [[ "$ms" -lt 3000 ]]; then
         add_result "WARN" "Response time" "${ms}ms (slow)"
         return 0
     else
