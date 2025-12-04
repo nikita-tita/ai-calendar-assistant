@@ -6,6 +6,40 @@
 
 ---
 
+## [2025-12-04] - Automated Smoke Testing
+
+### Added
+- **Автоматический smoke-тест** — `scripts/monitoring/smoke_test.sh`
+- **Отправка отчётов в Telegram** — бот @dogovorarenda_bot
+- **10 проверок системы:**
+  - Health endpoint
+  - WebApp endpoint
+  - Static files версия
+  - Events/Todos API auth (защита HMAC)
+  - SSL сертификат (срок действия)
+  - Response time
+  - Docker контейнеры (3/3 healthy)
+  - Ошибки в логах за 6ч
+  - Количество событий в календаре
+- **Cron расписание** — 10:00 и 17:00 по Москве
+- **Руководство по тестированию** — `docs/06-testing/SMOKE_TEST_GUIDE.md`
+
+### Technical
+- Chat ID: 2296243 (@nikita_tita)
+- Скрипт установки cron: `scripts/monitoring/setup_cron.sh`
+- Логи: `/var/log/smoke_test.log`
+
+### Usage
+```bash
+# Запуск теста вручную
+SMOKE_TEST_CHAT_ID=2296243 ./scripts/monitoring/smoke_test.sh
+
+# Установка cron на сервере
+./scripts/monitoring/setup_cron.sh
+```
+
+---
+
 ## [2025-12-04] - Docker Architecture Cleanup
 
 ### Changed
