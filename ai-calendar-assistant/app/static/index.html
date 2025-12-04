@@ -92,10 +92,27 @@
             </div>
         </div>
     </div>
+    <div id="settingsModal" class="modal" style="display:none;">
+        <div class="secondary-bg rounded-3xl p-6 max-w-sm mx-4 shadow-2xl">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold">Настройки</h3>
+                <button onclick="closeSettings()" class="hint-color text-2xl">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <button onclick="openSupport()" class="tertiary-bg w-full px-4 py-4 rounded-2xl flex items-center gap-3 text-left">
+                    <span class="text-2xl">💬</span>
+                    <div>
+                        <div class="font-medium">Написать нам</div>
+                        <div class="text-sm hint-color">Пожелания, вопросы, предложения</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // Version: 2025-12-04-v2 - Fixed scroll to today, calendar click, improved date handling
-        const APP_VERSION = '2025-12-04-v2';
+        // Version: 2025-12-04-v3 - Added settings with support chat button
+        const APP_VERSION = '2025-12-04-v3';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -655,6 +672,36 @@
                 confirmCallback = null;
             };
 
+            // Settings functions
+            window.openSettings = function() {
+                document.getElementById('settingsModal').style.display = 'flex';
+            };
+
+            window.closeSettings = function() {
+                document.getElementById('settingsModal').style.display = 'none';
+            };
+
+            window.openSupport = function() {
+                closeSettings();
+                // Show message before redirect
+                tg.showPopup({
+                    title: 'Написать нам',
+                    message: 'Здесь вы можете отправить ваши пожелания, предложения и вопросы. Мы рады обратной связи!',
+                    buttons: [
+                        { id: 'open', type: 'default', text: 'Перейти в чат' },
+                        { id: 'cancel', type: 'cancel' }
+                    ]
+                }, function(buttonId) {
+                    if (buttonId === 'open') {
+                        if (window.Telegram?.WebApp?.openTelegramLink) {
+                            window.Telegram.WebApp.openTelegramLink('https://t.me/iay_pm');
+                        } else {
+                            window.open('https://t.me/iay_pm', '_blank');
+                        }
+                    }
+                });
+            };
+
             // Render function
             function render() {
                 const app = document.getElementById('app');
@@ -687,7 +734,12 @@
 
                                 <div class="flex items-center justify-between mb-3">
                                     <h1 class="text-2xl font-bold">${state.activeTab === 'events' ? t.myEvents : t.myTodos}</h1>
-                                    <span class="text-xs hint-color px-2 py-1 rounded" style="background: rgba(59, 130, 246, 0.1);">v981</span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs hint-color px-2 py-1 rounded" style="background: rgba(59, 130, 246, 0.1);">v982</span>
+                                        <button onclick="openSettings()" class="tertiary-bg w-8 h-8 rounded-xl flex items-center justify-center">
+                                            <span class="text-lg">⚙️</span>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 ${state.activeTab === 'events' ? `
