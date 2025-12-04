@@ -117,9 +117,89 @@ class RadicaleService:
             logger.error("calendar_error", user_id=user_id, error=str(e), duration_ms=round(_cal_duration_ms, 1), exc_info=True)
             return None
 
+    def _create_event_sync(self, user_id: str, event: EventDTO) -> Optional[str]:
+        """
+        Synchronous implementation of create_event.
+        Called via asyncio.to_thread to avoid blocking event loop.
+        """
+        import pytz  # Import here for thread safety
+
+        calendar = self._get_user_calendar(user_id)
+        if not calendar:
+            return None
+
+        # Calculate end time
+        end_time = event.end_time or (
+            event.start_time + timedelta(minutes=event.duration_minutes or 60)
+        )
+
+        # Ensure times are timezone-aware (convert to UTC for CalDAV)
+        start_time_utc = event.start_time
+        logger.info("create_event_start_time_input",
+                   start_time=event.start_time.isoformat() if event.start_time else None,
+                   has_tzinfo=event.start_time.tzinfo is not None if event.start_time else None,
+                   tzinfo_str=str(event.start_time.tzinfo) if event.start_time and event.start_time.tzinfo else None)
+
+        if start_time_utc.tzinfo is None:
+            # If naive, assume it's in user's timezone (Moscow by default)
+            moscow_tz = pytz.timezone(settings.default_timezone)
+            start_time_utc = moscow_tz.localize(start_time_utc)
+        # Convert to UTC for CalDAV storage
+        start_time_utc = start_time_utc.astimezone(pytz.UTC)
+
+        logger.info("create_event_start_time_utc",
+                   start_time_utc=start_time_utc.isoformat())
+
+        end_time_utc = end_time
+        if end_time_utc.tzinfo is None:
+            moscow_tz = pytz.timezone(settings.default_timezone)
+            end_time_utc = moscow_tz.localize(end_time_utc)
+        end_time_utc = end_time_utc.astimezone(pytz.UTC)
+
+        # Create iCalendar event
+        cal = Calendar()
+        cal.add('prodid', '-//AI Calendar Assistant//Telegram Bot//RU')
+        cal.add('version', '2.0')
+
+        ical_event = ICalEvent()
+
+        # Generate cryptographically secure unique UID
+        uid = str(uuid.uuid4())
+
+        ical_event.add('uid', uid)
+        ical_event.add('summary', event.title or "Событие")
+        ical_event.add('dtstart', start_time_utc)
+        ical_event.add('dtend', end_time_utc)
+        ical_event.add('dtstamp', datetime.now(pytz.UTC))
+
+        if event.description:
+            ical_event.add('description', event.description)
+
+        if event.location:
+            ical_event.add('location', event.location)
+
+        # Add attendees if any
+        if event.attendees:
+            for attendee in event.attendees:
+                ical_event.add('attendee', f'mailto:{attendee}')
+
+        cal.add_component(ical_event)
+
+        # Save to Radicale
+        calendar.save_event(cal.to_ical().decode('utf-8'))
+
+        logger.info(
+            "event_created",
+            **safe_log_params(user_id=user_id, title=event.title),
+            uid=uid
+        )
+
+        return uid
+
     async def create_event(self, user_id: str, event: EventDTO) -> Optional[str]:
         """
         Create calendar event in user's personal calendar.
+        Runs blocking CalDAV operations in thread pool.
 
         Args:
             user_id: Telegram user ID
@@ -129,79 +209,12 @@ class RadicaleService:
             Event UID or None if failed
         """
         try:
-            calendar = self._get_user_calendar(user_id)
-            if not calendar:
-                return None
-
-            # Calculate end time
-            end_time = event.end_time or (
-                event.start_time + timedelta(minutes=event.duration_minutes or 60)
+            # Run blocking CalDAV operations in thread pool
+            return await asyncio.to_thread(
+                self._create_event_sync,
+                user_id,
+                event
             )
-
-            # Ensure times are timezone-aware (convert to UTC for CalDAV)
-            import pytz
-            start_time_utc = event.start_time
-            logger.info("create_event_start_time_input",
-                       start_time=event.start_time.isoformat() if event.start_time else None,
-                       has_tzinfo=event.start_time.tzinfo is not None if event.start_time else None,
-                       tzinfo_str=str(event.start_time.tzinfo) if event.start_time and event.start_time.tzinfo else None)
-
-            if start_time_utc.tzinfo is None:
-                # If naive, assume it's in user's timezone (Moscow by default)
-                moscow_tz = pytz.timezone(settings.default_timezone)
-                start_time_utc = moscow_tz.localize(start_time_utc)
-            # Convert to UTC for CalDAV storage
-            start_time_utc = start_time_utc.astimezone(pytz.UTC)
-
-            logger.info("create_event_start_time_utc",
-                       start_time_utc=start_time_utc.isoformat())
-
-            end_time_utc = end_time
-            if end_time_utc.tzinfo is None:
-                moscow_tz = pytz.timezone(settings.default_timezone)
-                end_time_utc = moscow_tz.localize(end_time_utc)
-            end_time_utc = end_time_utc.astimezone(pytz.UTC)
-
-            # Create iCalendar event
-            cal = Calendar()
-            cal.add('prodid', '-//AI Calendar Assistant//Telegram Bot//RU')
-            cal.add('version', '2.0')
-
-            ical_event = ICalEvent()
-
-            # Generate cryptographically secure unique UID
-            uid = str(uuid.uuid4())
-
-            ical_event.add('uid', uid)
-            ical_event.add('summary', event.title or "Событие")
-            ical_event.add('dtstart', start_time_utc)
-            ical_event.add('dtend', end_time_utc)
-            ical_event.add('dtstamp', datetime.now(pytz.UTC))
-
-            if event.description:
-                ical_event.add('description', event.description)
-
-            if event.location:
-                ical_event.add('location', event.location)
-
-            # Add attendees if any
-            if event.attendees:
-                for attendee in event.attendees:
-                    ical_event.add('attendee', f'mailto:{attendee}')
-
-            cal.add_component(ical_event)
-
-            # Save to Radicale
-            calendar.save_event(cal.to_ical().decode('utf-8'))
-
-            logger.info(
-                "event_created",
-                **safe_log_params(user_id=user_id, title=event.title),
-                uid=uid
-            )
-
-            return uid
-
         except Exception as e:
             logger.error("event_create_error", user_id=user_id, error=str(e), exc_info=True)
             # Log calendar error to analytics
@@ -435,9 +448,49 @@ class RadicaleService:
             logger.error("free_slots_error", user_id=user_id, error=str(e), exc_info=True)
             return []
 
+    def _update_event_sync(self, user_id: str, event_uid: str, updated_event: EventDTO) -> bool:
+        """
+        Synchronous implementation of update_event.
+        Called via asyncio.to_thread to avoid blocking event loop.
+        """
+        calendar = self._get_user_calendar(user_id)
+        if not calendar:
+            return False
+
+        # Find event to update
+        events = calendar.events()
+        for event in events:
+            ical = Calendar.from_ical(event.data)
+            for component in ical.walk('VEVENT'):
+                if str(component.get('uid')) == event_uid:
+                    # Update fields if provided
+                    if updated_event.title:
+                        component['summary'] = updated_event.title
+                    if updated_event.start_time:
+                        component['dtstart'].dt = updated_event.start_time
+                    if updated_event.end_time:
+                        component['dtend'].dt = updated_event.end_time
+                    elif updated_event.start_time and updated_event.duration_minutes:
+                        component['dtend'].dt = updated_event.start_time + timedelta(minutes=updated_event.duration_minutes)
+                    if updated_event.location:
+                        component['location'] = updated_event.location
+                    if updated_event.description:
+                        component['description'] = updated_event.description
+
+                    # Save updated event
+                    event.data = ical.to_ical()
+                    event.save()
+
+                    logger.info("event_updated", user_id=user_id, uid=event_uid, title=updated_event.title)
+                    return True
+
+        logger.warning("event_not_found_for_update", user_id=user_id, uid=event_uid)
+        return False
+
     async def update_event(self, user_id: str, event_uid: str, updated_event: EventDTO) -> bool:
         """
         Update existing event in user's calendar.
+        Runs blocking CalDAV operations in thread pool.
 
         Args:
             user_id: Telegram user ID
@@ -448,40 +501,13 @@ class RadicaleService:
             True if successful, False otherwise
         """
         try:
-            calendar = self._get_user_calendar(user_id)
-            if not calendar:
-                return False
-
-            # Find event to update
-            events = calendar.events()
-            for event in events:
-                ical = Calendar.from_ical(event.data)
-                for component in ical.walk('VEVENT'):
-                    if str(component.get('uid')) == event_uid:
-                        # Update fields if provided
-                        if updated_event.title:
-                            component['summary'] = updated_event.title
-                        if updated_event.start_time:
-                            component['dtstart'].dt = updated_event.start_time
-                        if updated_event.end_time:
-                            component['dtend'].dt = updated_event.end_time
-                        elif updated_event.start_time and updated_event.duration_minutes:
-                            component['dtend'].dt = updated_event.start_time + timedelta(minutes=updated_event.duration_minutes)
-                        if updated_event.location:
-                            component['location'] = updated_event.location
-                        if updated_event.description:
-                            component['description'] = updated_event.description
-
-                        # Save updated event
-                        event.data = ical.to_ical()
-                        event.save()
-
-                        logger.info("event_updated", user_id=user_id, uid=event_uid, title=updated_event.title)
-                        return True
-
-            logger.warning("event_not_found_for_update", user_id=user_id, uid=event_uid)
-            return False
-
+            # Run blocking CalDAV operations in thread pool
+            return await asyncio.to_thread(
+                self._update_event_sync,
+                user_id,
+                event_uid,
+                updated_event
+            )
         except Exception as e:
             logger.error("event_update_error", user_id=user_id, error=str(e), exc_info=True)
             # Log calendar error to analytics
@@ -496,9 +522,32 @@ class RadicaleService:
                 )
             return False
 
+    def _delete_event_sync(self, user_id: str, event_uid: str) -> bool:
+        """
+        Synchronous implementation of delete_event.
+        Called via asyncio.to_thread to avoid blocking event loop.
+        """
+        calendar = self._get_user_calendar(user_id)
+        if not calendar:
+            return False
+
+        # Find and delete event
+        events = calendar.events()
+        for event in events:
+            ical = Calendar.from_ical(event.data)
+            for component in ical.walk('VEVENT'):
+                if str(component.get('uid')) == event_uid:
+                    event.delete()
+                    logger.info("event_deleted", user_id=user_id, uid=event_uid)
+                    return True
+
+        logger.warning("event_not_found", user_id=user_id, uid=event_uid)
+        return False
+
     async def delete_event(self, user_id: str, event_uid: str) -> bool:
         """
         Delete event from user's calendar.
+        Runs blocking CalDAV operations in thread pool.
 
         Args:
             user_id: Telegram user ID
@@ -508,23 +557,12 @@ class RadicaleService:
             True if successful, False otherwise
         """
         try:
-            calendar = self._get_user_calendar(user_id)
-            if not calendar:
-                return False
-
-            # Find and delete event
-            events = calendar.events()
-            for event in events:
-                ical = Calendar.from_ical(event.data)
-                for component in ical.walk('VEVENT'):
-                    if str(component.get('uid')) == event_uid:
-                        event.delete()
-                        logger.info("event_deleted", user_id=user_id, uid=event_uid)
-                        return True
-
-            logger.warning("event_not_found", user_id=user_id, uid=event_uid)
-            return False
-
+            # Run blocking CalDAV operations in thread pool
+            return await asyncio.to_thread(
+                self._delete_event_sync,
+                user_id,
+                event_uid
+            )
         except Exception as e:
             logger.error("event_delete_error", user_id=user_id, error=str(e), exc_info=True)
             # Log calendar error to analytics
