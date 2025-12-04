@@ -173,35 +173,40 @@
 
 ### Просмотр логов
 ```bash
-docker logs telegram-bot-polling -f
-docker logs radicale -f
+docker logs telegram-bot -f
+docker logs radicale-calendar -f
 ```
 
 ### Проверка статуса
 ```bash
 docker ps
-docker-compose ps
+docker-compose -f docker-compose.secure.yml ps
 ```
 
 ### Деплой через Git (рекомендуется)
 ```bash
-# Локально: коммит и пуш
-git add -A && git commit -m "fix: описание" && git push
+# 1. Локально: коммит и пуш
+git add -A && git commit -m "fix: описание" && git push origin main
 
-# На сервере: pull и rebuild
-ssh root@91.229.8.221
-cd /root/ai-calendar-assistant/ai-calendar-assistant
-git pull origin main
-cp app/services/*.py /root/ai-calendar-assistant/app/services/
-cd /root/ai-calendar-assistant
-docker-compose build --no-cache telegram-bot-polling
-docker-compose up -d telegram-bot-polling
+# 2. На сервере: pull и rebuild (одна команда)
+ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+  cd /root/ai-calendar-assistant/ai-calendar-assistant &&
+  git pull origin main &&
+  docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
+  docker-compose -f docker-compose.secure.yml up -d telegram-bot
+'
+```
+
+### Проверка версии WebApp
+```bash
+curl -s https://calendar.housler.ru/static/index.html | grep "APP_VERSION"
 ```
 
 ### Бэкап и восстановление
 ```bash
-./backup-calendar.sh
-./restore-from-backup.sh backup-2025-10-29.tar.gz
+./scripts/backup-radicale.sh
+./scripts/restore-radicale.sh --list
+./scripts/restore-radicale.sh --latest
 ```
 
 ---

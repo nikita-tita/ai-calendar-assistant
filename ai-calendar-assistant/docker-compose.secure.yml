@@ -1,9 +1,17 @@
 version: '3.8'
 
-# Secure production configuration with Redis and Radicale
+# Production configuration for AI Calendar Assistant
+# Single source of truth - use ONLY this file for production deployment
+#
+# Architecture:
+# - telegram-bot: FastAPI (port 8000) + Telegram polling bot in one container
+# - redis: Rate limiting and caching
+# - radicale: CalDAV server for calendar storage
+#
+# Deploy: docker-compose -f docker-compose.secure.yml up -d
 
 services:
-  # Main application
+  # Main application: FastAPI + Telegram Bot
   telegram-bot:
     container_name: telegram-bot
     build:
@@ -16,10 +24,13 @@ services:
       - "8000:8000"
     volumes:
       - ./logs:/app/logs
-      - ./data:/var/lib/calendar-bot
+      - ./data:/app/data
+      - ./credentials:/app/credentials
     depends_on:
-      - redis
-      - radicale
+      redis:
+        condition: service_healthy
+      radicale:
+        condition: service_healthy
     networks:
       - calendar-network
     logging:
@@ -27,6 +38,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Healthcheck: FastAPI /health endpoint
+    # start.sh runs both FastAPI and bot, so HTTP healthcheck works
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -34,7 +47,8 @@ services:
       retries: 3
       start_period: 40s
     environment:
-      # Override with internal service URLs
+      - APP_ENV=production
+      - DEBUG=False
       - RADICALE_URL=http://radicale:5232
       - REDIS_URL=redis://redis:6379/0
 
@@ -43,67 +57,54 @@ services:
     image: redis:7-alpine
     container_name: calendar-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --save 60 1 --loglevel warning
     volumes:
       - redis-data:/data
     networks:
       - calendar-network
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     logging:
       driver: "json-file"
       options:
         max-size: "5m"
         max-file: "2"
 
-  # Radicale CalDAV server with authentication
+  # Radicale CalDAV server - calendar storage
   radicale:
     image: tomsquest/docker-radicale:latest
-    container_name: radicale
+    container_name: radicale-calendar
     restart: unless-stopped
+    # Security: Only expose internally via docker network
+    expose:
+      - "5232"
     volumes:
       - radicale-data:/data
-      - radicale-config:/config
-      - ./radicale/config.ini:/config/config:ro
-      - ./radicale/users:/config/users:ro
-      - ./radicale/rights:/config/rights:ro
+      - ./radicale_config:/config:ro
     networks:
       - calendar-network
-    environment:
-      # Enable authentication
-      - AUTH_TYPE=htpasswd
-      - AUTH_HTPASSWD_FILENAME=/config/users
-      - AUTH_HTPASSWD_ENCRYPTION=bcrypt
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5232/.web/"]
+      test: ["CMD", "curl", "-f", "http://localhost:5232"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
     logging:
       driver: "json-file"
       options:
         max-size: "5m"
         max-file: "2"
-    # DO NOT expose port 5232 externally - only internal access
-    # ports:
-    #   - "5232:5232"  # SECURITY: Commented out
 
 networks:
   calendar-network:
     driver: bridge
-    internal: false  # Set to true if no external access needed
 
 volumes:
   redis-data:
     driver: local
-  # IMPORTANT: radicale-data is an external volume to prevent data loss
-  # It was created manually and persists across docker-compose changes
-  # Create if not exists: docker volume create calendar-radicale-data
+  # Radicale data volume - stores all calendar events
+  # WARNING: Do not use 'docker-compose down -v' or data will be lost!
   radicale-data:
-    external: true
-    name: calendar-radicale-data
-  radicale-config:
     driver: local
