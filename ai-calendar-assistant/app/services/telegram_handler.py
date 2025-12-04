@@ -759,6 +759,101 @@ Housler.ru сделал подборку сервисов, которые пом
         user_id = str(update.effective_user.id)
         return user_preferences.get_timezone(user_id)
 
+    async def _handle_settings_time_input(
+        self, update: Update, user_id: str, text: str, pending_action: str
+    ) -> bool:
+        """
+        Handle time input for settings (morning/evening time, quiet hours).
+
+        Args:
+            update: Telegram update
+            user_id: User ID
+            text: User input text
+            pending_action: What setting is being changed
+
+        Returns:
+            True if handled, False if not a valid time input
+        """
+        import re
+        time_pattern = r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$'
+        match = re.match(time_pattern, text.strip())
+
+        if not match:
+            await update.message.reply_text("Неверный формат. Введите время как ЧЧ:ММ (например, 07:30)")
+            return True  # Handled (with error)
+
+        time_str = text.strip()
+
+        if pending_action == "awaiting_morning_time":
+            user_preferences.set_morning_summary_time(user_id, time_str)
+            self.conversation_history[user_id] = []
+            await update.message.reply_text(f"✅ Время утренней сводки изменено на {time_str}")
+
+        elif pending_action == "awaiting_evening_time":
+            user_preferences.set_evening_digest_time(user_id, time_str)
+            self.conversation_history[user_id] = []
+            await update.message.reply_text(f"✅ Время вечернего дайджеста изменено на {time_str}")
+
+        elif pending_action == "awaiting_quiet_start":
+            quiet_start, quiet_end = user_preferences.get_quiet_hours(user_id)
+            user_preferences.set_quiet_hours(user_id, time_str, quiet_end)
+            self.conversation_history[user_id] = []
+            await update.message.reply_text(f"✅ Начало тихих часов изменено на {time_str}")
+
+        elif pending_action == "awaiting_quiet_end":
+            quiet_start, quiet_end = user_preferences.get_quiet_hours(user_id)
+            user_preferences.set_quiet_hours(user_id, quiet_start, time_str)
+            self.conversation_history[user_id] = []
+            await update.message.reply_text(f"✅ Конец тихих часов изменён на {time_str}")
+
+        else:
+            return False  # Unknown action
+
+        return True
+
+    async def _handle_delete_confirmation(
+        self, update: Update, user_id: str, text: str, pending_action: str, last_msg: dict
+    ) -> bool:
+        """
+        Handle deletion confirmation (duplicates or by criteria).
+
+        Args:
+            update: Telegram update
+            user_id: User ID
+            text: User input text
+            pending_action: Type of deletion pending
+            last_msg: Last message in conversation history
+
+        Returns:
+            True if handled, False otherwise
+        """
+        text_lower = text.lower().strip()
+
+        if text_lower in ['удалить', 'да', 'ok', 'yes', 'удали']:
+            # Get event IDs to delete
+            if pending_action == "pending_delete_duplicates":
+                event_ids = last_msg.get("duplicates", [])
+            else:  # pending_delete_by_criteria
+                event_ids = last_msg.get("events", [])
+
+            # Delete events
+            deleted_count = 0
+            for event_id in event_ids:
+                success = await calendar_service.delete_event(user_id, event_id)
+                if success:
+                    deleted_count += 1
+
+            self.conversation_history[user_id] = []
+            await update.message.reply_text(f"✅ Удалено {deleted_count}")
+            return True
+
+        elif text_lower in ['отмена', 'нет', 'cancel', 'no']:
+            self.conversation_history[user_id] = []
+            await update.message.reply_text("Отменено.")
+            return True
+
+        return False  # Not a confirmation/cancellation
+
     async def _handle_text(self, update: Update, user_id: str, text: str, from_voice: bool = False) -> None:
         """Handle text message - only calendar mode.
 
@@ -790,79 +885,24 @@ Housler.ru сделал подборку сервисов, которые пом
             )
             return
 
-        # Check if user is in a settings flow (awaiting time input)
+        # Check if user is in a settings or deletion flow
         if user_id in self.conversation_history and len(self.conversation_history[user_id]) > 0:
             last_msg = self.conversation_history[user_id][-1]
             pending_action = last_msg.get("content")
 
             # Handle time input for settings
             if last_msg.get("role") == "system":
-                import re
-                time_pattern = r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$'
-                match = re.match(time_pattern, text.strip())
-
-                if not match:
-                    await update.message.reply_text("Неверный формат. Введите время как ЧЧ:ММ (например, 07:30)")
+                handled = await self._handle_settings_time_input(update, user_id, text, pending_action)
+                if handled:
                     return
 
-                time_str = text.strip()
-
-                if pending_action == "awaiting_morning_time":
-                    user_preferences.set_morning_summary_time(user_id, time_str)
-                    self.conversation_history[user_id] = []
-                    await update.message.reply_text(f"✅ Время утренней сводки изменено на {time_str}")
-                    return
-
-                elif pending_action == "awaiting_evening_time":
-                    user_preferences.set_evening_digest_time(user_id, time_str)
-                    self.conversation_history[user_id] = []
-                    await update.message.reply_text(f"✅ Время вечернего дайджеста изменено на {time_str}")
-                    return
-
-                elif pending_action == "awaiting_quiet_start":
-                    quiet_start, quiet_end = user_preferences.get_quiet_hours(user_id)
-                    user_preferences.set_quiet_hours(user_id, time_str, quiet_end)
-                    self.conversation_history[user_id] = []
-                    await update.message.reply_text(f"✅ Начало тихих часов изменено на {time_str}")
-                    return
-
-                elif pending_action == "awaiting_quiet_end":
-                    quiet_start, quiet_end = user_preferences.get_quiet_hours(user_id)
-                    user_preferences.set_quiet_hours(user_id, quiet_start, time_str)
-                    self.conversation_history[user_id] = []
-                    await update.message.reply_text(f"✅ Конец тихих часов изменён на {time_str}")
-                    return
-
-            # Check if user is confirming deletion
+            # Handle deletion confirmation
             if (last_msg.get("role") == "assistant" and
                 pending_action in ["pending_delete_duplicates", "pending_delete_by_criteria"]):
-
-                text_lower = text.lower().strip()
-                if text_lower in ['удалить', 'да', 'ok', 'yes', 'удали']:
-                    # Confirm and delete
-                    if pending_action == "pending_delete_duplicates":
-                        event_ids = last_msg.get("duplicates", [])
-                    else:  # pending_delete_by_criteria
-                        event_ids = last_msg.get("events", [])
-
-                    deleted_count = 0
-                    for event_id in event_ids:
-                        success = await calendar_service.delete_event(user_id, event_id)
-                        if success:
-                            deleted_count += 1
-
-                    self.conversation_history[user_id] = []  # Clear history
-
-                    if pending_action == "pending_delete_duplicates":
-                        await update.message.reply_text(f"✅ Удалено {deleted_count}")
-                    else:
-                        await update.message.reply_text(f"✅ Удалено {deleted_count}")
-                    return
-
-                elif text_lower in ['отмена', 'нет', 'cancel', 'no']:
-                    # Cancel
-                    self.conversation_history[user_id] = []  # Clear history
-                    await update.message.reply_text("Отменено.")
+                handled = await self._handle_delete_confirmation(
+                    update, user_id, text, pending_action, last_msg
+                )
+                if handled:
                     return
 
         # Process with LLM
