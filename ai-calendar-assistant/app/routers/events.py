@@ -3,7 +3,7 @@
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 import structlog
 
 from app.services.calendar_radicale import calendar_service
@@ -46,6 +46,13 @@ class EventCreateRequest(BaseModel):
     description: Optional[str] = ""
     color: Optional[str] = "blue"
 
+    @model_validator(mode='after')
+    def validate_time_range(self) -> 'EventCreateRequest':
+        """Ensure end time is after start time."""
+        if self.end <= self.start:
+            raise ValueError('end time must be after start time')
+        return self
+
 
 class EventUpdateRequest(BaseModel):
     """Request model for updating an event."""
@@ -55,6 +62,14 @@ class EventUpdateRequest(BaseModel):
     location: Optional[str] = None
     description: Optional[str] = None
     color: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_time_range(self) -> 'EventUpdateRequest':
+        """Ensure end time is after start time when both are provided."""
+        if self.start is not None and self.end is not None:
+            if self.end <= self.start:
+                raise ValueError('end time must be after start time')
+        return self
 
 
 class EventResponse(BaseModel):
