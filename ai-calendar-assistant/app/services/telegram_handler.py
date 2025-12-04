@@ -35,6 +35,7 @@ except ImportError:
     from app.services.stt import stt_service
 from app.schemas.events import IntentType
 from app.utils.datetime_parser import format_datetime_human
+from app.utils.lru_dict import LRUDict
 
 # ARCHIVED - Property Bot moved to independent microservice (_archived/property_bot_microservice)
 # Property Bot imports removed - calendar bot only
@@ -50,10 +51,11 @@ class TelegramHandler:
         """Initialize handler with Telegram application."""
         self.app = app
         self.bot = app.bot
-        # Store conversation history per user (last 10 messages)
-        self.conversation_history = {}
-        # Store user timezone preferences (user_id -> timezone string)
-        self.user_timezones = {}
+        # Store conversation history per user with LRU eviction (max 1000 users)
+        # Prevents unbounded memory growth with many users
+        self.conversation_history: LRUDict[str, list] = LRUDict(max_size=1000)
+        # Store user timezone preferences with LRU eviction
+        self.user_timezones: LRUDict[str, str] = LRUDict(max_size=1000)
 
     async def handle_update(self, update: Update) -> None:
         """
