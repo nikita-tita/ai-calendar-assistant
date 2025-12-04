@@ -6,6 +6,53 @@
 
 ---
 
+## [2025-12-04] - Security & Code Quality Cleanup
+
+### Security Fixes
+- **Удалены захардкоженные credentials** из `test_feed_download.py`
+  - Файлы содержали логин/пароль в URL в открытом виде
+  - Удалено: `app/test_feed_download.py`, `test_feed_download.py`
+
+- **Удалён устаревший admin.py с SHA-256 хешированием**
+  - Использовал слабое хеширование вместо bcrypt
+  - Содержал пароли в открытом виде
+  - Удалено: `app/admin.py` (актуальный в `app/routers/admin.py`)
+
+### Code Cleanup
+- **Удалено 29 дубликатов файлов** (6173 строки кода)
+  - Тестовые файлы в корне и app/
+  - Старые версии telegram_handler.py, datetime_parser.py, events.py
+  - Устаревшие утилиты (fix_menu_button.py, populate_analytics.py)
+
+### Bug Fixes
+- **Валидация времени в Events API**
+  - Добавлен `model_validator` для проверки `end > start`
+  - Возвращает HTTP 422 при невалидном диапазоне
+  - Файл: `app/routers/events.py`
+
+- **Memory leak в conversation_history**
+  - Добавлен `LRUDict` с автоматическим вытеснением (max 1000 пользователей)
+  - Также применён к `user_timezones`
+  - Файлы: `app/utils/lru_dict.py`, `app/services/telegram_handler.py`
+
+### Refactoring
+- **Dependency Injection для event_reminders**
+  - Убран circular import риск
+  - `user_provider` передаётся через конструктор
+  - Файлы: `app/services/event_reminders_idempotent.py`, `run_polling.py`
+
+- **Рефакторинг _handle_text** (уменьшена на 25%)
+  - Выделены методы: `_handle_settings_time_input()`, `_handle_delete_confirmation()`
+  - Улучшена читаемость и тестируемость
+  - Файл: `app/services/telegram_handler.py`
+
+### Technical Stats
+- Удалено файлов: 32
+- Удалено строк кода: ~6900
+- Новых утилит: `app/utils/lru_dict.py`
+
+---
+
 ## [2025-12-04] - Settings & Support Button
 
 ### Added
