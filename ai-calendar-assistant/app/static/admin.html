@@ -202,7 +202,7 @@
 
 <script>
 const API_BASE = '/api/admin';
-const SESSION_STORAGE_KEY = 'admin_session_token';
+const STORAGE_KEY = 'admin_session_token';
 let sessionToken = null;
 let activityChart = null;
 let distributionChart = null;
@@ -211,49 +211,52 @@ let currentView = 'main';
 let allActions = [];
 let errorsData = { errors: [], stats: { total: 0, by_type: {} } };
 
-// Restore session from sessionStorage on page load
+// Restore session from localStorage on page load
 async function restoreSession() {
-    const savedToken = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    console.log('[Admin] restoreSession() called');
+    const savedToken = localStorage.getItem(STORAGE_KEY);
+    console.log('[Admin] Saved token exists:', !!savedToken);
+
     if (savedToken) {
-        // First, validate the token with a lightweight API call
         try {
-            const response = await fetch(`${API_BASE}/health`, {
-                headers: {'Authorization': `Bearer ${savedToken}`}
-            });
-            // Health endpoint works without auth, so try stats instead
+            console.log('[Admin] Validating token with /api/admin/stats...');
             const statsResponse = await fetch(`${API_BASE}/stats`, {
                 headers: {'Authorization': `Bearer ${savedToken}`}
             });
+            console.log('[Admin] Stats response status:', statsResponse.status);
 
             if (statsResponse.ok) {
-                // Token is valid - restore session
+                console.log('[Admin] Token valid! Restoring session...');
                 sessionToken = savedToken;
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('dashboard').classList.remove('hidden');
                 loadDashboard();
                 refreshInterval = setInterval(() => { if (currentView === 'main') loadDashboard(); }, 30000);
             } else {
-                // Token invalid - clear it
-                console.log('Saved token is invalid, clearing session');
-                sessionStorage.removeItem(SESSION_STORAGE_KEY);
+                console.log('[Admin] Token invalid (status ' + statsResponse.status + '), clearing...');
+                localStorage.removeItem(STORAGE_KEY);
             }
         } catch (e) {
-            console.error('Error validating token:', e);
-            sessionStorage.removeItem(SESSION_STORAGE_KEY);
+            console.error('[Admin] Error validating token:', e);
+            localStorage.removeItem(STORAGE_KEY);
         }
+    } else {
+        console.log('[Admin] No saved token, showing login form');
     }
 }
 
-// Save session to sessionStorage
+// Save session to localStorage
 function saveSession(token) {
+    console.log('[Admin] saveSession() - saving token');
     sessionToken = token;
-    sessionStorage.setItem(SESSION_STORAGE_KEY, token);
+    localStorage.setItem(STORAGE_KEY, token);
 }
 
-// Clear session from sessionStorage
+// Clear session from localStorage
 function clearSession() {
+    console.log('[Admin] clearSession() - removing token');
     sessionToken = null;
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
 }
 
 // Get language from URL parameter
