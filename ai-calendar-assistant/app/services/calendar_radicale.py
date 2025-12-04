@@ -15,6 +15,15 @@ from app.utils.pii_masking import safe_log_params
 
 logger = structlog.get_logger()
 
+# Analytics imports (optional - graceful fallback if not available)
+try:
+    from app.services.analytics_service import analytics_service
+    from app.models.analytics import ActionType
+    ANALYTICS_ENABLED = True
+except ImportError:
+    ANALYTICS_ENABLED = False
+    analytics_service = None
+
 
 class RadicaleService:
     """
@@ -189,6 +198,15 @@ class RadicaleService:
 
         except Exception as e:
             logger.error("event_create_error", user_id=user_id, error=str(e), exc_info=True)
+            # Log calendar error to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Event create failed: {event.title[:50] if event.title else 'No title'}",
+                    success=False,
+                    error_message=str(e)[:200]
+                )
             return None
 
     async def list_events(
@@ -270,6 +288,15 @@ class RadicaleService:
 
         except Exception as e:
             logger.error("events_list_error", user_id=user_id, error=str(e), exc_info=True)
+            # Log calendar error to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Events list failed: {time_min.strftime('%Y-%m-%d')} - {time_max.strftime('%Y-%m-%d')}",
+                    success=False,
+                    error_message=str(e)[:200]
+                )
             return []
 
     async def find_free_slots(
@@ -429,6 +456,16 @@ class RadicaleService:
 
         except Exception as e:
             logger.error("event_update_error", user_id=user_id, error=str(e), exc_info=True)
+            # Log calendar error to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Event update failed: uid={event_uid[:20]}",
+                    event_id=event_uid,
+                    success=False,
+                    error_message=str(e)[:200]
+                )
             return False
 
     async def delete_event(self, user_id: str, event_uid: str) -> bool:
@@ -462,6 +499,16 @@ class RadicaleService:
 
         except Exception as e:
             logger.error("event_delete_error", user_id=user_id, error=str(e), exc_info=True)
+            # Log calendar error to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Event delete failed: uid={event_uid[:20]}",
+                    event_id=event_uid,
+                    success=False,
+                    error_message=str(e)[:200]
+                )
             return False
 
     def is_connected(self) -> bool:
