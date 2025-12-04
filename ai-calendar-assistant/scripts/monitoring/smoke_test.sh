@@ -23,9 +23,15 @@ STATIC_URL="${API_BASE_URL}/static/index.html"
 EVENTS_API_URL="${API_BASE_URL}/api/events"
 TODOS_API_URL="${API_BASE_URL}/api/todos"
 
-# Server SSH
+# Server SSH (only used when running from local machine)
 SSH_KEY="$HOME/.ssh/id_housler"
 SSH_HOST="root@91.229.8.221"
+
+# Detect if running on server (localhost)
+IS_LOCAL_SERVER=false
+if [[ "$(hostname -I 2>/dev/null | grep -c '91.229.8.221')" -gt 0 ]] || [[ "$(hostname)" == *"calendar"* ]] || [[ -f "/root/ai-calendar-assistant/ai-calendar-assistant/docker-compose.secure.yml" ]]; then
+    IS_LOCAL_SERVER=true
+fi
 
 # Test results
 PASSED=0
@@ -209,14 +215,19 @@ test_ssl_certificate() {
 test_docker_containers() {
     log "Testing Docker containers..."
 
-    if [[ ! -f "$SSH_KEY" ]]; then
+    local containers
+
+    if [[ "$IS_LOCAL_SERVER" == "true" ]]; then
+        # Running on server - use docker directly
+        containers=$(docker ps --format "{{.Names}}:{{.Status}}" 2>/dev/null | grep -E "(telegram-bot|calendar-redis|radicale-calendar)")
+    elif [[ -f "$SSH_KEY" ]]; then
+        # Running remotely - use SSH
+        containers=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
+            'docker ps --format "{{.Names}}:{{.Status}}" 2>/dev/null | grep -E "(telegram-bot|calendar-redis|radicale-calendar)"' 2>/dev/null)
+    else
         add_result "WARN" "Docker containers" "SSH key not found"
         return 0
     fi
-
-    local containers
-    containers=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
-        'docker ps --format "{{.Names}}:{{.Status}}" 2>/dev/null | grep -E "(telegram-bot|calendar-redis|radicale-calendar)"' 2>/dev/null)
 
     if [[ -z "$containers" ]]; then
         add_result "FAIL" "Docker containers" "Cannot connect or no containers"
@@ -248,14 +259,21 @@ test_docker_containers() {
 test_recent_errors() {
     log "Testing for recent errors..."
 
-    if [[ ! -f "$SSH_KEY" ]]; then
+    local error_count
+
+    if [[ "$IS_LOCAL_SERVER" == "true" ]]; then
+        # Running on server - use docker directly
+        error_count=$(docker logs telegram-bot --since 6h 2>&1 | grep -ciE "error|exception|traceback" || echo 0)
+    elif [[ -f "$SSH_KEY" ]]; then
+        # Running remotely - use SSH
+        error_count=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
+            'docker logs telegram-bot --since 6h 2>&1 | grep -ciE "error|exception|traceback" || echo 0' 2>/dev/null | tr -d '[:space:]' | head -1)
+    else
         add_result "WARN" "Recent errors" "SSH key not found"
         return 0
     fi
 
-    local error_count
-    error_count=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
-        'docker logs telegram-bot --since 6h 2>&1 | grep -ciE "error|exception|traceback" || echo 0' 2>/dev/null | tr -d '[:space:]' | head -1)
+    error_count=$(echo "$error_count" | tr -d '[:space:]' | head -1)
 
     if [[ -z "$error_count" ]] || [[ "$error_count" == "" ]]; then
         add_result "WARN" "Recent errors" "Cannot check logs"
@@ -283,14 +301,19 @@ test_recent_errors() {
 test_calendar_events_count() {
     log "Testing calendar events count..."
 
-    if [[ ! -f "$SSH_KEY" ]]; then
+    local count
+
+    if [[ "$IS_LOCAL_SERVER" == "true" ]]; then
+        # Running on server - use docker directly
+        count=$(docker exec radicale-calendar find /data -name "*.ics" 2>/dev/null | wc -l)
+    elif [[ -f "$SSH_KEY" ]]; then
+        # Running remotely - use SSH
+        count=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
+            'docker exec radicale-calendar find /data -name "*.ics" 2>/dev/null | wc -l' 2>/dev/null)
+    else
         add_result "WARN" "Calendar events" "SSH key not found"
         return 0
     fi
-
-    local count
-    count=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
-        'docker exec radicale-calendar find /data -name "*.ics" 2>/dev/null | wc -l' 2>/dev/null)
 
     if [[ -z "$count" ]] || [[ "$count" == "" ]]; then
         add_result "WARN" "Calendar events" "Cannot count"
