@@ -6,6 +6,35 @@
 
 ---
 
+## [2025-12-05] - Performance: Non-blocking CalDAV Operations
+
+### Performance Improvements
+- **LLM HTTP вызовы больше не блокируют event loop**
+  - Обёрнут `requests.post()` в `asyncio.to_thread()`
+  - Файл: `app/services/llm_agent_yandex.py`
+
+- **CalDAV операции больше не блокируют event loop**
+  - `list_events` → `_list_events_sync` + `asyncio.to_thread()`
+  - `create_event` → `_create_event_sync` + `asyncio.to_thread()`
+  - `update_event` → `_update_event_sync` + `asyncio.to_thread()`
+  - `delete_event` → `_delete_event_sync` + `asyncio.to_thread()`
+  - `find_free_slots` уже async через `list_events`
+  - Файл: `app/services/calendar_radicale.py`
+
+### Diagnostics
+- **Добавлены тайминги для анализа производительности**
+  - `yandex_gpt_http_duration` — время HTTP запроса к LLM
+  - `calendar_found` — время поиска календаря пользователя
+  - `caldav_date_search_duration` — время поиска событий
+  - `handle_text_llm_done` — общее время обработки сообщения
+
+### Ожидаемый эффект
+- Event loop остаётся responsive во время CalDAV операций (~1-4 сек)
+- Bot может обрабатывать другие сообщения пока ждёт ответ от Radicale/LLM
+- Улучшена отзывчивость при нескольких параллельных пользователях
+
+---
+
 ## [2025-12-04] - Event Reminder Fix
 
 ### Bug Fixes
