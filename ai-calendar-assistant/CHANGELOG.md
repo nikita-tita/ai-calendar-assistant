@@ -6,6 +6,42 @@
 
 ---
 
+## [2025-12-04] - Daily Reminders Fix (Critical)
+
+### Fixed
+- **КРИТИЧЕСКИЙ БАГ: TEST_MODE = True в продакшене** — напоминания не отправлялись 14 из 15 пользователей
+  - Изменено `TEST_MODE = True` → `TEST_MODE = False` в `daily_reminders.py`
+  - Теперь ВСЕ пользователи получают напоминания в настроенное время (9:00 утренние, 20:00 вечерние)
+
+- **AttributeError: e.title** — утренние напоминания падали с ошибкой
+  - `CalendarEvent` использует атрибут `summary`, не `title`
+  - Исправлено `e.title` → `e.summary` в `daily_reminders.py:97`
+
+- **Потенциальный ValueError при minute == 59** — edge case в сравнении времени
+  - Заменена рискованная логика `time(hour, minute + 1)` на безопасную функцию `is_time_match()`
+
+### Added
+- **Логирование для отладки** — теперь в логах видно:
+  - При запуске: `test_mode`, `active_users_count`
+  - Каждые 10 минут: `daily_reminders_check` со статусом
+
+### Technical
+- Файл изменён: `app/services/daily_reminders.py`
+- Затронутые строки: 23, 97, 208, 218-228, 289-312
+
+### Влияние
+- 15 пользователей начнут получать утренние/вечерние напоминания
+- Напоминания приходят в настроенное время пользователя (по умолчанию 9:00 и 20:00)
+- Мотивационные сообщения в 10:00
+
+### Как проверить
+```bash
+# После деплоя проверить логи:
+docker logs telegram-bot 2>&1 | grep -E "daily_reminders_started|daily_reminders_check|morning_reminder_sent|evening_reminder_sent"
+```
+
+---
+
 ## [2025-12-04] - Analytics Data Quality Fixes
 
 ### Fixed
