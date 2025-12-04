@@ -31,10 +31,13 @@ async def main():
 
     # Initialize event reminders service (30 minutes before events)
     # Uses SQLite for idempotency - survives restarts without duplicate reminders
-    # Uses daily_reminders.active_users as source of truth for user list
-    event_reminders = EventRemindersServiceIdempotent(app.bot)
+    # Uses dependency injection for user list (no circular imports)
+    event_reminders = EventRemindersServiceIdempotent(
+        bot=app.bot,
+        user_provider=lambda: reminders.active_users
+    )
 
-    # Set global reference so event_reminders can access active_users
+    # Set global reference for legacy compatibility
     import app.services.daily_reminders as dr_module
     dr_module.daily_reminders_service = reminders
 

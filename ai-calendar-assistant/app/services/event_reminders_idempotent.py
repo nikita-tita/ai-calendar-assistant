@@ -3,7 +3,7 @@
 import asyncio
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, Callable, Optional
 from pathlib import Path
 import structlog
 from telegram import Bot
@@ -32,12 +32,21 @@ class EventRemindersServiceIdempotent:
     def __init__(
         self,
         bot: Bot,
+        user_provider: Optional[Callable[[], Dict[str, int]]] = None,
         db_path: str = "/var/lib/calendar-bot/reminders.db",
-        users_file: str = "/var/lib/calendar-bot/event_reminder_users.json"
     ):
-        """Initialize event reminders service."""
+        """
+        Initialize event reminders service.
+
+        Args:
+            bot: Telegram bot instance
+            user_provider: Callable that returns {user_id: chat_id} mapping.
+                          If None, will try to import from daily_reminders (legacy).
+            db_path: Path to SQLite database for tracking sent reminders
+        """
         self.bot = bot
         self.db_path = Path(db_path)
+        self._user_provider = user_provider
         self.running = False
         self.reminder_minutes = 30  # Remind 30 minutes before event
         self.reminder_window_min = 28  # Minimum minutes before
@@ -48,7 +57,8 @@ class EventRemindersServiceIdempotent:
 
         logger.info("event_reminders_idempotent_initialized",
                    db_path=str(self.db_path),
-                   reminder_minutes=self.reminder_minutes)
+                   reminder_minutes=self.reminder_minutes,
+                   has_user_provider=user_provider is not None)
 
     def _init_database(self):
         """Initialize SQLite database for tracking sent reminders."""
@@ -145,18 +155,32 @@ class EventRemindersServiceIdempotent:
         if deleted_count > 0:
             logger.info("old_reminders_cleaned", count=deleted_count, days=days)
 
+    def _get_active_users(self) -> Dict[str, int]:
+        """Get active users from provider or legacy import."""
+        # Use injected provider if available
+        if self._user_provider is not None:
+            return self._user_provider()
+
+        # Legacy fallback: import at runtime (for backward compatibility)
+        try:
+            from app.services.daily_reminders import daily_reminders_service
+            if hasattr(daily_reminders_service, 'active_users'):
+                return daily_reminders_service.active_users
+        except ImportError:
+            pass
+
+        return {}
+
     async def check_and_send_reminders(self):
         """Check for upcoming events and send reminders."""
         try:
-            # Get all users who want event reminders
-            # For now, we use daily_reminder_users as proxy
-            from app.services.daily_reminders import daily_reminders_service
+            active_users = self._get_active_users()
 
-            if not hasattr(daily_reminders_service, 'active_users'):
-                logger.warning("no_active_users_for_reminders")
+            if not active_users:
+                logger.debug("no_active_users_for_reminders")
                 return
 
-            for user_id, chat_id in daily_reminders_service.active_users.items():
+            for user_id, chat_id in active_users.items():
                 try:
                     await self._check_user_events(user_id, chat_id)
                 except Exception as e:
