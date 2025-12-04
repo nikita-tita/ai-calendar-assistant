@@ -482,6 +482,7 @@ Housler.ru сделал подборку сервисов, которые пом
             [InlineKeyboardButton(f"{evening_status} Вечерний дайджест ({settings_data['evening_digest_time']})", callback_data="settings:evening_toggle")],
             [InlineKeyboardButton(f"🌙 Тихие часы: {settings_data['quiet_hours_start']}–{settings_data['quiet_hours_end']}", callback_data="settings:quiet_hours")],
             [InlineKeyboardButton("❓ Справка и примеры", callback_data="settings:help")],
+            [InlineKeyboardButton("💬 Написать нам", url="https://t.me/iay_pm")],
         ])
 
         text = "⚙️ Настройки\n\nУправляйте временем и напоминаниями. Коротко и по делу."
