@@ -1,5 +1,6 @@
 """Telegram bot message handler."""
 
+import time
 from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application
@@ -860,6 +861,7 @@ Housler.ru сделал подборку сервисов, которые пом
         Args:
             from_voice: If True, skip analytics logging (already logged as voice_message)
         """
+        _handle_start = time.perf_counter()
         logger.info("text_message_received", user_id=user_id, text=text, from_voice=from_voice)
 
         # Log message to analytics (skip if from voice - already logged as voice_message)
@@ -922,8 +924,9 @@ Housler.ru сделал подборку сервисов, которые пом
         start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7)
         end = now + timedelta(days=60)
         existing_events = await calendar_service.list_events(user_id, start, end)
+        _events_duration_ms = (time.perf_counter() - _handle_start) * 1000
 
-        logger.info("events_loaded_for_context", user_id=user_id, count=len(existing_events))
+        logger.info("events_loaded_for_context", user_id=user_id, count=len(existing_events), duration_ms=round(_events_duration_ms, 1))
 
         # Pass conversation history ONLY if last message was a clarify question
         # Include both user request and assistant clarify question
@@ -945,6 +948,14 @@ Housler.ru сделал подборку сервисов, которые пом
             timezone=user_tz,
             existing_events=existing_events
         )
+        _total_duration_ms = (time.perf_counter() - _handle_start) * 1000
+        _llm_duration_ms = _total_duration_ms - _events_duration_ms
+        logger.info("handle_text_llm_done",
+                   user_id=user_id,
+                   events_ms=round(_events_duration_ms, 1),
+                   llm_ms=round(_llm_duration_ms, 1),
+                   total_ms=round(_total_duration_ms, 1),
+                   intent=event_dto.intent.value if event_dto.intent else "unknown")
 
         # Update conversation history based on intent
         if event_dto.intent == IntentType.CLARIFY:

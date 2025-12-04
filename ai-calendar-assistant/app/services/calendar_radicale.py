@@ -2,6 +2,7 @@
 
 from typing import Optional, List
 from datetime import datetime, timedelta
+import time
 import caldav
 from caldav.elements import dav
 from icalendar import Calendar, Event as ICalEvent
@@ -77,6 +78,7 @@ class RadicaleService:
         Returns:
             caldav.Calendar object
         """
+        _cal_start = time.perf_counter()
         try:
             client = self._get_user_client(user_id)
             principal = client.principal()
@@ -91,7 +93,8 @@ class RadicaleService:
                     display_name = cal_props.get('{DAV:}displayname', '')
 
                     if display_name == calendar_name:
-                        logger.info("calendar_found", user_id=user_id, calendar=calendar_name, url=str(cal.url))
+                        _cal_duration_ms = (time.perf_counter() - _cal_start) * 1000
+                        logger.info("calendar_found", user_id=user_id, calendar=calendar_name, url=str(cal.url), duration_ms=round(_cal_duration_ms, 1))
                         return cal
                 except Exception as e:
                     # If can't get properties, skip this calendar
@@ -104,11 +107,13 @@ class RadicaleService:
                 supported_calendar_component_set=['VEVENT']
             )
 
-            logger.info("calendar_created", user_id=user_id, calendar=calendar_name)
+            _cal_duration_ms = (time.perf_counter() - _cal_start) * 1000
+            logger.info("calendar_created", user_id=user_id, calendar=calendar_name, duration_ms=round(_cal_duration_ms, 1))
             return new_calendar
 
         except Exception as e:
-            logger.error("calendar_error", user_id=user_id, error=str(e), exc_info=True)
+            _cal_duration_ms = (time.perf_counter() - _cal_start) * 1000
+            logger.error("calendar_error", user_id=user_id, error=str(e), duration_ms=round(_cal_duration_ms, 1), exc_info=True)
             return None
 
     async def create_event(self, user_id: str, event: EventDTO) -> Optional[str]:
@@ -232,7 +237,10 @@ class RadicaleService:
                 return []
 
             # Search events in time range
+            _search_start = time.perf_counter()
             events = calendar.date_search(start=time_min, end=time_max)
+            _search_duration_ms = (time.perf_counter() - _search_start) * 1000
+            logger.info("caldav_date_search_duration", duration_ms=round(_search_duration_ms, 1), user_id=user_id)
 
             calendar_events = []
             for event in events:
