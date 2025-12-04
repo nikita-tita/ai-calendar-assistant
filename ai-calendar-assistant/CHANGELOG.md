@@ -6,6 +6,16 @@
 
 ---
 
+## [2025-12-04] - Event Reminder Fix
+
+### Bug Fixes
+- **Исправлены напоминания о событиях** — вместо технических ключей `in_30_minutes`, `time_label`, `location_label` теперь отображается нормальный русский текст
+  - Причина: ключи переводов не существовали в словаре TRANSLATIONS
+  - Решение: заменено на хардкод русских строк (сервис только на русском)
+  - Файл: `app/services/event_reminders_idempotent.py`
+
+---
+
 ## [2025-12-04] - Security & Code Quality Cleanup
 
 ### Security Fixes

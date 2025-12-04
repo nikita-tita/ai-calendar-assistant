@@ -12,8 +12,6 @@ import pytz
 
 from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
-from app.services.translations import get_translation, Language
-from app.utils.datetime_parser import format_datetime_human
 
 logger = structlog.get_logger()
 
@@ -271,25 +269,16 @@ class EventRemindersServiceIdempotent:
             event_start_local: Event start time in user's timezone
         """
         try:
-            # Get user's language
-            lang = user_preferences.get_language(user_id)
-
             # Format time
             time_str = event_start_local.strftime('%H:%M')
 
-            # Build reminder message
-            reminder_text = get_translation("reminder_upcoming", lang) or "⏰ Напоминание!"
-            event_name = get_translation("event_name", lang) or "Событие"
-            time_label = get_translation("time_label", lang) or "Время"
-            location_label = get_translation("location_label", lang) or "Место"
-            minutes_30 = get_translation("in_30_minutes", lang) or "Через 30 минут"
-
-            message = f"{reminder_text}\n\n"
-            message += f"📅 {minutes_30}: {event.summary}\n"
-            message += f"🕐 {time_label}: {time_str}\n"
+            # Build reminder message (Russian only service)
+            message = "⏰ Напоминание!\n\n"
+            message += f"📅 Через 30 минут: {event.summary}\n"
+            message += f"🕐 Время: {time_str}\n"
 
             if event.location:
-                message += f"📍 {location_label}: {event.location}\n"
+                message += f"📍 Место: {event.location}\n"
 
             # Send message
             await self.bot.send_message(chat_id=chat_id, text=message)
