@@ -862,12 +862,15 @@ function initTranslations() {
     if (chartTitles[1]) chartTitles[1].textContent = t('actionDistribution');
     if (chartTitles[2]) chartTitles[2].textContent = t('recentUsers');
 
-    // Table headers - Recent Users
-    const userTableHeaders = document.querySelectorAll('#usersTable').parentElement.previousElementSibling.querySelectorAll('th');
-    if (userTableHeaders[0]) userTableHeaders[0].textContent = t('userId');
-    if (userTableHeaders[1]) userTableHeaders[1].textContent = t('events');
-    if (userTableHeaders[2]) userTableHeaders[2].textContent = t('messages');
-    if (userTableHeaders[3]) userTableHeaders[3].textContent = t('lastActivity');
+    // Table headers - Recent Users (safe access)
+    const usersTableEl = document.getElementById('usersTable');
+    if (usersTableEl?.parentElement?.previousElementSibling) {
+        const userTableHeaders = usersTableEl.parentElement.previousElementSibling.querySelectorAll('th');
+        if (userTableHeaders[0]) userTableHeaders[0].textContent = t('userId');
+        if (userTableHeaders[1]) userTableHeaders[1].textContent = t('events');
+        if (userTableHeaders[2]) userTableHeaders[2].textContent = t('messages');
+        if (userTableHeaders[3]) userTableHeaders[3].textContent = t('lastActivity');
+    }
 
     // User details section
     const userDetailHeaders = document.querySelectorAll('#userView .text-sm.text-slate-400');
@@ -877,18 +880,28 @@ function initTranslations() {
     if (userDetailHeaders[3]) userDetailHeaders[3].textContent = '❌ ' + t('errors');
     if (userDetailHeaders[4]) userDetailHeaders[4].textContent = '📊 ' + t('totalActions');
 
-    // Actions history table headers
-    const actionsHeaders = document.querySelectorAll('#userActionsTable').parentElement.previousElementSibling.querySelectorAll('th');
-    if (actionsHeaders[0]) actionsHeaders[0].textContent = t('time');
-    if (actionsHeaders[1]) actionsHeaders[1].textContent = t('action');
-    if (actionsHeaders[2]) actionsHeaders[2].textContent = t('details');
-    if (actionsHeaders[3]) actionsHeaders[3].textContent = t('status');
+    // Actions history table headers (safe access)
+    const actionsTableEl = document.getElementById('userActionsTable');
+    if (actionsTableEl?.parentElement?.previousElementSibling) {
+        const actionsHeaders = actionsTableEl.parentElement.previousElementSibling.querySelectorAll('th');
+        if (actionsHeaders[0]) actionsHeaders[0].textContent = t('time');
+        if (actionsHeaders[1]) actionsHeaders[1].textContent = t('action');
+        if (actionsHeaders[2]) actionsHeaders[2].textContent = t('details');
+        if (actionsHeaders[3]) actionsHeaders[3].textContent = t('status');
+    }
 }
 
-// Run translations and restore session when DOM is ready
+// Run restore session FIRST, then translations
 function initPage() {
-    initTranslations();
+    // CRITICAL: Restore session first, before anything else
     restoreSession();
+
+    // Then try translations (with error handling so it doesn't break session restore)
+    try {
+        initTranslations();
+    } catch (e) {
+        console.warn('[Admin] initTranslations error (non-critical):', e.message);
+    }
 }
 
 if (document.readyState === 'loading') {
