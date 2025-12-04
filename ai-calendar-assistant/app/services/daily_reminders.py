@@ -70,6 +70,13 @@ class DailyRemindersService:
         self._save_users()
         logger.info("user_registered_for_reminders", user_id=user_id)
 
+    def unregister_user(self, user_id: str):
+        """Unregister user from daily reminders (e.g., when chat is not found)."""
+        if user_id in self.active_users:
+            del self.active_users[user_id]
+            self._save_users()
+            logger.info("user_unregistered_from_reminders", user_id=user_id)
+
     async def send_morning_reminder(self, user_id: str, chat_id: int):
         """Send morning reminder with today's events."""
         try:
@@ -120,7 +127,13 @@ class DailyRemindersService:
             logger.info("morning_reminder_sent", user_id=user_id, events_count=len(today_events))
 
         except TelegramError as e:
-            logger.error("morning_reminder_failed", user_id=user_id, error=str(e))
+            error_msg = str(e).lower()
+            # Unregister user if chat not found (user blocked bot or deleted account)
+            if "chat not found" in error_msg or "bot was blocked" in error_msg:
+                logger.warning("chat_not_found_unregistering", user_id=user_id, error=str(e))
+                self.unregister_user(user_id)
+            else:
+                logger.error("morning_reminder_failed", user_id=user_id, error=str(e))
         except Exception as e:
             logger.error("morning_reminder_error", user_id=user_id, error=str(e), exc_info=True)
 
@@ -153,7 +166,12 @@ class DailyRemindersService:
             logger.info("morning_motivation_sent", user_id=user_id, message_index=current_index)
 
         except TelegramError as e:
-            logger.error("morning_motivation_failed", user_id=user_id, error=str(e))
+            error_msg = str(e).lower()
+            if "chat not found" in error_msg or "bot was blocked" in error_msg:
+                logger.warning("chat_not_found_unregistering", user_id=user_id, error=str(e))
+                self.unregister_user(user_id)
+            else:
+                logger.error("morning_motivation_failed", user_id=user_id, error=str(e))
         except Exception as e:
             logger.error("morning_motivation_error", user_id=user_id, error=str(e))
 
@@ -201,7 +219,12 @@ class DailyRemindersService:
             logger.info("evening_reminder_sent", user_id=user_id, events_count=today_events_count)
 
         except TelegramError as e:
-            logger.error("evening_reminder_failed", user_id=user_id, error=str(e))
+            error_msg = str(e).lower()
+            if "chat not found" in error_msg or "bot was blocked" in error_msg:
+                logger.warning("chat_not_found_unregistering", user_id=user_id, error=str(e))
+                self.unregister_user(user_id)
+            else:
+                logger.error("evening_reminder_failed", user_id=user_id, error=str(e))
         except Exception as e:
             logger.error("evening_reminder_error", user_id=user_id, error=str(e), exc_info=True)
 
