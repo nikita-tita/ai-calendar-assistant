@@ -1,6 +1,6 @@
 """Admin API router with 3-password authentication, rate limiting and fake mode."""
 
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Header, Query, Body, Request
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -8,6 +8,7 @@ import structlog
 import bcrypt
 import secrets
 import os
+import jwt
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -19,6 +20,11 @@ from app.models.analytics import (
 from app.config import settings
 
 logger = structlog.get_logger()
+
+# JWT secret key - use existing SECRET_KEY from settings or generate one
+JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or secrets.token_urlsafe(32)
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24  # Token valid for 24 hours
 
 # Rate limiter for admin endpoints (stricter than general API)
 limiter = Limiter(
@@ -94,44 +100,42 @@ def verify_three_passwords(pwd1: str, pwd2: str, pwd3: str) -> str:
     return "invalid"
 
 
-# Session token storage (in production, use Redis or database)
-_valid_tokens: dict = {}
-
-
-def generate_session_token() -> str:
-    """Generate cryptographically secure session token."""
-    return secrets.token_urlsafe(32)
-
-
-def verify_token(token: str) -> str:
+def create_jwt_token(mode: str) -> str:
     """
-    Verify token from Authorization header.
+    Create a JWT token for admin session.
+
+    Token contains:
+    - mode: "real" or "fake"
+    - exp: expiration timestamp
+    - iat: issued at timestamp
+    """
+    now = datetime.utcnow()
+    payload = {
+        "mode": mode,
+        "exp": now + timedelta(hours=JWT_EXPIRATION_HOURS),
+        "iat": now
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def verify_token(token: str) -> Optional[str]:
+    """
+    Verify JWT token from Authorization header.
 
     Returns:
         - "real" if valid real token
         - "fake" if valid fake token
-        - None if invalid
+        - None if invalid or expired
     """
-    if token in _valid_tokens:
-        token_data = _valid_tokens[token]
-        # Check expiration (1 hour)
-        if datetime.now() - token_data['created'] < timedelta(hours=1):
-            return token_data['mode']
-        else:
-            # Token expired, remove it
-            del _valid_tokens[token]
-            return None
-    return None
-
-
-def create_session_token(mode: str) -> str:
-    """Create a new session token for the given mode."""
-    token = generate_session_token()
-    _valid_tokens[token] = {
-        'mode': mode,
-        'created': datetime.now()
-    }
-    return token
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload.get("mode")
+    except jwt.ExpiredSignatureError:
+        logger.debug("admin_token_expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.debug("admin_token_invalid", error=str(e))
+        return None
 
 
 @router.post("/verify")
@@ -164,8 +168,8 @@ async def verify_passwords(request: Request, login_request: LoginRequest):
                    mode=auth_type,
                    ip=request.client.host if request.client else "unknown")
 
-        # Generate cryptographically secure session token (not derived from passwords)
-        token = create_session_token(auth_type)
+        # Generate JWT token (survives server restarts)
+        token = create_jwt_token(auth_type)
 
         return {"valid": True, "mode": auth_type, "token": token}
 
