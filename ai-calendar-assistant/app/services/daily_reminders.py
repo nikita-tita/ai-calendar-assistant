@@ -20,8 +20,8 @@ logger = structlog.get_logger()
 
 # Test mode configuration
 # When TEST_MODE is True, only TEST_USER_IDS will receive reminders at test times
-TEST_MODE = True  # Set to False for production
-TEST_USER_IDS = {"2296243"}  # @nikita_tita - add more test user IDs here if needed
+TEST_MODE = False  # Production mode - all users receive reminders at their configured times
+TEST_USER_IDS = {"2296243"}  # @nikita_tita - test user IDs (only used when TEST_MODE=True)
 
 
 class DailyRemindersService:
@@ -94,7 +94,7 @@ class DailyRemindersService:
 
                 today_events.append({
                     'start': event_start_local,
-                    'title': e.title
+                    'title': e.summary  # CalendarEvent uses 'summary' not 'title'
                 })
 
             # Build message with translations
@@ -205,14 +205,27 @@ class DailyRemindersService:
     async def run_daily_schedule(self):
         """Run daily reminder schedule."""
         self.running = True
-        logger.info("daily_reminders_started")
+        logger.info("daily_reminders_started",
+                   test_mode=TEST_MODE,
+                   active_users_count=len(self.active_users))
 
         # Track which users have received motivation today
         motivation_sent_today = set()
 
+        # Log check counter (every 10 minutes)
+        check_counter = 0
+
         while self.running:
             try:
                 utc_now = datetime.now(pytz.UTC)
+                check_counter += 1
+
+                # Log status every 10 minutes (10 checks)
+                if check_counter % 10 == 0:
+                    logger.info("daily_reminders_check",
+                               utc_time=utc_now.strftime('%H:%M'),
+                               active_users=len(self.active_users),
+                               checks_done=check_counter)
 
                 # Check if it's a new day (reset motivation tracking at 00:00 UTC)
                 if utc_now.hour == 0 and utc_now.minute == 0:
@@ -285,17 +298,20 @@ class DailyRemindersService:
 
                         else:
                             # PRODUCTION SCHEDULE - uses user's configured times
-                            # Morning reminder at user's configured time
-                            current_minute_time = time(user_time.hour, user_time.minute)
-                            next_minute_time = time(user_time.hour, user_time.minute + 1) if user_time.minute < 59 else time(user_time.hour + 1, 0)
+                            # Helper function to check if current time matches target time (same hour and minute)
+                            def is_time_match(current: time, target: time) -> bool:
+                                return current.hour == target.hour and current.minute == target.minute
 
+                            current_minute_time = time(user_time.hour, user_time.minute)
+
+                            # Morning reminder at user's configured time
                             if morning_enabled and not in_quiet_hours:
-                                if morning_time <= current_minute_time < time(morning_time.hour, morning_time.minute + 1):
+                                if is_time_match(current_minute_time, morning_time):
                                     await self.send_morning_reminder(user_id, chat_id)
                                     await asyncio.sleep(1)  # Rate limiting
 
                             # Morning motivation at 10:00 (1 hour after default morning time)
-                            if not in_quiet_hours and time(10, 0) <= user_time < time(10, 1):
+                            if not in_quiet_hours and is_time_match(current_minute_time, time(10, 0)):
                                 user_date_key = f"{user_id}:{user_local_time.date()}"
                                 if user_date_key not in motivation_sent_today:
                                     await self.send_morning_motivation(user_id, chat_id)
@@ -304,7 +320,7 @@ class DailyRemindersService:
 
                             # Evening reminder at user's configured time
                             if evening_enabled and not in_quiet_hours:
-                                if evening_time <= current_minute_time < time(evening_time.hour, evening_time.minute + 1):
+                                if is_time_match(current_minute_time, evening_time):
                                     await self.send_evening_reminder(user_id, chat_id)
                                     await asyncio.sleep(1)  # Rate limiting
 
