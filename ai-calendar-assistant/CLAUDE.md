@@ -51,9 +51,11 @@
 | Файл | Описание | Когда читать |
 |------|----------|--------------|
 | `app/static/index.html` | WebApp интерфейс | При работе с UI |
-| `app/services/telegram_service.py` | Telegram бот | При работе с ботом |
-| `app/services/calendar_service.py` | Календарь | При работе с событиями |
-| `app/services/todos_service.py` | Задачи | При работе с todos |
+| `app/services/telegram_handler.py` | Обработчик Telegram сообщений | При работе с ботом |
+| `app/services/calendar_radicale.py` | CalDAV интеграция | При работе с событиями |
+| `app/services/llm_agent_yandex.py` | AI обработка (Yandex GPT) | При работе с NLP |
+| `app/services/todos_service.py` | Задачи (шифрованные) | При работе с todos |
+| `app/services/encrypted_storage.py` | Шифрование данных | При работе с безопасностью |
 | `app/routers/` | API endpoints | При работе с API |
 
 ---
