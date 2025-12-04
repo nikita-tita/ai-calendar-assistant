@@ -208,6 +208,7 @@ let distributionChart = null;
 let refreshInterval = null;
 let currentView = 'main';
 let allActions = [];
+let errorsData = { errors: [], stats: { total: 0, by_type: {} } };
 
 // Get language from URL parameter
 const urlParams = new URLSearchParams(window.location.search);
@@ -350,7 +351,14 @@ const actionLabels = {
     'event_query': '🔍 ' + (userLang === 'ru' ? 'Поиск' : userLang === 'en' ? 'Search' : userLang === 'es' ? 'Buscar' : 'بحث'),
     'text_message': '💬 ' + t('messages'),
     'voice_message': '🎤 ' + t('voice'),
-    'error': '❌ ' + (userLang === 'ru' ? 'Ошибка' : userLang === 'en' ? 'Error' : userLang === 'es' ? 'Error' : 'خطأ')
+    'error': '❌ ' + (userLang === 'ru' ? 'Ошибка' : userLang === 'en' ? 'Error' : userLang === 'es' ? 'Error' : 'خطأ'),
+    // Error types for detailed tracking
+    'llm_error': '🤖❌ LLM API',
+    'llm_parse_error': '📝❌ JSON Parse',
+    'llm_timeout': '⏱️❌ Timeout',
+    'calendar_error': '📅❌ Calendar',
+    'stt_error': '🎤❌ STT',
+    'intent_unclear': '❓ Уточнение'
 };
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -414,7 +422,17 @@ async function loadDashboard() {
         document.getElementById('totalUsers').textContent = stats.total_users;
         document.getElementById('totalEvents').textContent = stats.total_events_created;
         document.getElementById('totalMessages').textContent = stats.total_messages;
-        document.getElementById('totalErrors').textContent = 0; // Not tracked in current API
+
+        // Load errors from new endpoint
+        let errorsCount = 0;
+        try {
+            errorsData = await fetchAPI('/errors?hours=24&limit=100');
+            errorsCount = errorsData.stats?.total || 0;
+        } catch (e) {
+            console.log('Errors endpoint not available:', e);
+            errorsData = { errors: [], stats: { total: 0, by_type: {} } };
+        }
+        document.getElementById('totalErrors').textContent = errorsCount;
 
         // Timeline - use new endpoint
         try {
@@ -439,11 +457,11 @@ async function loadDashboard() {
             updateActionsTable([]);
         }
 
-        // Distribution chart with available data
+        // Distribution chart with available data (including errors)
         updateDistributionChart({
             total_events: stats.total_events_created,
             total_messages: stats.total_messages,
-            total_errors: 0
+            total_errors: errorsCount
         });
     } catch (err) {
         console.error('Failed to load dashboard:', err);
@@ -634,9 +652,48 @@ async function filterByType(type) {
         filtered = allActions.filter(a => ['text_message', 'voice_message'].includes(a.action_type));
         subtitle = `Текстовых: ${filtered.filter(a => a.action_type === 'text_message').length}, Голосовых: ${filtered.filter(a => a.action_type === 'voice_message').length}`;
     } else if (type === 'errors') {
-        title = '❌ Все ошибки';
-        filtered = allActions.filter(a => a.action_type === 'error' || !a.success);
-        subtitle = `Всего найдено ошибок: ${filtered.length}`;
+        title = '❌ Ошибки за 24 часа';
+        // Use errors from dedicated endpoint
+        if (errorsData.errors && errorsData.errors.length > 0) {
+            // Build subtitle with error breakdown
+            const byType = errorsData.stats?.by_type || {};
+            const typeBreakdown = Object.entries(byType)
+                .map(([type, count]) => `${actionLabels[type] || type}: ${count}`)
+                .join(', ');
+            subtitle = `Всего: ${errorsData.stats?.total || 0}` + (typeBreakdown ? ` | ${typeBreakdown}` : '');
+
+            // Show errors table
+            const tbody = document.getElementById('filteredTable');
+            tbody.innerHTML = errorsData.errors.map(e => {
+                const time = new Date(e.timestamp).toLocaleString('ru-RU', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                });
+                const userName = e.username ? `@${e.username}` : (e.first_name || e.user_id);
+                const errorMsg = e.error_message ? `<div class="text-xs text-red-400 mt-1">${e.error_message.substring(0, 100)}${e.error_message.length > 100 ? '...' : ''}</div>` : '';
+                return `
+                    <tr class="clickable-row text-red-300" onclick="showUserProfile('${e.user_id}')">
+                        <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <div class="font-mono text-blue-400">${e.user_id}</div>
+                            <div class="text-xs text-slate-500">${userName}</div>
+                        </td>
+                        <td class="px-4 py-3 text-sm">${actionLabels[e.action_type] || e.action_type}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <div class="text-slate-400">${e.details || '-'}</div>
+                            ${errorMsg}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('filterTitle').textContent = title;
+            document.getElementById('filterSubtitle').textContent = subtitle;
+            return;
+        } else {
+            // Fallback to allActions if errors endpoint not available
+            filtered = allActions.filter(a => a.action_type === 'error' || !a.success);
+            subtitle = `Всего найдено ошибок: ${filtered.length}`;
+        }
     } else if (type === 'users') {
         try {
             const users = await fetchAPI('/users');

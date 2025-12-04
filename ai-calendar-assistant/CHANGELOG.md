@@ -6,6 +6,47 @@
 
 ---
 
+## [2025-12-04] - Error Tracking for Admin Panel
+
+### Added
+- **Новые типы ошибок в analytics** для детального отслеживания:
+  - `LLM_ERROR` - ошибки Yandex GPT API
+  - `LLM_PARSE_ERROR` - ошибки парсинга JSON ответа
+  - `LLM_TIMEOUT` - таймауты API (30с)
+  - `CALENDAR_ERROR` - ошибки Radicale (создание/удаление/обновление)
+  - `STT_ERROR` - ошибки распознавания голоса
+  - `INTENT_UNCLEAR` - когда LLM не понял запрос пользователя
+
+- **API endpoint `/api/admin/errors`** - получение ошибок за N часов:
+  - Параметры: `hours` (1-168), `limit` (1-500)
+  - Возвращает список ошибок и статистику по типам
+  - Поддержка fake mode (пустые данные)
+
+- **Обновлённая админ-панель**:
+  - Карточка "Ошибки" теперь показывает реальное количество за 24ч
+  - Клик на карточку показывает детальный список ошибок
+  - Breakdown ошибок по типам в подзаголовке
+  - Показ error_message для каждой ошибки
+
+### Technical
+- Файлы изменены:
+  - `app/models/analytics.py` - новые ActionType
+  - `app/services/analytics_service.py` - методы get_errors(), get_error_stats()
+  - `app/services/llm_agent_yandex.py` - логирование LLM ошибок
+  - `app/services/calendar_radicale.py` - логирование calendar ошибок
+  - `app/services/telegram_handler.py` - логирование STT и INTENT_UNCLEAR
+  - `app/routers/admin.py` - новый endpoint /errors
+  - `app/static/admin.html` - UI для отображения ошибок
+
+### Зачем это нужно
+Теперь в админке можно видеть:
+1. Когда пользователь получил ошибку (и какую)
+2. Что пользователь пытался сделать
+3. Какой тип проблемы (API, парсинг, календарь, голос)
+4. Сколько "уточнений" требуется пользователям (плохо распознанные запросы)
+
+---
+
 ## [2025-12-04] - Admin Panel Fix
 
 ### Fixed

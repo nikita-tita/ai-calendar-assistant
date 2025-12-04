@@ -18,6 +18,13 @@ class ActionType(str, Enum):
     VOICE_MESSAGE = "voice_message"
     WEBAPP_OPEN = "webapp_open"
     ERROR = "error"
+    # Error types for detailed tracking
+    LLM_ERROR = "llm_error"           # Yandex GPT API errors
+    LLM_PARSE_ERROR = "llm_parse_error"  # JSON parsing failures
+    LLM_TIMEOUT = "llm_timeout"       # API timeouts
+    CALENDAR_ERROR = "calendar_error"  # Radicale connection/operation errors
+    STT_ERROR = "stt_error"           # Speech-to-text errors
+    INTENT_UNCLEAR = "intent_unclear"  # LLM returned clarify intent
 
 
 class UserAction(BaseModel):

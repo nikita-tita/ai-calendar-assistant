@@ -476,6 +476,69 @@ class AnalyticsService:
         days = (month_end - month_start).days
         return max(1, days // 7)
 
+    def get_errors(self, hours: int = 24, limit: int = 100) -> List[UserAction]:
+        """Get recent errors for admin dashboard.
+
+        Args:
+            hours: Number of hours to look back (default 24)
+            limit: Maximum number of errors to return
+
+        Returns:
+            List of error actions sorted by timestamp (newest first)
+        """
+        now = datetime.now()
+        start_time = now - timedelta(hours=hours)
+
+        # Error action types
+        error_types = [
+            ActionType.ERROR,
+            ActionType.LLM_ERROR,
+            ActionType.LLM_PARSE_ERROR,
+            ActionType.LLM_TIMEOUT,
+            ActionType.CALENDAR_ERROR,
+            ActionType.STT_ERROR,
+            ActionType.INTENT_UNCLEAR
+        ]
+
+        # Filter errors
+        errors = [
+            a for a in self.actions
+            if (a.timestamp >= start_time and
+                (a.action_type in error_types or not a.success))
+        ]
+
+        # Sort by timestamp (newest first)
+        errors.sort(key=lambda x: x.timestamp, reverse=True)
+
+        return errors[:limit]
+
+    def get_error_stats(self, hours: int = 24) -> Dict:
+        """Get error statistics for dashboard.
+
+        Args:
+            hours: Number of hours to look back
+
+        Returns:
+            Dictionary with error counts by type
+        """
+        now = datetime.now()
+        start_time = now - timedelta(hours=hours)
+
+        # Count errors by type
+        error_counts = defaultdict(int)
+        total_errors = 0
+
+        for action in self.actions:
+            if action.timestamp >= start_time and not action.success:
+                error_counts[action.action_type] += 1
+                total_errors += 1
+
+        return {
+            'total': total_errors,
+            'by_type': dict(error_counts),
+            'period_hours': hours
+        }
+
 
 # Global instance
 analytics_service = AnalyticsService()

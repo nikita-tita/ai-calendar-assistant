@@ -448,6 +448,70 @@ async def get_recent_actions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/errors")
+async def get_errors(
+    authorization: str = Header(..., alias="Authorization"),
+    hours: int = Query(24, ge=1, le=168),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    Get recent errors for admin dashboard.
+
+    Requires Authorization header with admin token.
+
+    Returns errors from the last N hours:
+    - LLM errors (API failures, timeouts, parse failures)
+    - Calendar errors (Radicale connection issues)
+    - STT errors (speech-to-text failures)
+    - Intent unclear (user requests that required clarification)
+    """
+    try:
+        # Extract token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+        auth_type = verify_token(token)
+
+        if not auth_type:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if auth_type == "fake":
+            logger.info("admin_errors_accessed_fake_mode")
+            return {"errors": [], "stats": {"total": 0, "by_type": {}, "period_hours": hours}}
+
+        # Get errors and stats
+        errors = analytics_service.get_errors(hours, limit)
+        error_stats = analytics_service.get_error_stats(hours)
+
+        logger.info("admin_errors_accessed", count=len(errors), hours=hours)
+
+        # Convert to dict format for JSON
+        return {
+            "errors": [
+                {
+                    "user_id": action.user_id,
+                    "action_type": action.action_type,
+                    "timestamp": action.timestamp.isoformat(),
+                    "details": action.details,
+                    "error_message": action.error_message,
+                    "username": action.username,
+                    "first_name": action.first_name,
+                    "last_name": action.last_name
+                }
+                for action in errors
+            ],
+            "stats": error_stats
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_errors_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health")
 async def admin_health():
     """Health check for admin API (no auth required)."""

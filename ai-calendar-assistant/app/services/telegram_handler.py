@@ -318,6 +318,22 @@ class TelegramHandler:
 
         except Exception as e:
             logger.error("voice_transcription_failed", user_id=user_id, error=str(e))
+            # Log STT error to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                try:
+                    from app.models.analytics import ActionType
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type=ActionType.STT_ERROR,
+                        details="Voice transcription failed",
+                        success=False,
+                        error_message=str(e)[:200],
+                        username=update.effective_user.username if update.effective_user else None,
+                        first_name=update.effective_user.first_name if update.effective_user else None,
+                        last_name=update.effective_user.last_name if update.effective_user else None
+                    )
+                except Exception as analytics_err:
+                    logger.warning("analytics_log_failed", error=str(analytics_err))
             await update.message.reply_text(
                 "Ошибка распознавания. Напишите текстом."
             )
@@ -896,6 +912,21 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Handle different intents
         if event_dto.intent == IntentType.CLARIFY:
+            # Log intent unclear to analytics (helps identify confusing user requests)
+            if ANALYTICS_ENABLED and analytics_service:
+                try:
+                    from app.models.analytics import ActionType
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type=ActionType.INTENT_UNCLEAR,
+                        details=f"User: {text[:100]}. Question: {event_dto.clarify_question[:100] if event_dto.clarify_question else 'N/A'}",
+                        success=False,  # Mark as unsuccessful to track in errors
+                        username=update.effective_user.username if update.effective_user else None,
+                        first_name=update.effective_user.first_name if update.effective_user else None,
+                        last_name=update.effective_user.last_name if update.effective_user else None
+                    )
+                except Exception as analytics_err:
+                    logger.warning("analytics_log_failed", error=str(analytics_err))
             await update.message.reply_text(
                 event_dto.clarify_question or "Уточните, пожалуйста."
             )

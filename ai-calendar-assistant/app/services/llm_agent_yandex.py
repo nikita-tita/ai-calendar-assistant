@@ -13,6 +13,15 @@ from app.services.translations import get_translation, Language
 
 logger = structlog.get_logger()
 
+# Analytics imports (optional - graceful fallback if not available)
+try:
+    from app.services.analytics_service import analytics_service
+    from app.models.analytics import ActionType
+    ANALYTICS_ENABLED = True
+except ImportError:
+    ANALYTICS_ENABLED = False
+    analytics_service = None
+
 
 class LLMAgentYandex:
     """
@@ -840,15 +849,37 @@ Respuesta JSON:""",
                 ]
             }
 
-            response = requests.post(
-                self.api_url,
-                headers=headers,
-                json=payload,
-                timeout=30
-            )
+            try:
+                response = requests.post(
+                    self.api_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=30
+                )
+            except requests.exceptions.Timeout as e:
+                logger.error("yandex_gpt_timeout", error=str(e))
+                # Log timeout error to analytics
+                if ANALYTICS_ENABLED and analytics_service and user_id:
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type=ActionType.LLM_TIMEOUT,
+                        details=f"Yandex GPT timeout: {user_text[:100]}",
+                        success=False,
+                        error_message="API request timed out after 30s"
+                    )
+                raise
 
             if response.status_code != 200:
                 logger.error("yandex_gpt_api_error", status_code=response.status_code, response=response.text)
+                # Log API error to analytics
+                if ANALYTICS_ENABLED and analytics_service and user_id:
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type=ActionType.LLM_ERROR,
+                        details=f"API error {response.status_code}: {user_text[:100]}",
+                        success=False,
+                        error_message=f"Status {response.status_code}: {response.text[:200]}"
+                    )
                 raise Exception(f"Yandex GPT API error: {response.status_code} - {response.text}")
 
             response_data = response.json()
@@ -866,7 +897,8 @@ Respuesta JSON:""",
                 end_time,
                 duration,
                 language,
-                existing_events
+                existing_events,
+                user_id
             )
 
             logger.info(
@@ -879,6 +911,16 @@ Respuesta JSON:""",
 
         except Exception as e:
             logger.error("llm_extract_error_yandex", error=str(e), exc_info=True)
+
+            # Log general LLM error to analytics
+            if ANALYTICS_ENABLED and analytics_service and user_id:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.LLM_ERROR,
+                    details=f"LLM extract failed: {user_text[:100]}",
+                    success=False,
+                    error_message=str(e)[:200]
+                )
 
             # Return clarify intent on error with translated message
             lang_enum = Language(language) if language in ['ru', 'en', 'es', 'ar'] else Language.ENGLISH
@@ -899,7 +941,8 @@ Respuesta JSON:""",
         parsed_end: Optional[datetime],
         parsed_duration: Optional[int],
         language: str = 'ru',
-        existing_events: Optional[list] = None
+        existing_events: Optional[list] = None,
+        user_id: Optional[str] = None
     ) -> EventDTO:
         """Parse Yandex GPT API response into EventDTO."""
 
@@ -976,6 +1019,16 @@ Respuesta JSON:""",
 
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning("yandex_gpt_json_parse_error", error=str(e), text=result_text)
+
+            # Log parse error to analytics
+            if ANALYTICS_ENABLED and analytics_service and user_id:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.LLM_PARSE_ERROR,
+                    details=f"JSON parse failed: {user_text[:100]}",
+                    success=False,
+                    error_message=f"Parse error: {str(e)[:100]}. Response: {result_text[:100]}"
+                )
 
             # Use translated clarify message
             lang_enum = Language(language) if language in ['ru', 'en', 'es', 'ar'] else Language.ENGLISH
