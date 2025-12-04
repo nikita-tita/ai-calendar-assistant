@@ -164,6 +164,19 @@ async def webapp():
     )
 
 
+@app.get("/admin")
+async def admin_panel():
+    """Admin panel endpoint - serve admin.html with no-cache headers."""
+    return FileResponse(
+        "app/static/admin.html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
 
