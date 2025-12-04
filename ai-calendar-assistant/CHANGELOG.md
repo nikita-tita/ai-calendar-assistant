@@ -6,6 +6,44 @@
 
 ---
 
+## [2025-12-04] - Admin Panel Fix
+
+### Fixed
+- **admin.html**: Исправлена синхронизация frontend с backend API
+  - Форма логина теперь использует `/api/admin/verify` (было: `/login`)
+  - Добавлено третье поле пароля для 3-факторной авторизации
+  - Dashboard использует правильные эндпоинты (`/stats`, `/users`, `/timeline`, `/actions`)
+  - Исправлена работа с токеном авторизации (`data.token` вместо `data.session_token`)
+
+### Added
+- **admin.py**: Новые API эндпоинты для админ-панели
+  - `GET /api/admin/timeline` - временной ряд активности за N часов
+  - `GET /api/admin/actions` - последние действия всех пользователей
+
+- **telegram_handler.py**: Логирование событий календаря в analytics
+  - `event_create` - создание события через бота
+  - `event_update` - изменение события
+  - `event_delete` - удаление события
+
+### Technical
+- Файлы: `admin.html`, `app/routers/admin.py`, `app/services/telegram_handler.py`
+- Теперь все действия пользователей логируются в analytics_service
+- Данные сохраняются в `/var/lib/calendar-bot/analytics_data.json.enc` (шифрованные)
+
+### API Reference
+```
+POST /api/admin/verify    - Авторизация (3 пароля)
+GET  /api/admin/stats     - Статистика
+GET  /api/admin/users     - Список пользователей
+GET  /api/admin/users/{id}/dialog - Диалог пользователя
+GET  /api/admin/users/{id}/events - События пользователя
+GET  /api/admin/timeline  - График активности
+GET  /api/admin/actions   - Последние действия
+GET  /api/admin/health    - Проверка здоровья
+```
+
+---
+
 ## [2025-12-04] - System Documentation
 
 ### Added

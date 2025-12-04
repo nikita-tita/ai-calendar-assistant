@@ -959,6 +959,22 @@ Housler.ru сделал подборку сервисов, которые пом
         event_uid = await calendar_service.create_event(user_id, event_dto)
 
         if event_uid:
+            # Log event creation to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                try:
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type="event_create",
+                        details=f"Event: {event_dto.title}",
+                        event_id=event_uid,
+                        success=True,
+                        username=update.effective_user.username if update.effective_user else None,
+                        first_name=update.effective_user.first_name if update.effective_user else None,
+                        last_name=update.effective_user.last_name if update.effective_user else None
+                    )
+                except Exception as e:
+                    logger.warning("analytics_log_failed", error=str(e))
+
             time_str = format_datetime_human(event_dto.start_time, self._get_user_timezone(update))
             message = f"✅ Записал\n{time_str} • {event_dto.title}"
             if event_dto.location:
@@ -986,6 +1002,22 @@ Housler.ru сделал подборку сервисов, которые пом
         success = await calendar_service.update_event(user_id, event_dto.event_id, event_dto)
 
         if success:
+            # Log event update to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                try:
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type="event_update",
+                        details=f"Event: {event_dto.title or 'updated'}",
+                        event_id=event_dto.event_id,
+                        success=True,
+                        username=update.effective_user.username if update.effective_user else None,
+                        first_name=update.effective_user.first_name if update.effective_user else None,
+                        last_name=update.effective_user.last_name if update.effective_user else None
+                    )
+                except Exception as e:
+                    logger.warning("analytics_log_failed", error=str(e))
+
             if original_event:
                 # Show what was changed
                 title = event_dto.title or original_event.summary
@@ -1030,6 +1062,23 @@ Housler.ru сделал подборку сервисов, которые пом
         success = await calendar_service.delete_event(user_id, event_dto.event_id)
 
         if success:
+            # Log event deletion to analytics
+            if ANALYTICS_ENABLED and analytics_service:
+                try:
+                    event_title = event_to_delete.summary if event_to_delete else "deleted"
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type="event_delete",
+                        details=f"Event: {event_title}",
+                        event_id=event_dto.event_id,
+                        success=True,
+                        username=update.effective_user.username if update.effective_user else None,
+                        first_name=update.effective_user.first_name if update.effective_user else None,
+                        last_name=update.effective_user.last_name if update.effective_user else None
+                    )
+                except Exception as e:
+                    logger.warning("analytics_log_failed", error=str(e))
+
             if event_to_delete:
                 time_str = format_datetime_human(event_to_delete.start, self._get_user_timezone(update))
                 message = f"""✅ Событие удалено!

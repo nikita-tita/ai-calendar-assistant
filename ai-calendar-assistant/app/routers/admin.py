@@ -352,6 +352,102 @@ async def get_user_events(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/timeline")
+async def get_activity_timeline(
+    authorization: str = Header(..., alias="Authorization"),
+    hours: int = Query(24, ge=1, le=168)
+):
+    """
+    Get activity timeline for the last N hours.
+
+    Requires Authorization header with admin token.
+    """
+    try:
+        # Extract token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+        auth_type = verify_token(token)
+
+        if not auth_type:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if auth_type == "fake":
+            logger.info("admin_timeline_accessed_fake_mode")
+            return []
+
+        # Return real timeline
+        timeline = analytics_service.get_activity_timeline(hours)
+        logger.info("admin_timeline_accessed", hours=hours, points=len(timeline))
+
+        # Convert to dict format for JSON
+        return [
+            {"timestamp": point.timestamp.isoformat(), "value": point.value}
+            for point in timeline
+        ]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_timeline_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/actions")
+async def get_recent_actions(
+    authorization: str = Header(..., alias="Authorization"),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """
+    Get recent actions from all users.
+
+    Requires Authorization header with admin token.
+    """
+    try:
+        # Extract token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+        auth_type = verify_token(token)
+
+        if not auth_type:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if auth_type == "fake":
+            logger.info("admin_actions_accessed_fake_mode")
+            return []
+
+        # Return real actions
+        actions = analytics_service.get_recent_actions(limit)
+        logger.info("admin_actions_accessed", count=len(actions))
+
+        # Convert to dict format for JSON
+        return [
+            {
+                "user_id": action.user_id,
+                "action_type": action.action_type,
+                "timestamp": action.timestamp.isoformat(),
+                "details": action.details,
+                "success": action.success,
+                "username": action.username,
+                "first_name": action.first_name,
+                "last_name": action.last_name,
+                "is_test": action.is_test
+            }
+            for action in actions
+        ]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_actions_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health")
 async def admin_health():
     """Health check for admin API (no auth required)."""
