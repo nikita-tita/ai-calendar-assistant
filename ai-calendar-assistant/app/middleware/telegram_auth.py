@@ -68,11 +68,14 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[dict
         return None
 
 
-def extract_user_id_from_init_data(validated_data: dict) -> Optional[str]:
+def extract_user_info_from_init_data(validated_data: dict) -> Optional[dict]:
     """
-    Extract user_id from validated Telegram initData.
+    Extract user info from validated Telegram initData.
 
     The 'user' field is a JSON string containing user info.
+
+    Returns:
+        dict with user_id, username, first_name, last_name or None if extraction fails
     """
     try:
         user_json = validated_data.get('user')
@@ -86,7 +89,12 @@ def extract_user_id_from_init_data(validated_data: dict) -> Optional[str]:
 
         if user_id:
             logger.info("telegram_auth_user_extracted", user_id=str(user_id))
-            return str(user_id)
+            return {
+                'user_id': str(user_id),
+                'username': user_data.get('username'),
+                'first_name': user_data.get('first_name'),
+                'last_name': user_data.get('last_name')
+            }
 
         logger.warning("telegram_auth_no_user_id", message="No id in user data")
         return None
@@ -97,6 +105,14 @@ def extract_user_id_from_init_data(validated_data: dict) -> Optional[str]:
     except Exception as e:
         logger.error("telegram_auth_extract_error", error=str(e), exc_info=True)
         return None
+
+
+def extract_user_id_from_init_data(validated_data: dict) -> Optional[str]:
+    """
+    Extract user_id from validated Telegram initData (backward compatibility).
+    """
+    user_info = extract_user_info_from_init_data(validated_data)
+    return user_info.get('user_id') if user_info else None
 
 
 async def verify_telegram_webapp_auth(request: Request) -> Optional[str]:
@@ -149,6 +165,27 @@ async def verify_telegram_webapp_auth(request: Request) -> Optional[str]:
     )
 
     return user_id
+
+
+async def verify_telegram_webapp_auth_full(request: Request) -> Optional[dict]:
+    """
+    Verify Telegram WebApp authentication and extract full user info.
+
+    Returns:
+        dict with user_id, username, first_name, last_name if valid
+        None if authentication fails
+    """
+    init_data = request.headers.get('X-Telegram-Init-Data')
+
+    if not init_data:
+        return None
+
+    validated_data = validate_telegram_init_data(init_data, settings.telegram_bot_token)
+
+    if not validated_data:
+        return None
+
+    return extract_user_info_from_init_data(validated_data)
 
 
 class TelegramAuthMiddleware:
