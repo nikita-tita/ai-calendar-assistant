@@ -202,6 +202,7 @@
 
 <script>
 const API_BASE = '/api/admin';
+const SESSION_STORAGE_KEY = 'admin_session_token';
 let sessionToken = null;
 let activityChart = null;
 let distributionChart = null;
@@ -209,6 +210,30 @@ let refreshInterval = null;
 let currentView = 'main';
 let allActions = [];
 let errorsData = { errors: [], stats: { total: 0, by_type: {} } };
+
+// Restore session from sessionStorage on page load
+function restoreSession() {
+    const savedToken = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (savedToken) {
+        sessionToken = savedToken;
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        loadDashboard();
+        refreshInterval = setInterval(() => { if (currentView === 'main') loadDashboard(); }, 30000);
+    }
+}
+
+// Save session to sessionStorage
+function saveSession(token) {
+    sessionToken = token;
+    sessionStorage.setItem(SESSION_STORAGE_KEY, token);
+}
+
+// Clear session from sessionStorage
+function clearSession() {
+    sessionToken = null;
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+}
 
 // Get language from URL parameter
 const urlParams = new URLSearchParams(window.location.search);
@@ -376,7 +401,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 
         const data = await response.json();
         if (response.ok && data.valid) {
-            sessionToken = data.token;
+            saveSession(data.token);
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
             loadDashboard();
@@ -396,12 +421,13 @@ function showError(message) {
 }
 
 function logout() {
-    sessionToken = null;
+    clearSession();
     if (refreshInterval) clearInterval(refreshInterval);
     document.getElementById('dashboard').classList.add('hidden');
     document.getElementById('loginScreen').classList.remove('hidden');
     document.getElementById('password1').value = '';
     document.getElementById('password2').value = '';
+    document.getElementById('password3').value = '';
 }
 
 async function fetchAPI(endpoint) {
@@ -409,7 +435,13 @@ async function fetchAPI(endpoint) {
         headers: {'Authorization': `Bearer ${sessionToken}`}
     });
     if (!response.ok) {
-        if (response.status === 401) logout();
+        if (response.status === 401) {
+            // Token expired or invalid - clear session and redirect to login
+            clearSession();
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('loginScreen').classList.remove('hidden');
+            if (refreshInterval) clearInterval(refreshInterval);
+        }
         throw new Error('API error');
     }
     return response.json();
@@ -829,11 +861,16 @@ function initTranslations() {
     if (actionsHeaders[3]) actionsHeaders[3].textContent = t('status');
 }
 
-// Run translations when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initTranslations);
-} else {
+// Run translations and restore session when DOM is ready
+function initPage() {
     initTranslations();
+    restoreSession();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPage);
+} else {
+    initPage();
 }
 </script>
 
