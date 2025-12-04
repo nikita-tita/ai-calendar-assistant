@@ -6,6 +6,38 @@
 
 ---
 
+## [2025-12-04] - Docker Architecture Cleanup
+
+### Changed
+- **Унификация docker-compose** - теперь только один файл `docker-compose.secure.yml`
+- **Единый контейнер** - `telegram-bot` запускает и FastAPI, и Telegram polling bot
+- **Имена контейнеров** - `telegram-bot`, `calendar-redis`, `radicale-calendar`
+- **Healthcheck** - HTTP проверка `/health` работает корректно (FastAPI слушает порт 8000)
+
+### Removed
+- `docker-compose.yml` - удалён (был дублем)
+- `docker-compose.polling.yml` - удалён (устарел)
+- `docker-compose.production.yml` - удалён (устарел)
+- Файлы из `app/` директории - удалены дубли docker-compose
+
+### Technical
+- Архитектура: один контейнер `telegram-bot` с `Dockerfile.bot` + `start.sh`
+- `start.sh` запускает uvicorn (FastAPI) и python run_polling.py параллельно
+- Healthcheck проверяет `/health` endpoint через curl
+
+### Deployment
+```bash
+# Единственный способ деплоя
+ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+  cd /root/ai-calendar-assistant/ai-calendar-assistant &&
+  git pull origin main &&
+  docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
+  docker-compose -f docker-compose.secure.yml up -d telegram-bot
+'
+```
+
+---
+
 ## [2025-12-04] - Data Protection & External Volume
 
 ### Fixed
