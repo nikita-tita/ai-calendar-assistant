@@ -215,6 +215,79 @@ class RadicaleService:
                 )
             return None
 
+    def _list_events_sync(
+        self,
+        user_id: str,
+        time_min: datetime,
+        time_max: datetime
+    ) -> List[CalendarEvent]:
+        """
+        Synchronous implementation of list_events.
+        Called via asyncio.to_thread to avoid blocking event loop.
+        """
+        import pytz  # Import here to avoid issues with thread safety
+
+        calendar = self._get_user_calendar(user_id)
+        if not calendar:
+            return []
+
+        # Search events in time range
+        _search_start = time.perf_counter()
+        events = calendar.date_search(start=time_min, end=time_max)
+        _search_duration_ms = (time.perf_counter() - _search_start) * 1000
+        logger.info("caldav_date_search_duration", duration_ms=round(_search_duration_ms, 1), user_id=user_id)
+
+        calendar_events = []
+        for event in events:
+            ical = Calendar.from_ical(event.data)
+
+            for component in ical.walk('VEVENT'):
+                start = component.get('dtstart').dt
+                end = component.get('dtend').dt
+
+                # Convert to datetime if date object
+                if not isinstance(start, datetime):
+                    start = datetime.combine(start, datetime.min.time())
+                if not isinstance(end, datetime):
+                    end = datetime.combine(end, datetime.min.time())
+
+                # Ensure timezone awareness
+                # Events in Radicale are stored in UTC, so if no timezone assume UTC
+                if start.tzinfo is None:
+                    start = pytz.UTC.localize(start)
+                if end.tzinfo is None:
+                    end = pytz.UTC.localize(end)
+
+                # Convert UTC to user's timezone (Moscow by default)
+                # This ensures all times are in the same timezone for comparison
+                user_tz = pytz.timezone(settings.default_timezone)
+                start_local = start.astimezone(user_tz)
+                end_local = end.astimezone(user_tz)
+
+                logger.info("list_events_retrieved_event",
+                           summary=str(component.get('summary', 'Событие')),
+                           start_utc=start.isoformat(),
+                           start_local=start_local.isoformat(),
+                           has_tzinfo=start.tzinfo is not None,
+                           tzinfo_str=str(start.tzinfo))
+
+                calendar_events.append(CalendarEvent(
+                    id=str(component.get('uid')),
+                    summary=str(component.get('summary', 'Событие')),
+                    description=str(component.get('description', '')),
+                    start=start_local,
+                    end=end_local,
+                    location=str(component.get('location', '')),
+                    attendees=[
+                        str(att).replace('mailto:', '')
+                        for att in component.get('attendee', [])
+                    ],
+                    html_link=f"{self.url}/{self._get_user_calendar_name(user_id)}/{component.get('uid')}.ics"
+                ))
+
+        logger.info("events_listed", user_id=user_id, count=len(calendar_events))
+        return calendar_events
+
     async def list_events(
         self,
         user_id: str,
@@ -223,6 +296,7 @@ class RadicaleService:
     ) -> List[CalendarEvent]:
         """
         List events from user's calendar in time range.
+        Runs blocking CalDAV operations in thread pool.
 
         Args:
             user_id: Telegram user ID
@@ -233,68 +307,13 @@ class RadicaleService:
             List of calendar events
         """
         try:
-            calendar = self._get_user_calendar(user_id)
-            if not calendar:
-                return []
-
-            # Search events in time range
-            _search_start = time.perf_counter()
-            events = calendar.date_search(start=time_min, end=time_max)
-            _search_duration_ms = (time.perf_counter() - _search_start) * 1000
-            logger.info("caldav_date_search_duration", duration_ms=round(_search_duration_ms, 1), user_id=user_id)
-
-            calendar_events = []
-            for event in events:
-                ical = Calendar.from_ical(event.data)
-
-                for component in ical.walk('VEVENT'):
-                    start = component.get('dtstart').dt
-                    end = component.get('dtend').dt
-
-                    # Convert to datetime if date object
-                    if not isinstance(start, datetime):
-                        start = datetime.combine(start, datetime.min.time())
-                    if not isinstance(end, datetime):
-                        end = datetime.combine(end, datetime.min.time())
-
-                    # Ensure timezone awareness
-                    # Events in Radicale are stored in UTC, so if no timezone assume UTC
-                    import pytz
-                    if start.tzinfo is None:
-                        start = pytz.UTC.localize(start)
-                    if end.tzinfo is None:
-                        end = pytz.UTC.localize(end)
-
-                    # Convert UTC to user's timezone (Moscow by default)
-                    # This ensures all times are in the same timezone for comparison
-                    user_tz = pytz.timezone(settings.default_timezone)
-                    start_local = start.astimezone(user_tz)
-                    end_local = end.astimezone(user_tz)
-
-                    logger.info("list_events_retrieved_event",
-                               summary=str(component.get('summary', 'Событие')),
-                               start_utc=start.isoformat(),
-                               start_local=start_local.isoformat(),
-                               has_tzinfo=start.tzinfo is not None,
-                               tzinfo_str=str(start.tzinfo))
-
-                    calendar_events.append(CalendarEvent(
-                        id=str(component.get('uid')),
-                        summary=str(component.get('summary', 'Событие')),
-                        description=str(component.get('description', '')),
-                        start=start_local,
-                        end=end_local,
-                        location=str(component.get('location', '')),
-                        attendees=[
-                            str(att).replace('mailto:', '')
-                            for att in component.get('attendee', [])
-                        ],
-                        html_link=f"{self.url}/{self._get_user_calendar_name(user_id)}/{component.get('uid')}.ics"
-                    ))
-
-            logger.info("events_listed", user_id=user_id, count=len(calendar_events))
-            return calendar_events
-
+            # Run blocking CalDAV operations in thread pool
+            return await asyncio.to_thread(
+                self._list_events_sync,
+                user_id,
+                time_min,
+                time_max
+            )
         except Exception as e:
             logger.error("events_list_error", user_id=user_id, error=str(e), exc_info=True)
             # Log calendar error to analytics
