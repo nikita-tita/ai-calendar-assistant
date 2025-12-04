@@ -6,6 +6,45 @@
 
 ---
 
+## [2025-12-04] - Fix Todos Data Loss (Critical)
+
+### Fixed
+- **КРИТИЧЕСКИЙ БАГ: Потеря задач при перезапуске контейнера**
+- Путь `/var/lib/calendar-bot/` не был примонтирован как Docker volume
+- При каждом `docker-compose build --no-cache` терялись:
+  - Все задачи пользователей (`/var/lib/calendar-bot/todos/`)
+  - Ключ шифрования (`/var/lib/calendar-bot/.encryption_key`)
+  - Даже если файлы были восстановлены, ключ был новый = расшифровка невозможна
+
+### Added
+- **Docker volume `bot-data`** — персистентное хранилище для данных бота
+- Mount: `bot-data:/var/lib/calendar-bot`
+
+### Technical
+- Файл: `docker-compose.secure.yml`
+- Причина: TodosService и EncryptedStorage используют `/var/lib/calendar-bot/`
+- Решение: добавлен named volume для сохранения данных между перезапусками
+- Это НЕ влияет на календарные события (они в Radicale volume)
+
+### Why this happened
+```
+# Было (НЕ монтировалось):
+volumes:
+  - ./logs:/app/logs
+  - ./data:/app/data
+  - ./credentials:/app/credentials
+  # /var/lib/calendar-bot НЕ монтировался!
+
+# Стало (теперь монтируется):
+volumes:
+  - ./logs:/app/logs
+  - ./data:/app/data
+  - ./credentials:/app/credentials
+  - bot-data:/var/lib/calendar-bot  # <-- FIX
+```
+
+---
+
 ## [2025-12-04] - Automated Smoke Testing
 
 ### Added

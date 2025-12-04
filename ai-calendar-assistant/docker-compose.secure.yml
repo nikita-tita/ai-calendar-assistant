@@ -26,6 +26,7 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./credentials:/app/credentials
+      - bot-data:/var/lib/calendar-bot
     depends_on:
       redis:
         condition: service_healthy
@@ -107,4 +108,8 @@ volumes:
   # Radicale data volume - stores all calendar events
   # WARNING: Do not use 'docker-compose down -v' or data will be lost!
   radicale-data:
+    driver: local
+  # Bot data volume - stores todos, encryption keys, user preferences
+  # WARNING: Do not use 'docker-compose down -v' or data will be lost!
+  bot-data:
     driver: local
