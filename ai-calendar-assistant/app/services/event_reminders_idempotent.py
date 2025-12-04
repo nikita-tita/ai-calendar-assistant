@@ -276,9 +276,21 @@ class EventRemindersServiceIdempotent:
                        event_title=event.summary[:50])
 
         except TelegramError as e:
-            logger.error("telegram_send_reminder_error",
-                        user_id=user_id,
-                        error=str(e))
+            error_msg = str(e).lower()
+            # Unregister user if chat not found (user blocked bot or deleted account)
+            if "chat not found" in error_msg or "bot was blocked" in error_msg:
+                logger.warning("chat_not_found_event_reminder", user_id=user_id, error=str(e))
+                # Unregister from daily_reminders (source of truth)
+                try:
+                    from app.services.daily_reminders import daily_reminders_service
+                    if daily_reminders_service:
+                        daily_reminders_service.unregister_user(user_id)
+                except Exception as unreg_error:
+                    logger.error("unregister_user_failed", user_id=user_id, error=str(unreg_error))
+            else:
+                logger.error("telegram_send_reminder_error",
+                            user_id=user_id,
+                            error=str(e))
         except Exception as e:
             logger.error("send_reminder_error",
                         user_id=user_id,

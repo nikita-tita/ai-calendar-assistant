@@ -6,6 +6,45 @@
 
 ---
 
+## [2025-12-04] - Reminders System Improvements v3
+
+### Fixed
+- **Переход на идемпотентный event_reminders** — больше нет дублирования напоминаний после рестарта
+  - Переключено с `EventRemindersService` (Set в памяти) на `EventRemindersServiceIdempotent` (SQLite)
+  - Теперь event_reminders использует `daily_reminders.active_users` как единый источник правды
+  - Файл: `run_polling.py:11, 33-39`
+
+- **Memory leak в webapp_open_cache** — добавлена автоматическая очистка
+  - Функция `_cleanup_webapp_cache()` удаляет старые записи при превышении 1000 entries
+  - Очищаются записи старше 1 часа
+  - Файл: `app/routers/events.py:25-36, 111`
+
+- **Бесконечные попытки отправки при "Chat not found"** — теперь пользователь удаляется
+  - Добавлен метод `unregister_user()` в `DailyRemindersService`
+  - При ошибках "chat not found" или "bot was blocked" пользователь автоматически удаляется
+  - Работает для всех типов напоминаний: morning, motivation, evening, event
+  - Файлы: `daily_reminders.py:73-78, 129-136, 168-174, 221-227`, `event_reminders_idempotent.py:278-293`
+
+### Changed
+- **Единый источник пользователей** — убрана дублирующая регистрация
+  - Раньше: два JSON файла (`daily_reminder_users.json`, `event_reminder_users.json`)
+  - Теперь: `daily_reminder_users.json` — единственный источник для обоих сервисов
+  - Файл: `run_polling.py:42-50`
+
+### Technical
+- Файлы изменены:
+  - `run_polling.py` — переключение на идемпотентный сервис, единая регистрация
+  - `app/services/daily_reminders.py` — добавлен `unregister_user()`, обработка ошибок
+  - `app/services/event_reminders_idempotent.py` — обработка "chat not found"
+  - `app/routers/events.py` — GC для webapp cache
+
+### Влияние
+- Нет дубликатов напоминаний после рестарта сервера
+- Память не утекает при долгой работе
+- Список пользователей автоматически очищается от неактивных
+
+---
+
 ## [2025-12-04] - Daily Reminders Fix v2 (Code Cleanup)
 
 ### Fixed

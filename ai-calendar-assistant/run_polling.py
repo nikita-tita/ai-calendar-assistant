@@ -8,7 +8,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQu
 from app.config import settings
 from app.services.telegram_handler import TelegramHandler
 from app.services.daily_reminders import DailyRemindersService
-from app.services.event_reminders import EventRemindersService
+from app.services.event_reminders_idempotent import EventRemindersServiceIdempotent
 
 # Setup logging
 logging.basicConfig(
@@ -30,19 +30,24 @@ async def main():
     reminders = DailyRemindersService(app.bot)
 
     # Initialize event reminders service (30 minutes before events)
-    event_reminders = EventRemindersService(app.bot)
+    # Uses SQLite for idempotency - survives restarts without duplicate reminders
+    # Uses daily_reminders.active_users as source of truth for user list
+    event_reminders = EventRemindersServiceIdempotent(app.bot)
+
+    # Set global reference so event_reminders can access active_users
+    import app.services.daily_reminders as dr_module
+    dr_module.daily_reminders_service = reminders
 
     # Create wrapper for handle_update that accepts context
     async def handle_with_context(update: Update, context):
-        # Register user for reminders on ANY message (idempotent - won't duplicate)
+        # Register user for daily reminders on ANY message (idempotent - won't duplicate)
+        # Event reminders use daily_reminders.active_users as source of truth
         if update.effective_user and update.effective_chat:
             user_id = str(update.effective_user.id)
             chat_id = update.effective_chat.id
             # Only register if not already in active_users (avoid unnecessary file writes)
             if user_id not in reminders.active_users:
                 reminders.register_user(user_id, chat_id)
-            if user_id not in event_reminders.active_users:
-                event_reminders.register_user(user_id, chat_id)
 
         await handler.handle_update(update)
 
@@ -71,9 +76,9 @@ async def main():
     reminders_task = asyncio.create_task(reminders.run_daily_schedule())
     logger.info("Daily reminders started (9:00 morning, 20:00 evening)")
 
-    # Start event reminders in background
-    event_reminders_task = asyncio.create_task(event_reminders.run_reminder_schedule())
-    logger.info("Event reminders started (30 minutes before events)")
+    # Start event reminders in background (idempotent - uses SQLite)
+    event_reminders_task = asyncio.create_task(event_reminders.run_reminder_loop())
+    logger.info("Event reminders started (30 minutes before events, idempotent)")
 
     # Keep running
     try:

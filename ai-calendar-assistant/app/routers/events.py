@@ -19,6 +19,21 @@ router = APIRouter()
 # Rate limiting for webapp_open logging - only log once per user per 5 minutes
 _webapp_open_cache: Dict[str, datetime] = {}
 WEBAPP_OPEN_COOLDOWN = timedelta(minutes=5)
+_CACHE_MAX_SIZE = 1000  # Maximum cache entries before cleanup
+
+
+def _cleanup_webapp_cache():
+    """Remove old entries from webapp_open_cache to prevent memory leak."""
+    global _webapp_open_cache
+    if len(_webapp_open_cache) > _CACHE_MAX_SIZE:
+        # Remove entries older than 1 hour
+        cutoff = datetime.now() - timedelta(hours=1)
+        _webapp_open_cache = {
+            user_id: timestamp
+            for user_id, timestamp in _webapp_open_cache.items()
+            if timestamp > cutoff
+        }
+        logger.info("webapp_cache_cleaned", remaining=len(_webapp_open_cache))
 
 
 # Pydantic models for API
@@ -93,6 +108,7 @@ async def get_user_events(
 
         # Log WebApp open with rate limiting (once per user per 5 minutes)
         now = datetime.now()
+        _cleanup_webapp_cache()  # Prevent memory leak
         last_logged = _webapp_open_cache.get(user_id)
         if last_logged is None or (now - last_logged) > WEBAPP_OPEN_COOLDOWN:
             # Get full user info for analytics
