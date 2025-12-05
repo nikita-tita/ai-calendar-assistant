@@ -9,6 +9,7 @@ import bcrypt
 import secrets
 import os
 import jwt
+import asyncio
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -531,6 +532,7 @@ class BroadcastRequest(BaseModel):
 
 
 @router.post("/broadcast")
+@limiter.limit("1/minute")  # SECURITY: Strict rate limit to prevent spam
 async def broadcast_message(
     request: Request,
     broadcast_req: BroadcastRequest,
@@ -540,6 +542,7 @@ async def broadcast_message(
     Send broadcast message to all users.
 
     Requires Authorization header with admin token (real mode only).
+    Rate limited to 1 broadcast per minute per IP.
 
     Options:
     - message: Text to send
@@ -576,9 +579,11 @@ async def broadcast_message(
 
         # Import telegram bot
         from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-        from app.main import telegram_handler
+        from app.routers.telegram import get_telegram_app
 
-        bot = telegram_handler.bot
+        # Get initialized telegram app (creates handler if needed)
+        telegram_app = await get_telegram_app()
+        bot = telegram_app.bot
 
         # Prepare keyboard if button requested
         keyboard = None
@@ -604,7 +609,6 @@ async def broadcast_message(
                 )
                 sent += 1
                 # Small delay to avoid rate limiting
-                import asyncio
                 await asyncio.sleep(0.05)
             except Exception as e:
                 failed += 1
