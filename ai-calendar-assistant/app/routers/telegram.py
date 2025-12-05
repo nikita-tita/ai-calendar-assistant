@@ -1,5 +1,6 @@
 """Telegram webhook router."""
 
+import asyncio
 from fastapi import APIRouter, Request, Header, HTTPException, BackgroundTasks
 from telegram import Update
 from telegram.ext import Application
@@ -15,6 +16,10 @@ router = APIRouter()
 # Initialize Telegram bot application
 telegram_app: Application = None
 telegram_handler: TelegramHandler = None
+
+# Semaphore to limit concurrent webhook handlers (prevent overload)
+MAX_CONCURRENT_HANDLERS = 50
+_handler_semaphore = asyncio.Semaphore(MAX_CONCURRENT_HANDLERS)
 
 
 async def get_telegram_app() -> Application:
@@ -85,11 +90,19 @@ async def telegram_webhook(
             message_type=msg_type
         )
 
-        # Process update in background - handles both messages and callback queries
+        # Process update in background with concurrency limit
+        async def limited_handler(handler_func, upd):
+            """Wrapper to limit concurrent handlers."""
+            async with _handler_semaphore:
+                try:
+                    await handler_func(upd)
+                except Exception as e:
+                    logger.error("handler_error", error=str(e), exc_info=True)
+
         if update.callback_query:
-            background_tasks.add_task(telegram_handler.handle_callback_query, update)
+            background_tasks.add_task(limited_handler, telegram_handler.handle_callback_query, update)
         else:
-            background_tasks.add_task(telegram_handler.handle_update, update)
+            background_tasks.add_task(limited_handler, telegram_handler.handle_update, update)
 
         return {"status": "ok"}
 

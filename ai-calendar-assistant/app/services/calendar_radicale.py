@@ -38,40 +38,61 @@ class RadicaleService:
     Repository: https://github.com/Kozea/Radicale
     """
 
+    # Cache settings
+    CACHE_TTL_SECONDS = 300  # 5 minutes
+    MAX_CACHED_CALENDARS = 500  # Limit memory usage
+
     def __init__(self):
         """Initialize Radicale service."""
         self.url = settings.radicale_url
+
+        # Single reusable client (connection pooling)
+        self._client: Optional[caldav.DAVClient] = None
+        self._principal: Optional[caldav.Principal] = None
+
+        # Calendar cache: user_id -> (calendar, timestamp)
+        self._calendar_cache: dict = {}
+        self._cache_lock = asyncio.Lock()  # For async-safe cache access
 
     def _get_user_calendar_name(self, user_id: str) -> str:
         """Generate calendar name for user based on Telegram ID."""
         return f"telegram_{user_id}"
 
-    def _get_user_client(self, user_id: str):
+    def _get_shared_client(self) -> caldav.DAVClient:
         """
-        Create CalDAV client for specific user.
-
-        Args:
-            user_id: Telegram user ID
+        Get shared CalDAV client with connection reuse.
 
         Returns:
-            caldav.DAVClient configured for this user
+            caldav.DAVClient - reused single instance
         """
-        # Use bot service account for authentication
-        # Bot has access to all calendars via Radicale rights configuration
-        if settings.radicale_bot_user and settings.radicale_bot_password:
-            return caldav.DAVClient(
-                url=self.url,
-                username=settings.radicale_bot_user,
-                password=settings.radicale_bot_password
-            )
-        else:
-            # Fallback for development (no auth)
-            logger.warning("radicale_auth_not_configured", message="Using unauthenticated access")
-            return caldav.DAVClient(url=self.url, username=str(user_id))
+        if self._client is None:
+            if settings.radicale_bot_user and settings.radicale_bot_password:
+                self._client = caldav.DAVClient(
+                    url=self.url,
+                    username=settings.radicale_bot_user,
+                    password=settings.radicale_bot_password
+                )
+            else:
+                # Fallback for development (no auth)
+                logger.warning("radicale_auth_not_configured", message="Using unauthenticated access")
+                self._client = caldav.DAVClient(url=self.url)
+        return self._client
+
+    def _get_user_client(self, user_id: str):
+        """
+        Get CalDAV client (uses shared client for efficiency).
+
+        Args:
+            user_id: Telegram user ID (not used, kept for API compatibility)
+
+        Returns:
+            caldav.DAVClient - shared instance
+        """
+        return self._get_shared_client()
 
     def _get_user_calendar(self, user_id: str):
         """
-        Get or create calendar for user.
+        Get or create calendar for user with caching.
 
         Args:
             user_id: Telegram user ID
@@ -79,14 +100,27 @@ class RadicaleService:
         Returns:
             caldav.Calendar object
         """
+        now = time.time()
+
+        # Check cache first
+        if user_id in self._calendar_cache:
+            cached_cal, cached_time = self._calendar_cache[user_id]
+            if now - cached_time < self.CACHE_TTL_SECONDS:
+                logger.debug("calendar_cache_hit", user_id=user_id)
+                return cached_cal
+
         _cal_start = time.perf_counter()
         try:
-            client = self._get_user_client(user_id)
-            principal = client.principal()
+            client = self._get_shared_client()
+
+            # Reuse principal if available
+            if self._principal is None:
+                self._principal = client.principal()
+
             calendar_name = self._get_user_calendar_name(user_id)
 
             # Try to find existing calendar by name
-            calendars = principal.calendars()
+            calendars = self._principal.calendars()
             for cal in calendars:
                 try:
                     # Check display name property
@@ -96,6 +130,9 @@ class RadicaleService:
                     if display_name == calendar_name:
                         _cal_duration_ms = (time.perf_counter() - _cal_start) * 1000
                         logger.info("calendar_found", user_id=user_id, calendar=calendar_name, url=str(cal.url), duration_ms=round(_cal_duration_ms, 1))
+
+                        # Cache the result
+                        self._cache_calendar(user_id, cal)
                         return cal
                 except Exception as e:
                     # If can't get properties, skip this calendar
@@ -103,19 +140,48 @@ class RadicaleService:
                     continue
 
             # Create new calendar if doesn't exist
-            new_calendar = principal.make_calendar(
+            new_calendar = self._principal.make_calendar(
                 name=calendar_name,
                 supported_calendar_component_set=['VEVENT']
             )
 
             _cal_duration_ms = (time.perf_counter() - _cal_start) * 1000
             logger.info("calendar_created", user_id=user_id, calendar=calendar_name, duration_ms=round(_cal_duration_ms, 1))
+
+            # Cache the result
+            self._cache_calendar(user_id, new_calendar)
             return new_calendar
 
         except Exception as e:
             _cal_duration_ms = (time.perf_counter() - _cal_start) * 1000
             logger.error("calendar_error", user_id=user_id, error=str(e), duration_ms=round(_cal_duration_ms, 1), exc_info=True)
+
+            # Reset client/principal on error (might be stale connection)
+            self._client = None
+            self._principal = None
             return None
+
+    def _cache_calendar(self, user_id: str, calendar):
+        """Cache calendar for user with LRU-like eviction."""
+        # Evict old entries if at limit
+        if len(self._calendar_cache) >= self.MAX_CACHED_CALENDARS:
+            # Remove oldest 10% of entries
+            entries = sorted(self._calendar_cache.items(), key=lambda x: x[1][1])
+            to_remove = len(entries) // 10 or 1
+            for key, _ in entries[:to_remove]:
+                del self._calendar_cache[key]
+            logger.debug("calendar_cache_evicted", removed=to_remove)
+
+        self._calendar_cache[user_id] = (calendar, time.time())
+
+    def invalidate_cache(self, user_id: Optional[str] = None):
+        """Invalidate calendar cache for user or all users."""
+        if user_id:
+            self._calendar_cache.pop(user_id, None)
+        else:
+            self._calendar_cache.clear()
+            self._principal = None
+        logger.debug("calendar_cache_invalidated", user_id=user_id)
 
     def _create_event_sync(self, user_id: str, event: EventDTO) -> Optional[str]:
         """

@@ -38,6 +38,14 @@ from app.schemas.events import IntentType
 from app.utils.datetime_parser import format_datetime_human
 from app.utils.lru_dict import LRUDict
 
+# Rate limiter - Redis with in-memory fallback
+try:
+    from app.services.rate_limiter_redis import rate_limiter_redis
+except ImportError:
+    rate_limiter_redis = None
+
+from app.services.rate_limiter import rate_limiter
+
 # ARCHIVED - Property Bot moved to independent microservice (_archived/property_bot_microservice)
 # Property Bot imports removed - calendar bot only
 PROPERTY_BOT_ENABLED = False
@@ -79,6 +87,31 @@ class TelegramHandler:
 
         user_id = str(update.effective_user.id)
         message = update.message
+
+        # Rate limiting check - use Redis if available, fallback to in-memory
+        try:
+            limiter = rate_limiter_redis if rate_limiter_redis else rate_limiter
+            is_allowed, reason = limiter.check_rate_limit(user_id)
+
+            if not is_allowed:
+                logger.warning("rate_limit_blocked", user_id=user_id, reason=reason)
+                # Send rate limit message based on reason
+                if "blocked" in reason:
+                    await message.reply_text(
+                        "⚠️ Вы временно заблокированы из-за слишком частых запросов. "
+                        "Попробуйте позже."
+                    )
+                else:
+                    await message.reply_text(
+                        "⏳ Слишком много запросов. Пожалуйста, подождите немного."
+                    )
+                return
+
+            # Record message for rate limiting
+            limiter.record_message(user_id)
+        except Exception as e:
+            # Fail open - allow request if rate limiter fails
+            logger.warning("rate_limit_check_error", user_id=user_id, error=str(e))
 
         try:
             # Handle /start command

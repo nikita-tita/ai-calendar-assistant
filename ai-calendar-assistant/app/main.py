@@ -76,6 +76,14 @@ async def startup_event():
         debug=settings.debug,
     )
 
+    # Initialize Redis rate limiter
+    try:
+        from app.services.rate_limiter_redis import init_redis_rate_limiter
+        init_redis_rate_limiter()
+        logger.info("redis_rate_limiter_enabled")
+    except Exception as e:
+        logger.warning("redis_rate_limiter_failed_using_memory", error=str(e))
+
     # ARCHIVED - Property Bot feed scheduler disabled (independent microservice)
     # if settings.property_feed_url:
     #     try:
@@ -131,8 +139,37 @@ async def _sync_task_loop():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Application shutdown event."""
-    logger.info("application_shutdown")
+    """Application shutdown event - flush all buffers and close connections."""
+    logger.info("application_shutdown_started")
+
+    # Flush analytics buffer
+    try:
+        from app.services.analytics_service import analytics_service
+        if analytics_service:
+            analytics_service.flush()
+            logger.info("analytics_flushed_on_shutdown")
+    except Exception as e:
+        logger.error("analytics_flush_error", error=str(e))
+
+    # Flush user preferences
+    try:
+        from app.services.user_preferences import user_preferences
+        if user_preferences:
+            user_preferences.flush()
+            logger.info("preferences_flushed_on_shutdown")
+    except Exception as e:
+        logger.error("preferences_flush_error", error=str(e))
+
+    # Close LLM agent HTTP client
+    try:
+        from app.services.llm_agent_yandex import llm_agent_yandex
+        if llm_agent_yandex:
+            await llm_agent_yandex.close()
+            logger.info("llm_agent_closed_on_shutdown")
+    except Exception as e:
+        logger.error("llm_agent_close_error", error=str(e))
+
+    logger.info("application_shutdown_complete")
 
 
 @app.get("/health")

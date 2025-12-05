@@ -5,7 +5,7 @@ import asyncio
 import json
 import time
 from datetime import datetime, timedelta
-import requests
+import httpx
 import structlog
 
 from app.config import settings
@@ -14,6 +14,11 @@ from app.utils.datetime_parser import parse_datetime_range
 from app.services.translations import get_translation, Language
 
 logger = structlog.get_logger()
+
+
+class CircuitOpenError(Exception):
+    """Raised when circuit breaker is open."""
+    pass
 
 # Analytics imports (optional - graceful fallback if not available)
 try:
@@ -37,12 +42,25 @@ class LLMAgentYandex:
     Works from Russia without restrictions.
     """
 
+    # Circuit breaker settings
+    FAILURE_THRESHOLD = 5     # Open circuit after N consecutive failures
+    RESET_TIMEOUT = 60        # Seconds before attempting to close circuit
+    REQUEST_TIMEOUT = 15.0    # HTTP timeout in seconds
+
     def __init__(self):
         """Initialize LLM agent with Yandex GPT client."""
         self.api_key = settings.yandex_gpt_api_key
         self.folder_id = settings.yandex_gpt_folder_id
         self.model = "yandexgpt"  # or "yandexgpt-lite" for faster/cheaper
         self.api_url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+
+        # Async HTTP client (reusable with connection pooling)
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+        # Circuit breaker state
+        self._circuit_open = False
+        self._circuit_open_until: float = 0
+        self._failure_count = 0
 
         # System prompt will be generated per request with current date
         self.base_system_prompt = """You are an intelligent calendar assistant.
@@ -228,6 +246,51 @@ Updating/Deleting:
 IMPORTANT: Your response must be ONLY in JSON format with fields from set_calendar_action function schema.
 Do not add any text before or after JSON.
 For batch_confirm intent, include "batch_actions" array field with all events to create."""
+
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create reusable async HTTP client."""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self.REQUEST_TIMEOUT, connect=5.0),
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10)
+            )
+        return self._http_client
+
+    async def close(self):
+        """Close HTTP client. Call on shutdown."""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
+            logger.info("llm_agent_http_client_closed")
+
+    def _check_circuit(self) -> bool:
+        """Check if circuit breaker allows requests. Returns True if allowed."""
+        if not self._circuit_open:
+            return True
+
+        # Check if reset timeout passed
+        if time.time() >= self._circuit_open_until:
+            self._circuit_open = False
+            self._failure_count = 0
+            logger.info("circuit_breaker_reset", message="Attempting to close circuit")
+            return True
+
+        return False
+
+    def _record_success(self):
+        """Record successful request - reset failure count."""
+        self._failure_count = 0
+
+    def _record_failure(self):
+        """Record failed request - potentially open circuit."""
+        self._failure_count += 1
+
+        if self._failure_count >= self.FAILURE_THRESHOLD:
+            self._circuit_open = True
+            self._circuit_open_until = time.time() + self.RESET_TIMEOUT
+            logger.warning("circuit_breaker_opened",
+                          failures=self._failure_count,
+                          reset_in_seconds=self.RESET_TIMEOUT)
 
     def _detect_schedule_format(self, user_text: str, timezone: str = 'Europe/Moscow', conversation_history: Optional[list] = None) -> Optional[EventDTO]:
         """
@@ -870,19 +933,36 @@ Respuesta JSON:""",
                 ]
             }
 
+            # Circuit breaker check
+            if not self._check_circuit():
+                logger.warning("circuit_breaker_reject", message="Yandex GPT temporarily unavailable")
+                if ANALYTICS_ENABLED and analytics_service and user_id:
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type=ActionType.LLM_ERROR,
+                        details=f"Circuit breaker open: {user_text[:100]}",
+                        success=False,
+                        error_message="Yandex GPT temporarily unavailable (circuit breaker)"
+                    )
+                raise CircuitOpenError("Yandex GPT temporarily unavailable")
+
             try:
                 _http_start = time.perf_counter()
-                # Run blocking HTTP call in thread pool to avoid blocking event loop
-                response = await asyncio.to_thread(
-                    requests.post,
+                # Use async httpx client (no thread pool needed)
+                client = await self._get_http_client()
+                response = await client.post(
                     self.api_url,
                     headers=headers,
-                    json=payload,
-                    timeout=30
+                    json=payload
                 )
                 _http_duration_ms = (time.perf_counter() - _http_start) * 1000
                 logger.info("yandex_gpt_http_duration", duration_ms=round(_http_duration_ms, 1))
-            except requests.exceptions.Timeout as e:
+
+                # Record success for circuit breaker
+                self._record_success()
+
+            except httpx.TimeoutException as e:
+                self._record_failure()
                 logger.error("yandex_gpt_timeout", error=str(e))
                 # Log timeout error to analytics
                 if ANALYTICS_ENABLED and analytics_service and user_id:
@@ -891,11 +971,17 @@ Respuesta JSON:""",
                         action_type=ActionType.LLM_TIMEOUT,
                         details=f"Yandex GPT timeout: {user_text[:100]}",
                         success=False,
-                        error_message="API request timed out after 30s"
+                        error_message=f"API request timed out after {self.REQUEST_TIMEOUT}s"
                     )
                 raise
 
+            except httpx.HTTPError as e:
+                self._record_failure()
+                logger.error("yandex_gpt_http_error", error=str(e))
+                raise
+
             if response.status_code != 200:
+                self._record_failure()
                 logger.error("yandex_gpt_api_error", status_code=response.status_code, response=response.text)
                 # Log API error to analytics
                 if ANALYTICS_ENABLED and analytics_service and user_id:

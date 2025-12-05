@@ -19,11 +19,20 @@ logger = structlog.get_logger()
 class AnalyticsService:
     """Service for tracking and analyzing user actions with encrypted storage."""
 
+    # Performance and memory limits
+    MAX_ACTIONS_IN_MEMORY = 50000  # Maximum actions to keep in memory
+    ROTATION_THRESHOLD = 40000    # Rotate when reaching this count
+    FLUSH_INTERVAL = 100          # Flush to disk every N new actions
+    FLUSH_TIMEOUT_SECONDS = 30    # Auto-flush after N seconds of inactivity
+
     def __init__(self, data_dir: str = "/var/lib/calendar-bot"):
         """Initialize analytics service with encrypted storage."""
         self.storage = EncryptedStorage(data_dir=data_dir)
         self.data_filename = "analytics_data.json"
         self.actions: List[UserAction] = []
+        self._pending_actions: List[UserAction] = []  # Buffer for new actions
+        self._action_count_since_flush = 0
+        self._dirty = False  # Flag for unsaved changes
         self._load_data()
 
     def _load_data(self):
@@ -75,7 +84,7 @@ class AnalyticsService:
         first_name: Optional[str] = None,
         last_name: Optional[str] = None
     ):
-        """Log a user action."""
+        """Log a user action with buffered writes."""
         action = UserAction(
             user_id=user_id,
             action_type=action_type,
@@ -88,8 +97,20 @@ class AnalyticsService:
             first_name=first_name,
             last_name=last_name
         )
-        self.actions.append(action)
-        self._save_data()
+
+        # Add to buffer instead of main list
+        self._pending_actions.append(action)
+        self._action_count_since_flush += 1
+        self._dirty = True
+
+        # Memory rotation - prevent unbounded growth
+        total_count = len(self.actions) + len(self._pending_actions)
+        if total_count > self.MAX_ACTIONS_IN_MEMORY:
+            self._rotate_old_actions()
+
+        # Periodic flush to disk
+        if self._action_count_since_flush >= self.FLUSH_INTERVAL:
+            self._flush_pending()
 
         logger.info(
             "action_logged",
@@ -98,26 +119,73 @@ class AnalyticsService:
             success=success
         )
 
+    def _flush_pending(self):
+        """Merge pending actions and save to disk."""
+        if not self._pending_actions:
+            return
+
+        # Merge pending into main list
+        self.actions.extend(self._pending_actions)
+        self._pending_actions.clear()
+        self._action_count_since_flush = 0
+
+        # Save to disk
+        self._save_data()
+        self._dirty = False
+
+        logger.debug("analytics_flushed", actions_count=len(self.actions))
+
+    def _rotate_old_actions(self):
+        """Remove oldest actions when approaching memory limit."""
+        # Keep only most recent actions
+        total = len(self.actions) + len(self._pending_actions)
+        if total <= self.ROTATION_THRESHOLD:
+            return
+
+        # Merge pending first
+        self.actions.extend(self._pending_actions)
+        self._pending_actions.clear()
+
+        # Keep only last ROTATION_THRESHOLD actions
+        removed_count = len(self.actions) - self.ROTATION_THRESHOLD
+        self.actions = self.actions[-self.ROTATION_THRESHOLD:]
+
+        logger.info("analytics_rotated",
+                   removed=removed_count,
+                   remaining=len(self.actions))
+
+    def flush(self):
+        """Force flush pending actions to disk. Call on shutdown."""
+        if self._dirty or self._pending_actions:
+            self._flush_pending()
+            logger.info("analytics_forced_flush", actions_count=len(self.actions))
+
+    def _all_actions(self) -> List[UserAction]:
+        """Get all actions including pending ones for reads."""
+        return self.actions + self._pending_actions
+
     def get_dashboard_stats(self) -> DashboardStats:
         """Get overall dashboard statistics."""
         now = datetime.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = now - timedelta(days=7)
 
+        all_actions = self._all_actions()
+
         # Count unique users
-        all_users = set(action.user_id for action in self.actions)
+        all_users = set(action.user_id for action in all_actions)
         users_today = set(
-            action.user_id for action in self.actions
+            action.user_id for action in all_actions
             if action.timestamp >= today_start
         )
         users_week = set(
-            action.user_id for action in self.actions
+            action.user_id for action in all_actions
             if action.timestamp >= week_start
         )
 
         # Count events
         event_actions = [
-            a for a in self.actions
+            a for a in all_actions
             if a.action_type in [ActionType.EVENT_CREATE, ActionType.EVENT_UPDATE, ActionType.EVENT_DELETE]
         ]
         events_today = len([
@@ -131,7 +199,7 @@ class AnalyticsService:
 
         # Count messages
         message_actions = [
-            a for a in self.actions
+            a for a in all_actions
             if a.action_type in [ActionType.TEXT_MESSAGE, ActionType.VOICE_MESSAGE]
         ]
         messages_today = len([
@@ -140,7 +208,7 @@ class AnalyticsService:
         ])
 
         # Count errors
-        error_actions = [a for a in self.actions if not a.success or a.action_type == ActionType.ERROR]
+        error_actions = [a for a in all_actions if not a.success or a.action_type == ActionType.ERROR]
         errors_today = len([
             a for a in error_actions
             if a.timestamp >= today_start
@@ -174,7 +242,7 @@ class AnalyticsService:
             'last_name': None
         })
 
-        for action in self.actions:
+        for action in self._all_actions():
             data = user_data[action.user_id]
 
             # Update first/last seen
@@ -233,7 +301,7 @@ class AnalyticsService:
 
         # Group actions by hour
         hourly_counts = defaultdict(int)
-        for action in self.actions:
+        for action in self._all_actions():
             if action.timestamp >= start_time:
                 hour_key = action.timestamp.replace(minute=0, second=0, microsecond=0)
                 hourly_counts[hour_key] += 1
@@ -253,9 +321,10 @@ class AnalyticsService:
     def get_action_distribution(self) -> List[EventTypeDistribution]:
         """Get distribution of action types."""
         type_counts = defaultdict(int)
-        total = len(self.actions)
+        all_actions = self._all_actions()
+        total = len(all_actions)
 
-        for action in self.actions:
+        for action in all_actions:
             type_counts[action.action_type] += 1
 
         distribution = [
@@ -272,7 +341,7 @@ class AnalyticsService:
 
     def get_recent_actions(self, limit: int = 100, user_id: Optional[str] = None) -> List[UserAction]:
         """Get recent actions, optionally filtered by user."""
-        filtered = self.actions
+        filtered = self._all_actions()
         if user_id:
             filtered = [a for a in filtered if a.user_id == user_id]
 
@@ -282,6 +351,9 @@ class AnalyticsService:
 
     def clear_test_data(self) -> int:
         """Remove all test/mock data. Returns number of removed actions."""
+        # Flush pending first
+        self._flush_pending()
+
         original_count = len(self.actions)
         self.actions = [a for a in self.actions if not a.is_test]
         removed = original_count - len(self.actions)
@@ -301,25 +373,27 @@ class AnalyticsService:
         # Month start (first day of current month)
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
+        all_actions = self._all_actions()
+
         # Total logins
-        total_logins = len([a for a in self.actions if a.action_type == ActionType.USER_LOGIN])
+        total_logins = len([a for a in all_actions if a.action_type == ActionType.USER_LOGIN])
 
         # Active users today (at least 1 action)
         users_today = set(
-            a.user_id for a in self.actions
+            a.user_id for a in all_actions
             if a.timestamp >= today_start
         )
 
         # Active users week (3+ active days)
         users_week_active = set()
-        for user_id in set(a.user_id for a in self.actions):
+        for user_id in set(a.user_id for a in all_actions):
             active_days = self._count_active_days(user_id, week_start, today_start + timedelta(days=1))
             if active_days >= 3:
                 users_week_active.add(user_id)
 
         # Active users month (3+ days per week throughout month)
         users_month_active = set()
-        for user_id in set(a.user_id for a in self.actions):
+        for user_id in set(a.user_id for a in all_actions):
             # Count weeks in month
             weeks_in_month = self._count_weeks_in_month(month_start, now)
             active_weeks = 0
@@ -337,14 +411,14 @@ class AnalyticsService:
                 users_month_active.add(user_id)
 
         # Total stats
-        all_users = set(a.user_id for a in self.actions)
-        total_actions = len(self.actions)
+        all_users = set(a.user_id for a in all_actions)
+        total_actions_count = len(all_actions)
         total_events = len([
-            a for a in self.actions
+            a for a in all_actions
             if a.action_type == ActionType.EVENT_CREATE
         ])
         total_messages = len([
-            a for a in self.actions
+            a for a in all_actions
             if a.action_type in [ActionType.TEXT_MESSAGE, ActionType.VOICE_MESSAGE]
         ])
 
@@ -354,7 +428,7 @@ class AnalyticsService:
             active_users_week=len(users_week_active),
             active_users_month=len(users_month_active),
             total_users=len(all_users),
-            total_actions=total_actions,
+            total_actions=total_actions_count,
             total_events_created=total_events,
             total_messages=total_messages
         )
@@ -366,11 +440,12 @@ class AnalyticsService:
         week_start = today_start - timedelta(days=today_start.weekday())
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        all_users = set(a.user_id for a in self.actions)
+        all_actions = self._all_actions()
+        all_users = set(a.user_id for a in all_actions)
         user_details = []
 
         for user_id in all_users:
-            user_actions = [a for a in self.actions if a.user_id == user_id]
+            user_actions = [a for a in all_actions if a.user_id == user_id]
 
             # Get user info from most recent action
             latest_action = max(user_actions, key=lambda x: x.timestamp)
@@ -439,7 +514,7 @@ class AnalyticsService:
 
     def get_user_dialog(self, user_id: str, limit: int = 1000) -> List[UserDialogEntry]:
         """Get user's complete dialog history."""
-        user_actions = [a for a in self.actions if a.user_id == user_id]
+        user_actions = [a for a in self._all_actions() if a.user_id == user_id]
 
         # Sort by timestamp (oldest first for dialog view)
         user_actions.sort(key=lambda x: x.timestamp)
@@ -460,7 +535,7 @@ class AnalyticsService:
     def _count_active_days(self, user_id: str, start: datetime, end: datetime) -> int:
         """Count how many distinct days user was active in given period."""
         user_actions = [
-            a for a in self.actions
+            a for a in self._all_actions()
             if a.user_id == user_id and start <= a.timestamp < end
         ]
 
@@ -502,7 +577,7 @@ class AnalyticsService:
 
         # Filter errors
         errors = [
-            a for a in self.actions
+            a for a in self._all_actions()
             if (a.timestamp >= start_time and
                 (a.action_type in error_types or not a.success))
         ]
@@ -528,7 +603,7 @@ class AnalyticsService:
         error_counts = defaultdict(int)
         total_errors = 0
 
-        for action in self.actions:
+        for action in self._all_actions():
             if action.timestamp >= start_time and not action.success:
                 error_counts[action.action_type] += 1
                 total_errors += 1

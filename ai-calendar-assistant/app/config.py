@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./calendar_assistant.db"
 
+    # Redis (for rate limiting and caching)
+    redis_url: str = "redis://localhost:6379/0"
+    redis_password: Optional[str] = None
+
     # Security
     secret_key: Optional[str] = None  # Required for production (min 32 chars), optional for dev
     cors_origins: str = "https://example.com,https://webapp.telegram.org"

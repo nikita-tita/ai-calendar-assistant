@@ -6,6 +6,74 @@
 
 ---
 
+## [2025-12-05] - High Load Resilience Refactoring
+
+### Added
+- **Rate Limiting через существующий Redis**
+  - Подключён уже написанный `rate_limiter_redis.py` (был не используется!)
+  - Инициализация в `main.py` startup
+  - Проверка в `telegram_handler.py` при каждом сообщении
+  - Лимиты: 10 msg/min, 50 msg/hour, auto-block при спаме
+
+- **Circuit Breaker для Yandex GPT**
+  - Защита от каскадных сбоев при проблемах с API
+  - После 5 ошибок подряд — circuit открывается на 60 сек
+  - Класс `CircuitOpenError` для graceful degradation
+
+- **Graceful Shutdown**
+  - Flush всех буферов при остановке (analytics, preferences)
+  - Закрытие HTTP клиентов (llm_agent)
+  - `stop_grace_period: 30s` в docker-compose
+
+### Changed
+- **Analytics Service: буферизация + ротация**
+  - `_save_data()` больше не вызывается на каждый `log_action()`
+  - Буфер `_pending_actions`, flush каждые 100 записей
+  - Ротация: удаление старых при достижении 50k записей
+  - Новый метод `flush()` для принудительной записи
+
+- **User Preferences: dirty flag pattern**
+  - `set_*()` методы больше не пишут на диск сразу
+  - `_mark_dirty()` + auto-flush каждые 10 изменений
+  - Новый метод `flush()` для graceful shutdown
+
+- **CalDAV: connection pooling + caching**
+  - Единый `_client` вместо нового на каждый запрос
+  - Кэш календарей с TTL 5 минут (`_calendar_cache`)
+  - LRU-eviction при >500 записей
+  - Метод `invalidate_cache()` при необходимости
+
+- **Yandex GPT: httpx вместо requests**
+  - Нативный async HTTP клиент (без `asyncio.to_thread`)
+  - Connection pooling через `httpx.Limits`
+  - Таймаут уменьшен с 30s до 15s
+
+- **Webhook: concurrency limiting**
+  - Семафор на 50 параллельных обработчиков
+  - Предотвращает перегрузку при наплыве сообщений
+
+### Infrastructure
+- **Docker resource limits**
+  - `cpus: 2`, `memory: 1G` для telegram-bot
+  - `reservations: cpus 0.25, memory 256M`
+  - Healthcheck interval: 15s (было 30s)
+
+- **Config: redis_url**
+  - Добавлен `redis_url` и `redis_password` в Settings
+
+### Technical Files Changed
+- `app/config.py` — redis settings
+- `app/main.py` — rate limiter init, graceful shutdown
+- `app/routers/telegram.py` — semaphore
+- `app/services/analytics_service.py` — buffering, rotation
+- `app/services/user_preferences.py` — dirty flag
+- `app/services/calendar_radicale.py` — connection cache
+- `app/services/telegram_handler.py` — rate limit check
+- `app/services/llm_agent_yandex.py` — httpx, circuit breaker
+- `docker-compose.secure.yml` — resource limits
+
+---
+
 ## [2025-12-05] - Event Context for Follow-up Commands
 
 ### Added
