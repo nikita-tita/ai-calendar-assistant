@@ -42,6 +42,11 @@ from app.utils.lru_dict import LRUDict
 # Property Bot imports removed - calendar bot only
 PROPERTY_BOT_ENABLED = False
 
+# Event context settings - track recently created events for follow-up commands
+# Example: "в 10 утра встреча, в 11 обед" → creates 2 events → "перепиши на сегодня" knows which events
+MAX_CONTEXT_EVENTS = 10       # Maximum events to track in context
+MAX_CONTEXT_MESSAGES = 5      # Context expires after N messages without reference
+
 logger = structlog.get_logger()
 
 
@@ -57,6 +62,10 @@ class TelegramHandler:
         self.conversation_history: LRUDict[str, list] = LRUDict(max_size=1000)
         # Store user timezone preferences with LRU eviction
         self.user_timezones: LRUDict[str, str] = LRUDict(max_size=1000)
+        # Store recently created/modified events for context
+        # Allows follow-up commands like "перепиши эти события на сегодня"
+        # Structure: {"event_ids": ["uuid1", "uuid2"], "messages_age": 0}
+        self.event_context: LRUDict[str, dict] = LRUDict(max_size=1000)
 
     async def handle_update(self, update: Update) -> None:
         """
@@ -755,10 +764,127 @@ Housler.ru сделал подборку сервисов, которые пом
             self.conversation_history[user_id] = []  # Clear history
             await query.edit_message_text("Отменено.")
 
+        # Handle broadcast button (triggers /start)
+        elif data == "broadcast:start":
+            await query.answer("Обновляю...")
+            # Simulate /start command
+            await self._handle_start(update, user_id)
+
     def _get_user_timezone(self, update: Update) -> str:
         """Get user timezone from stored preferences or default to Moscow."""
         user_id = str(update.effective_user.id)
         return user_preferences.get_timezone(user_id)
+
+    # ========== Event Context Methods ==========
+    # Track recently created events for follow-up commands like "перепиши эти события"
+
+    def _add_to_event_context(self, user_id: str, event_ids: list) -> None:
+        """
+        Add event IDs to user's context for follow-up commands.
+
+        Args:
+            user_id: Telegram user ID
+            event_ids: List of event UUIDs to add
+        """
+        if not event_ids:
+            return
+
+        ctx = self.event_context.get(user_id, {"event_ids": [], "messages_age": 0})
+
+        # Add new IDs, avoid duplicates
+        existing_ids = set(ctx.get("event_ids", []))
+        for eid in event_ids:
+            if eid and eid not in existing_ids:
+                existing_ids.add(eid)
+
+        # Limit to MAX_CONTEXT_EVENTS
+        all_ids = list(existing_ids)[-MAX_CONTEXT_EVENTS:]
+
+        self.event_context[user_id] = {
+            "event_ids": all_ids,
+            "messages_age": 0  # Reset age when new events added
+        }
+        logger.debug("event_context_updated", user_id=user_id, event_ids=all_ids)
+
+    def _remove_from_event_context(self, user_id: str, event_ids: list) -> None:
+        """
+        Remove event IDs from user's context (after deletion).
+
+        Args:
+            user_id: Telegram user ID
+            event_ids: List of event UUIDs to remove
+        """
+        if user_id not in self.event_context:
+            return
+
+        ctx = self.event_context[user_id]
+        current_ids = set(ctx.get("event_ids", []))
+
+        for eid in event_ids:
+            current_ids.discard(eid)
+
+        if current_ids:
+            self.event_context[user_id] = {
+                "event_ids": list(current_ids),
+                "messages_age": ctx.get("messages_age", 0)
+            }
+        else:
+            # No events left, clear context
+            self.event_context.pop(user_id, None)
+
+    def _get_event_context(self, user_id: str) -> list:
+        """
+        Get event IDs from user's context if not expired.
+
+        Args:
+            user_id: Telegram user ID
+
+        Returns:
+            List of event UUIDs or empty list if expired/not found
+        """
+        if user_id not in self.event_context:
+            return []
+
+        ctx = self.event_context[user_id]
+
+        # Check if context expired
+        if ctx.get("messages_age", 0) >= MAX_CONTEXT_MESSAGES:
+            self.event_context.pop(user_id, None)
+            return []
+
+        return ctx.get("event_ids", [])
+
+    def _age_event_context(self, user_id: str) -> None:
+        """
+        Increment context age after each message.
+        Called after processing each user message.
+
+        Args:
+            user_id: Telegram user ID
+        """
+        if user_id not in self.event_context:
+            return
+
+        ctx = self.event_context[user_id]
+        ctx["messages_age"] = ctx.get("messages_age", 0) + 1
+
+        # Clear if expired
+        if ctx["messages_age"] >= MAX_CONTEXT_MESSAGES:
+            self.event_context.pop(user_id, None)
+            logger.debug("event_context_expired", user_id=user_id)
+
+    def _reset_context_age(self, user_id: str) -> None:
+        """
+        Reset context age when user references context events.
+        Called when LLM uses context for update/delete.
+
+        Args:
+            user_id: Telegram user ID
+        """
+        if user_id in self.event_context:
+            self.event_context[user_id]["messages_age"] = 0
+
+    # ========== End Event Context Methods ==========
 
     async def _handle_settings_time_input(
         self, update: Update, user_id: str, text: str, pending_action: str
@@ -928,6 +1054,14 @@ Housler.ru сделал подборку сервисов, которые пом
 
         logger.info("events_loaded_for_context", user_id=user_id, count=len(existing_events), duration_ms=round(_events_duration_ms, 1))
 
+        # Get recent context events (for follow-up commands like "перепиши эти события")
+        context_event_ids = self._get_event_context(user_id)
+        recent_context_events = []
+        if context_event_ids and existing_events:
+            context_ids_set = set(context_event_ids)
+            recent_context_events = [e for e in existing_events if e.id in context_ids_set]
+            logger.debug("recent_context_loaded", user_id=user_id, count=len(recent_context_events))
+
         # Pass conversation history ONLY if last message was a clarify question
         # Include both user request and assistant clarify question
         limited_history = []
@@ -946,7 +1080,8 @@ Housler.ru сделал подборку сервисов, которые пом
             user_id,
             conversation_history=limited_history,
             timezone=user_tz,
-            existing_events=existing_events
+            existing_events=existing_events,
+            recent_context=recent_context_events
         )
         _total_duration_ms = (time.perf_counter() - _handle_start) * 1000
         _llm_duration_ms = _total_duration_ms - _events_duration_ms
@@ -969,6 +1104,10 @@ Housler.ru сделал подборку сервисов, которые пом
         else:
             # Clear history after successful action
             self.conversation_history[user_id] = []
+
+        # Age event context (expires after MAX_CONTEXT_MESSAGES without reference)
+        # Note: context is reset in _handle_create/_handle_batch_confirm when new events created
+        self._age_event_context(user_id)
 
         # Handle different intents
         if event_dto.intent == IntentType.CLARIFY:
@@ -1050,6 +1189,9 @@ Housler.ru сделал подборку сервисов, которые пом
         event_uid = await calendar_service.create_event(user_id, event_dto)
 
         if event_uid:
+            # Save to context for follow-up commands ("перепиши эти события")
+            self._add_to_event_context(user_id, [event_uid])
+
             # Log event creation to analytics
             if ANALYTICS_ENABLED and analytics_service:
                 try:
@@ -1153,6 +1295,9 @@ Housler.ru сделал подборку сервисов, которые пом
         success = await calendar_service.delete_event(user_id, event_dto.event_id)
 
         if success:
+            # Remove from context (no longer exists)
+            self._remove_from_event_context(user_id, [event_dto.event_id])
+
             # Log event deletion to analytics
             if ANALYTICS_ENABLED and analytics_service:
                 try:
@@ -1294,6 +1439,7 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Create all events and collect results
         created_events = []
+        created_uids = []  # Track UUIDs for context
         failed_count = 0
 
         for action in event_dto.batch_actions:
@@ -1316,11 +1462,16 @@ Housler.ru сделал подборку сервисов, которые пом
                         'start': action.get("start_time"),
                         'end': action.get("end_time")
                     })
+                    created_uids.append(event_uid)
                 else:
                     failed_count += 1
             except Exception as e:
                 logger.error("batch_event_creation_error", error=str(e), user_id=user_id)
                 failed_count += 1
+
+        # Save to context for follow-up commands ("перепиши эти события")
+        if created_uids:
+            self._add_to_event_context(user_id, created_uids)
 
         # Send result with event list
         if len(created_events) > 0:

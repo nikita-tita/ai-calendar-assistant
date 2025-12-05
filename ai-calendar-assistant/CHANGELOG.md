@@ -6,6 +6,31 @@
 
 ---
 
+## [2025-12-05] - Broadcast & Support Button
+
+### Added
+- **Система рассылки сообщений через админку**
+  - Новый endpoint `POST /api/admin/broadcast`
+  - UI в admin.html с полем для сообщения и кнопками
+  - Поддержка HTML-форматирования
+  - Опциональная inline кнопка "🚀 Обновить" (вызывает /start)
+  - Режим "только тест" для проверки на себе
+  - Callback `broadcast:start` в telegram_handler.py
+
+- **Кнопка "Написать нам" 💬 в меню настроек бота**
+  - Inline кнопка со ссылкой на t.me/iay_pm
+  - Файл: `app/services/telegram_handler.py`
+
+- **Кнопка настроек ⚙️ в header WebApp**
+- **Модалка настроек в WebApp** с кнопкой "Написать нам"
+
+### Technical
+- Файлы: `app/routers/admin.py`, `app/static/admin.html`, `app/services/telegram_handler.py`, `app/static/index.html`
+- Версия WebApp: `2025-12-04-v3` (UI: v982)
+- Rate limiting: 50ms между отправками для избежания ban от Telegram
+
+---
+
 ## [2025-12-05] - Performance: Non-blocking CalDAV Operations
 
 ### Performance Improvements

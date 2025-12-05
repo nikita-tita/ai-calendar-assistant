@@ -502,7 +502,8 @@ For batch_confirm intent, include "batch_actions" array field with all events to
         conversation_history: Optional[list] = None,
         timezone: str = 'Europe/Moscow',
         existing_events: Optional[list] = None,
-        language: str = 'ru'
+        language: str = 'ru',
+        recent_context: Optional[list] = None
     ) -> EventDTO:
         """
         Extract structured event information from natural language text.
@@ -514,6 +515,7 @@ For batch_confirm intent, include "batch_actions" array field with all events to
             timezone: User's timezone
             existing_events: List of existing calendar events from DB (for update/delete)
             language: User's preferred language (ru, en, es, ar)
+            recent_context: Recently created/modified events for follow-up commands
 
         Returns:
             EventDTO with extracted information
@@ -605,8 +607,25 @@ CRITICAL: For update/delete operations:
 - COPY the exact ID value - NEVER use "unknown"
 - Example: "перенеси встречу с Леной" → find "Встреча с Леной" → copy its ID
 
-User request:
 """
+
+            # Add recent context for follow-up commands ("перепиши эти события на сегодня")
+            recent_context_prefix = ""
+            if recent_context and len(recent_context) > 0:
+                recent_context_prefix = "<recent_context>\n"
+                recent_context_prefix += "Пользователь ТОЛЬКО ЧТО создал/изменил следующие события:\n"
+                for event in recent_context:
+                    event_time = event.start.strftime('%d.%m.%Y %H:%M') if hasattr(event, 'start') else 'Unknown'
+                    event_title = event.summary if hasattr(event, 'summary') else 'No title'
+                    event_id = event.id if hasattr(event, 'id') else 'unknown'
+                    recent_context_prefix += f"- {event_title} ({event_time}) ID: {event_id}\n"
+                recent_context_prefix += """
+ВАЖНО: Если пользователь говорит "эти события", "их", "перепиши", "перенеси" БЕЗ указания конкретного названия — он имеет в виду события выше из recent_context.
+Используй их ID для update/delete операций.
+</recent_context>
+
+"""
+            events_prefix += recent_context_prefix + "User request:\n"
 
             # Language names
             language_names = {
