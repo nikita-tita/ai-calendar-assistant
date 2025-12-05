@@ -32,13 +32,16 @@ class RedisRateLimiter:
         """Initialize Redis rate limiter."""
         # Connect to Redis
         try:
-            self.redis = redis.from_url(
-                settings.redis_url,
-                password=settings.redis_password,
-                decode_responses=True,
-                socket_timeout=5,
-                socket_connect_timeout=5
-            )
+            # Build connection kwargs - only include password if set
+            redis_kwargs = {
+                "decode_responses": True,
+                "socket_timeout": 5,
+                "socket_connect_timeout": 5
+            }
+            if settings.redis_password:
+                redis_kwargs["password"] = settings.redis_password
+
+            self.redis = redis.from_url(settings.redis_url, **redis_kwargs)
             # Test connection
             self.redis.ping()
             logger.info("redis_rate_limiter_initialized", url=settings.redis_url)
