@@ -520,3 +520,113 @@ async def get_errors(
 async def admin_health():
     """Health check for admin API (no auth required)."""
     return {"status": "ok"}
+
+
+class BroadcastRequest(BaseModel):
+    """Request model for broadcast message."""
+    message: str
+    button_text: Optional[str] = None  # If provided, adds inline button
+    button_action: Optional[str] = None  # "start" to trigger /start command
+    test_only: bool = False  # If true, send only to test users
+
+
+@router.post("/broadcast")
+async def broadcast_message(
+    request: Request,
+    broadcast_req: BroadcastRequest,
+    authorization: str = Header(..., alias="Authorization")
+):
+    """
+    Send broadcast message to all users.
+
+    Requires Authorization header with admin token (real mode only).
+
+    Options:
+    - message: Text to send
+    - button_text: Optional button text (e.g., "🚀 Обновить")
+    - button_action: "start" to add button that triggers /start
+    - test_only: Send only to test users (for testing)
+    """
+    try:
+        # Extract and verify token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+        auth_type = verify_token(token)
+
+        if not auth_type:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if auth_type == "fake":
+            logger.info("admin_broadcast_fake_mode")
+            return {"status": "fake_mode", "sent": 0, "failed": 0}
+
+        # Get all users from analytics
+        users = analytics_service.get_all_users_details()
+
+        if broadcast_req.test_only:
+            # Filter to test users only (you can define test user IDs here)
+            test_user_ids = ["2296243"]  # Add your test user IDs
+            users = [u for u in users if u.user_id in test_user_ids]
+
+        if not users:
+            return {"status": "no_users", "sent": 0, "failed": 0}
+
+        # Import telegram bot
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        from app.main import telegram_handler
+
+        bot = telegram_handler.bot
+
+        # Prepare keyboard if button requested
+        keyboard = None
+        if broadcast_req.button_text and broadcast_req.button_action == "start":
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    broadcast_req.button_text,
+                    callback_data="broadcast:start"
+                )]
+            ])
+
+        sent = 0
+        failed = 0
+        failed_users = []
+
+        for user in users:
+            try:
+                await bot.send_message(
+                    chat_id=int(user.user_id),
+                    text=broadcast_req.message,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                sent += 1
+                # Small delay to avoid rate limiting
+                import asyncio
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                failed += 1
+                failed_users.append({"user_id": user.user_id, "error": str(e)})
+                logger.warning("broadcast_send_failed", user_id=user.user_id, error=str(e))
+
+        logger.info("admin_broadcast_completed",
+                   sent=sent,
+                   failed=failed,
+                   total_users=len(users),
+                   test_only=broadcast_req.test_only)
+
+        return {
+            "status": "completed",
+            "sent": sent,
+            "failed": failed,
+            "total": len(users),
+            "failed_users": failed_users[:10] if failed_users else []  # Return first 10 failures
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_broadcast_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
