@@ -6,6 +6,31 @@
 
 ---
 
+## [2025-12-05] - Event Context for Follow-up Commands
+
+### Added
+- **Контекст последних событий для follow-up команд**
+  - Проблема: пользователь создаёт "в 10 встреча, в 11 обед", потом говорит "перенеси эти события на завтра" — бот не знал какие "эти"
+  - Решение: хранение последних созданных event_uid в `event_context` (LRUDict)
+  - Настройки: `MAX_CONTEXT_EVENTS = 10`, `MAX_CONTEXT_MESSAGES = 5`
+  - Контекст истекает через N сообщений БЕЗ ссылки на события (не по времени)
+
+- **Интеграция контекста в LLM промпт**
+  - Новый параметр `recent_context` в `extract_event()`
+  - XML блок `<recent_context>` с ID и названиями событий
+  - LLM понимает "эти события", "их", "перепиши", "перенеси"
+
+### Technical
+- `telegram_handler.py`:
+  - `event_context: LRUDict` для хранения контекста
+  - Helper-методы: `_add_to_event_context()`, `_remove_from_event_context()`, `_get_event_context()`, `_age_event_context()`, `_reset_context_age()`
+  - Интеграция в `_handle_create`, `_handle_batch_confirm`, `_handle_delete`
+- `llm_agent_yandex.py`:
+  - Параметр `recent_context` в `extract_event()`
+  - Prompt block с инструкциями для LLM
+
+---
+
 ## [2025-12-05] - Broadcast & Support Button
 
 ### Added
