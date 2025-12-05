@@ -4,12 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI Calendar Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--tg-theme-bg-color, #0b0b0b);
             color: var(--tg-theme-text-color, #ffffff);
             overscroll-behavior: none;
@@ -18,8 +21,8 @@
         }
         .secondary-bg { background: var(--tg-theme-secondary-bg-color, #1a1a1a); }
         .tertiary-bg { background: rgba(255,255,255,0.05); }
-        .button-bg { background: var(--tg-theme-button-color, #2563eb); color: var(--tg-theme-button-text-color, #ffffff); }
-        .button-danger { background: #dc2626; color: #ffffff; }
+        .button-bg { background: #181A20; color: #ffffff; }
+        .button-danger { background: #333333; color: #ffffff; }
         .hint-color { color: var(--tg-theme-hint-color, #9ca3af); }
 
         /* Light theme adaptations */
@@ -49,8 +52,8 @@
             transition: all 0.2s;
         }
         .calendar-day:hover { background: rgba(255,255,255,0.1); }
-        .calendar-day.selected { background: var(--tg-theme-button-color, #2563eb); }
-        .calendar-day.today { border: 2px solid var(--tg-theme-button-color, #2563eb); }
+        .calendar-day.selected { background: #181A20; }
+        .calendar-day.today { border: 2px solid #181A20; }
         .calendar-day.has-events { position: relative; }
         .calendar-day.has-events::after {
             content: '';
@@ -58,7 +61,7 @@
             bottom: 4px;
             width: 4px;
             height: 4px;
-            background: var(--tg-theme-button-color, #2563eb);
+            background: #181A20;
             border-radius: 50%;
         }
         .event-card {
@@ -72,7 +75,7 @@
             top: 0;
             bottom: 0;
             width: 4px;
-            background: var(--tg-theme-button-color, #2563eb);
+            background: #181A20;
         }
     </style>
 </head>
@@ -84,22 +87,22 @@
     </div>
     <div id="loading" class="modal" style="display:none;"><div class="spinner"></div></div>
     <div id="confirmModal" class="modal" style="display:none;">
-        <div class="secondary-bg rounded-3xl p-6 max-w-sm mx-4 shadow-2xl">
+        <div class="secondary-bg rounded-xl p-6 max-w-sm mx-4 shadow-2xl">
             <div id="confirmText" class="text-lg mb-6 text-center"></div>
             <div class="flex gap-3">
-                <button onclick="closeConfirm()" class="tertiary-bg px-6 py-3 rounded-2xl flex-1 font-medium"></button>
-                <button id="confirmBtn" onclick="execConfirm()" class="button-bg px-6 py-3 rounded-2xl flex-1 font-medium"></button>
+                <button onclick="closeConfirm()" class="tertiary-bg px-6 py-3 rounded-lg flex-1 font-medium"></button>
+                <button id="confirmBtn" onclick="execConfirm()" class="button-bg px-6 py-3 rounded-lg flex-1 font-medium"></button>
             </div>
         </div>
     </div>
     <div id="settingsModal" class="modal" style="display:none;">
-        <div class="secondary-bg rounded-3xl p-6 max-w-sm mx-4 shadow-2xl">
+        <div class="secondary-bg rounded-xl p-6 max-w-sm mx-4 shadow-2xl">
             <div class="flex items-center justify-between mb-6">
                 <h3 class="text-xl font-bold">Настройки</h3>
                 <button onclick="closeSettings()" class="hint-color text-2xl">&times;</button>
             </div>
             <div class="space-y-3">
-                <button onclick="openSupport()" class="tertiary-bg w-full px-4 py-4 rounded-2xl flex items-center gap-3 text-left">
+                <button onclick="openSupport()" class="tertiary-bg w-full px-4 py-4 rounded-lg flex items-center gap-3 text-left">
                     <span class="text-2xl">💬</span>
                     <div>
                         <div class="font-medium">Написать нам</div>
@@ -111,8 +114,8 @@
     </div>
 
     <script>
-        // Version: 2025-12-04-v3 - Added settings with support chat button
-        const APP_VERSION = '2025-12-04-v3';
+        // Version: 2025-12-05-v1 - Design System alignment (gray palette, Inter font, reduced border-radius)
+        const APP_VERSION = '2025-12-05-v1';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -287,7 +290,7 @@
                             <h2>⚠️ Ошибка загрузки</h2>
                             <p>Не удалось загрузить события.</p>
                             <p style="font-size: 12px; color: #888; margin-top: 20px;">${e.message}</p>
-                            <button onclick="location.reload()" class="button-bg px-6 py-3 rounded-2xl mt-4">
+                            <button onclick="location.reload()" class="button-bg px-6 py-3 rounded-lg mt-4">
                                 Обновить
                             </button>
                         </div>
@@ -735,7 +738,7 @@
                                 <div class="flex items-center justify-between mb-3">
                                     <h1 class="text-2xl font-bold">${state.activeTab === 'events' ? t.myEvents : t.myTodos}</h1>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-xs hint-color px-2 py-1 rounded" style="background: rgba(59, 130, 246, 0.1);">v982</span>
+                                        <span class="text-xs hint-color px-2 py-1 rounded tertiary-bg">v983</span>
                                         <button onclick="openSettings()" class="tertiary-bg w-8 h-8 rounded-xl flex items-center justify-center">
                                             <span class="text-lg">⚙️</span>
                                         </button>
@@ -783,7 +786,7 @@
 
                             <div class="p-4">
                                 ${state.activeTab === 'events' ? `
-                                    <button onclick="openEdit()" class="button-bg w-full py-3 rounded-2xl mb-4 font-medium shadow-lg">
+                                    <button onclick="openEdit()" class="button-bg w-full py-3 rounded-lg mb-4 font-medium shadow-lg">
                                         + ${t.newEvent}
                                     </button>
 
@@ -797,11 +800,11 @@
                                         if (dayEvents.length === 0 && !isToday) return '';
 
                                         return `
-                                            <div class="day-separator py-2 px-2 font-semibold text-sm ${isToday ? 'bg-blue-500/20 rounded-lg' : ''}" data-date="${dateKey}">
-                                                ${fmtDate(dayDate)} ${isToday ? '🔵 Сегодня' : ''} — ${dayEvents.length > 0 ? (dayEvents.length + ' ' + (dayEvents.length === 1 ? 'событие' : 'событий')) : 'событий нет'}
+                                            <div class="day-separator py-2 px-2 font-semibold text-sm ${isToday ? 'tertiary-bg rounded-lg' : ''}" data-date="${dateKey}">
+                                                ${fmtDate(dayDate)} ${isToday ? '• Сегодня' : ''} — ${dayEvents.length > 0 ? (dayEvents.length + ' ' + (dayEvents.length === 1 ? 'событие' : 'событий')) : 'событий нет'}
                                             </div>
                                             ${dayEvents.map(e => `
-                                                <div onclick="viewEvent('${e.id}')" class="event-card secondary-bg p-4 mb-2 rounded-2xl cursor-pointer">
+                                                <div onclick="viewEvent('${e.id}')" class="event-card secondary-bg p-4 mb-2 rounded-lg cursor-pointer">
                                                     <div class="font-medium text-base mb-1">${e.title}</div>
                                                     <div class="hint-color text-sm">
                                                         ${fmtTime(new Date(e.start))} — ${fmtTime(new Date(e.end))}
@@ -820,7 +823,7 @@
                                     ` : ''}
                                 ` : `
                                     <!-- Todos view -->
-                                    <button onclick="openNewTodo()" class="button-bg w-full py-3 rounded-2xl mb-4 font-medium shadow-lg">
+                                    <button onclick="openNewTodo()" class="button-bg w-full py-3 rounded-lg mb-4 font-medium shadow-lg">
                                         + Новая задача
                                     </button>
                                     ${state.todos.length === 0 ? `
@@ -833,7 +836,7 @@
                                             <div class="mb-6">
                                                 <div class="text-sm hint-color font-medium mb-2 px-2">${t.active} (${state.todos.filter(todo => !todo.completed).length})</div>
                                                 ${state.todos.filter(todo => !todo.completed).map(todo => `
-                                                    <div class="secondary-bg p-4 mb-2 rounded-2xl flex items-start gap-3">
+                                                    <div class="secondary-bg p-4 mb-2 rounded-lg flex items-start gap-3">
                                                         <button onclick="event.stopPropagation(); toggleTodo('${todo.id}')" class="tertiary-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
                                                             <span class="text-xs opacity-0">✓</span>
                                                         </button>
@@ -850,7 +853,7 @@
                                             <div>
                                                 <div class="text-sm hint-color font-medium mb-2 px-2">${t.completed} (${state.todos.filter(todo => todo.completed).length})</div>
                                                 ${state.todos.filter(todo => todo.completed).map(todo => `
-                                                    <div class="secondary-bg p-4 mb-2 rounded-2xl flex items-start gap-3 opacity-60">
+                                                    <div class="secondary-bg p-4 mb-2 rounded-lg flex items-start gap-3 opacity-60">
                                                         <button onclick="event.stopPropagation(); toggleTodo('${todo.id}')" class="button-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
                                                             <span class="text-xs">✓</span>
                                                         </button>
@@ -874,7 +877,7 @@
                             <button onclick="closeEdit()" class="mb-4 hint-color flex items-center gap-2">
                                 <span class="text-xl">←</span> ${t.cancel}
                             </button>
-                            <div class="secondary-bg p-6 rounded-3xl">
+                            <div class="secondary-bg p-6 rounded-xl">
                                 <h2 class="text-2xl font-bold mb-6">${e.title}</h2>
                                 <div class="space-y-4">
                                     <div class="flex items-start gap-3">
@@ -912,10 +915,10 @@
                                 </div>
                             </div>
                             <div class="mt-6 flex gap-3">
-                                <button data-event-id="${e.id}" class="btn-edit button-bg flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                <button data-event-id="${e.id}" class="btn-edit button-bg flex-1 py-4 rounded-lg font-medium shadow-lg">
                                     ${t.edit}
                                 </button>
-                                <button data-event-id="${e.id}" class="btn-delete button-danger flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                <button data-event-id="${e.id}" class="btn-delete button-danger flex-1 py-4 rounded-lg font-medium shadow-lg">
                                     ${t.delete}
                                 </button>
                             </div>
@@ -932,43 +935,43 @@
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.title}</span>
                                     <input id="editTitle" value="${state.edit.title||''}"
-                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                        class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="${t.title}"/>
                                 </label>
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.date}</span>
                                     <input id="editDate" type="date" value="${toDateInputValue(state.edit.start)}"
-                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                        class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"/>
                                 </label>
                                 <div class="grid grid-cols-2 gap-3">
                                     <label class="block">
                                         <span class="text-sm hint-color mb-2 block">${t.start}</span>
                                         <input id="editStartTime" type="time" value="${toTimeInputValue(state.edit.start)}"
-                                            class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                            class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"/>
                                     </label>
                                     <label class="block">
                                         <span class="text-sm hint-color mb-2 block">${t.end}</span>
                                         <input id="editEndTime" type="time" value="${toTimeInputValue(state.edit.end)}"
-                                            class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                            class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"/>
                                     </label>
                                 </div>
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.location}</span>
                                     <input id="editLocation" value="${state.edit.location||''}"
-                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                        class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="${t.location}"/>
                                 </label>
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.note}</span>
                                     <textarea id="editNote" rows="4"
-                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base resize-none"
+                                        class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base resize-none"
                                         placeholder="${t.note}">${state.edit.description||''}</textarea>
                                 </label>
                                 <div class="flex gap-3 mt-6 pt-4">
-                                    <button onclick="closeEdit()" class="tertiary-bg flex-1 py-4 rounded-2xl font-medium">
+                                    <button onclick="closeEdit()" class="tertiary-bg flex-1 py-4 rounded-lg font-medium">
                                         ${t.cancel}
                                     </button>
-                                    <button onclick="saveEvent()" class="button-bg flex-1 py-4 rounded-2xl font-medium shadow-lg">
+                                    <button onclick="saveEvent()" class="button-bg flex-1 py-4 rounded-lg font-medium shadow-lg">
                                         ${t.save}
                                     </button>
                                 </div>
@@ -988,24 +991,24 @@
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">Название задачи</span>
                                     <input id="editTodoTitle" value="${todo.title || ''}"
-                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"
+                                        class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="Что нужно сделать?"/>
                                 </label>
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">Срок выполнения (опционально)</span>
                                     <input id="editTodoDueDate" type="date" value="${todo.due_date ? new Date(todo.due_date).toISOString().split('T')[0] : ''}"
-                                        class="secondary-bg w-full px-4 py-3 rounded-2xl outline-none text-base"/>
+                                        class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"/>
                                 </label>
                                 <div class="flex gap-3 pt-4">
                                     ${isNew ? `
-                                        <button onclick="cancelTodoEdit()" class="tertiary-bg flex-1 py-3 rounded-2xl font-medium">
+                                        <button onclick="cancelTodoEdit()" class="tertiary-bg flex-1 py-3 rounded-lg font-medium">
                                             Отмена
                                         </button>
-                                        <button onclick="createTodo()" class="button-bg flex-1 py-3 rounded-2xl font-medium">
+                                        <button onclick="createTodo()" class="button-bg flex-1 py-3 rounded-lg font-medium">
                                             Создать
                                         </button>
                                     ` : `
-                                        <button onclick="deleteTodo('${todo.id}')" class="button-danger flex-1 py-3 rounded-2xl font-medium">
+                                        <button onclick="deleteTodo('${todo.id}')" class="button-danger flex-1 py-3 rounded-lg font-medium">
                                             Удалить
                                         </button>
                                         <button onclick="
@@ -1013,7 +1016,7 @@
                                             const dueDateInput = document.getElementById('editTodoDueDate').value;
                                             state.editingTodo.due_date = dueDateInput ? new Date(dueDateInput).toISOString() : null;
                                             updateTodo();
-                                        " class="button-bg flex-1 py-3 rounded-2xl font-medium">
+                                        " class="button-bg flex-1 py-3 rounded-lg font-medium">
                                             Сохранить
                                         </button>
                                     `}
