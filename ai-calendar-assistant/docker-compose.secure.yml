@@ -34,19 +34,29 @@ services:
         condition: service_healthy
     networks:
       - calendar-network
+    # Resource limits to prevent OOM and runaway CPU
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    # Graceful shutdown timeout
+    stop_grace_period: 30s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    # Healthcheck: FastAPI /health endpoint
-    # start.sh runs both FastAPI and bot, so HTTP healthcheck works
+    # Healthcheck: FastAPI /health endpoint with shorter interval
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 30s
     environment:
       - APP_ENV=production
       - DEBUG=False

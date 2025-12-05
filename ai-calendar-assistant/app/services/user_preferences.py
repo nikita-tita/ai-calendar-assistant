@@ -14,6 +14,9 @@ logger = structlog.get_logger()
 class UserPreferencesService:
     """Service for managing user preferences."""
 
+    # Flush to disk every N changes or on explicit flush()
+    FLUSH_THRESHOLD = 10
+
     def __init__(self, data_file: str = "/var/lib/calendar-bot/user_preferences.json"):
         """
         Initialize preferences service.
@@ -23,6 +26,8 @@ class UserPreferencesService:
         """
         self.data_file = data_file
         self.preferences: Dict[str, dict] = {}
+        self._dirty = False
+        self._changes_since_flush = 0
         self._load_data()
 
     def _load_data(self):
@@ -40,14 +45,31 @@ class UserPreferencesService:
             self.preferences = {}
 
     def _save_data(self):
-        """Save preferences to file."""
+        """Save preferences to file (internal, immediate write)."""
         try:
             # Ensure directory exists
             Path(self.data_file).parent.mkdir(parents=True, exist_ok=True)
             with open(self.data_file, 'w', encoding='utf-8') as f:
                 json.dump(self.preferences, f, ensure_ascii=False, indent=2)
+            self._dirty = False
+            self._changes_since_flush = 0
         except Exception as e:
             logger.error("failed_to_save_preferences", error=str(e))
+
+    def _mark_dirty(self):
+        """Mark data as changed and flush if threshold reached."""
+        self._dirty = True
+        self._changes_since_flush += 1
+
+        if self._changes_since_flush >= self.FLUSH_THRESHOLD:
+            self._save_data()
+            logger.debug("preferences_auto_flushed", changes=self._changes_since_flush)
+
+    def flush(self):
+        """Force save to disk. Call on shutdown."""
+        if self._dirty:
+            self._save_data()
+            logger.info("preferences_flushed")
 
     def get_language(self, user_id: str) -> Language:
         """
@@ -78,7 +100,7 @@ class UserPreferencesService:
             self.preferences[user_id] = {}
 
         self.preferences[user_id]["language"] = language.value
-        self._save_data()
+        self._mark_dirty()
 
         logger.info("user_language_set", user_id=user_id, language=language)
 
@@ -119,7 +141,7 @@ class UserPreferencesService:
             self.preferences[user_id] = {}
 
         self.preferences[user_id]["timezone"] = timezone
-        self._save_data()
+        self._mark_dirty()
 
         logger.info("user_timezone_set", user_id=user_id, timezone=timezone)
 
@@ -154,7 +176,7 @@ class UserPreferencesService:
         new_index = (current_index % 60) + 1  # Cycle: 1->2->...->60->1
 
         self.preferences[user_id]["motivation_index"] = new_index
-        self._save_data()
+        self._mark_dirty()
 
         logger.info("motivation_index_incremented", user_id=user_id, new_index=new_index)
 
@@ -170,7 +192,7 @@ class UserPreferencesService:
         if user_id not in self.preferences:
             self.preferences[user_id] = {}
         self.preferences[user_id]["morning_summary_enabled"] = enabled
-        self._save_data()
+        self._mark_dirty()
         logger.info("morning_summary_toggled", user_id=user_id, enabled=enabled)
 
     def get_morning_summary_time(self, user_id: str) -> str:
@@ -183,7 +205,7 @@ class UserPreferencesService:
         if user_id not in self.preferences:
             self.preferences[user_id] = {}
         self.preferences[user_id]["morning_summary_time"] = time
-        self._save_data()
+        self._mark_dirty()
         logger.info("morning_summary_time_set", user_id=user_id, time=time)
 
     def get_evening_digest_enabled(self, user_id: str) -> bool:
@@ -196,7 +218,7 @@ class UserPreferencesService:
         if user_id not in self.preferences:
             self.preferences[user_id] = {}
         self.preferences[user_id]["evening_digest_enabled"] = enabled
-        self._save_data()
+        self._mark_dirty()
         logger.info("evening_digest_toggled", user_id=user_id, enabled=enabled)
 
     def get_evening_digest_time(self, user_id: str) -> str:
@@ -209,7 +231,7 @@ class UserPreferencesService:
         if user_id not in self.preferences:
             self.preferences[user_id] = {}
         self.preferences[user_id]["evening_digest_time"] = time
-        self._save_data()
+        self._mark_dirty()
         logger.info("evening_digest_time_set", user_id=user_id, time=time)
 
     def get_quiet_hours(self, user_id: str) -> tuple:
@@ -225,7 +247,7 @@ class UserPreferencesService:
             self.preferences[user_id] = {}
         self.preferences[user_id]["quiet_hours_start"] = start
         self.preferences[user_id]["quiet_hours_end"] = end
-        self._save_data()
+        self._mark_dirty()
         logger.info("quiet_hours_set", user_id=user_id, start=start, end=end)
 
     def get_all_settings(self, user_id: str) -> dict:
@@ -254,7 +276,7 @@ class UserPreferencesService:
         if user_id not in self.preferences:
             self.preferences[user_id] = {}
         self.preferences[user_id]["advertising_consent"] = consent
-        self._save_data()
+        self._mark_dirty()
         logger.info("advertising_consent_set", user_id=user_id, consent=consent)
 
     def get_privacy_consent(self, user_id: str) -> bool:
@@ -267,7 +289,7 @@ class UserPreferencesService:
         if user_id not in self.preferences:
             self.preferences[user_id] = {}
         self.preferences[user_id]["privacy_consent"] = consent
-        self._save_data()
+        self._mark_dirty()
         logger.info("privacy_consent_set", user_id=user_id, consent=consent)
 
 
