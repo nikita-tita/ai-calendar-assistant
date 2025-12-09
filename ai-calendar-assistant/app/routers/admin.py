@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 
 from app.services.analytics_service import analytics_service
 from app.services.calendar_radicale import calendar_service
+from app.services.todos_service import todos_service
 from app.models.analytics import (
     AdminDashboardStats, UserDetail, UserDialogEntry
 )
@@ -521,6 +522,146 @@ async def get_errors(
 async def admin_health():
     """Health check for admin API (no auth required)."""
     return {"status": "ok"}
+
+
+@router.get("/report")
+async def get_full_report(
+    authorization: str = Header(..., alias="Authorization"),
+    days_back: int = Query(90, ge=1, le=365),
+    days_forward: int = Query(90, ge=1, le=365)
+):
+    """
+    Get full report with todos and events for all users.
+
+    Returns detailed data for admin reporting:
+    - All users with their todos (completed and active)
+    - All users with their events (past and future)
+    - Users without any activity (no todos, no events)
+
+    Requires Authorization header with admin token.
+    """
+    try:
+        # Extract token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+        auth_type = verify_token(token)
+
+        if not auth_type:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if auth_type == "fake":
+            logger.info("admin_report_accessed_fake_mode")
+            return {"users": [], "summary": {"total_users": 0, "users_with_todos": 0, "users_with_events": 0, "inactive_users": 0}}
+
+        # Get all users from analytics
+        all_users = analytics_service.get_all_users_details()
+
+        now = datetime.now()
+        start_date = now - timedelta(days=days_back)
+        end_date = now + timedelta(days=days_forward)
+
+        report_users = []
+        users_with_todos = 0
+        users_with_events = 0
+        inactive_users = 0
+
+        for user in all_users:
+            user_id = user.user_id
+
+            # Get todos for user
+            user_todos = []
+            try:
+                todos = await todos_service.list_todos(user_id)
+                for todo in todos:
+                    user_todos.append({
+                        "id": todo.id,
+                        "title": todo.title,
+                        "completed": todo.completed,
+                        "priority": todo.priority,
+                        "due_date": todo.due_date.isoformat() if todo.due_date else None,
+                        "created_at": todo.created_at.isoformat() if todo.created_at else None
+                    })
+            except Exception as e:
+                logger.warning("report_todos_error", user_id=user_id, error=str(e))
+
+            # Get events for user
+            user_events = []
+            try:
+                events = await calendar_service.list_events(user_id, start_date, end_date)
+                for event in events:
+                    user_events.append({
+                        "id": event.id,
+                        "title": event.summary,
+                        "start": event.start.isoformat(),
+                        "end": event.end.isoformat(),
+                        "location": event.location,
+                        "description": event.description
+                    })
+            except Exception as e:
+                logger.warning("report_events_error", user_id=user_id, error=str(e))
+
+            # Count statistics
+            has_todos = len(user_todos) > 0
+            has_events = len(user_events) > 0
+
+            if has_todos:
+                users_with_todos += 1
+            if has_events:
+                users_with_events += 1
+            if not has_todos and not has_events:
+                inactive_users += 1
+
+            # Build user report entry
+            report_users.append({
+                "user_id": user_id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "first_seen": user.first_seen.isoformat() if user.first_seen else None,
+                "last_seen": user.last_seen.isoformat() if user.last_seen else None,
+                "todos": user_todos,
+                "todos_count": len(user_todos),
+                "todos_completed": len([t for t in user_todos if t["completed"]]),
+                "todos_active": len([t for t in user_todos if not t["completed"]]),
+                "events": user_events,
+                "events_count": len(user_events),
+                "events_past": len([e for e in user_events if datetime.fromisoformat(e["start"]) < now]),
+                "events_future": len([e for e in user_events if datetime.fromisoformat(e["start"]) >= now]),
+                "has_activity": has_todos or has_events
+            })
+
+        # Sort: users with activity first, then by last_seen
+        report_users.sort(key=lambda u: (not u["has_activity"], u.get("last_seen") or ""), reverse=True)
+
+        logger.info("admin_report_generated",
+                   total_users=len(report_users),
+                   users_with_todos=users_with_todos,
+                   users_with_events=users_with_events,
+                   inactive_users=inactive_users)
+
+        return {
+            "users": report_users,
+            "summary": {
+                "total_users": len(report_users),
+                "users_with_todos": users_with_todos,
+                "users_with_events": users_with_events,
+                "inactive_users": inactive_users,
+                "generated_at": now.isoformat(),
+                "period": {
+                    "start": start_date.isoformat(),
+                    "end": end_date.isoformat()
+                }
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_report_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class BroadcastRequest(BaseModel):
