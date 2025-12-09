@@ -474,6 +474,7 @@ function toggleUserHidden(e, userId) {
     }
     saveHiddenUsers();
     renderUsers();
+    updateSummary();  // Update stats when hiding user
 }
 
 // Toggle global show hidden
@@ -490,6 +491,7 @@ function toggleShowHidden() {
         btn.title = 'Показать скрытых пользователей';
     }
     renderUsers();
+    updateSummary();  // Update stats when toggling hidden
 }
 
 // Check if user is hidden
@@ -596,13 +598,33 @@ function refreshReport() {
     loadReport();
 }
 
+// Test users to exclude from stats
+const TEST_USERNAMES = ['aibroker_bot'];
+
 function updateSummary() {
     if (!reportData) return;
-    document.getElementById('totalUsers').textContent = reportData.summary.total_users || 0;
-    // These are calculated client-side after data loads
-    document.getElementById('usersWithTodos').textContent = '—';
-    document.getElementById('usersWithEvents').textContent = '—';
-    document.getElementById('inactiveUsers').textContent = '—';
+
+    // Filter out test users and hidden users from stats
+    const visibleUsers = reportData.users.filter(u => {
+        // Exclude test users by username
+        if (TEST_USERNAMES.includes(u.username)) return false;
+        // Exclude hidden users
+        if (isUserHidden(u.user_id) && !showHiddenUsers) return false;
+        return true;
+    });
+
+    document.getElementById('totalUsers').textContent = visibleUsers.length;
+
+    // Count users with loaded data
+    const loadedUsers = visibleUsers.filter(u => u.todos !== null);
+    const withTodos = loadedUsers.filter(u => u.todos_count > 0).length;
+    const withEvents = loadedUsers.filter(u => u.events_count > 0).length;
+    const inactive = loadedUsers.filter(u => u.todos_count === 0 && u.events_count === 0).length;
+
+    // Show counts if we have loaded data, otherwise show "—"
+    document.getElementById('usersWithTodos').textContent = loadedUsers.length > 0 ? withTodos : '—';
+    document.getElementById('usersWithEvents').textContent = loadedUsers.length > 0 ? withEvents : '—';
+    document.getElementById('inactiveUsers').textContent = loadedUsers.length > 0 ? inactive : '—';
 }
 
 function applyFilters() {
@@ -615,6 +637,9 @@ function getFilteredUsers() {
     const activityFilter = document.getElementById('filterActivity').value;
 
     return reportData.users.filter(user => {
+        // Exclude test users (aibroker_bot)
+        if (TEST_USERNAMES.includes(user.username)) return false;
+
         // Hidden users filter
         const isHidden = isUserHidden(user.user_id);
         if (isHidden && !showHiddenUsers) return false;
@@ -760,6 +785,9 @@ async function loadUserData(index, userId) {
             const statEvents = document.getElementById(`stat-events-${index}`);
             if (statTodos) statTodos.innerHTML = `<div class="count">${todosActive}/${todosCount}</div><div class="label">Задач</div>`;
             if (statEvents) statEvents.innerHTML = `<div class="count">${eventsFuture}/${eventsCount}</div><div class="label">Событий</div>`;
+
+            // Update global summary after loading user data
+            updateSummary();
         }
 
         // Render todos by default
@@ -872,6 +900,14 @@ function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// Expose functions to window for onclick handlers
+window.toggleUser = toggleUser;
+window.loadUserData = loadUserData;
+window.switchTab = switchTab;
+window.toggleUserHidden = toggleUserHidden;
+window.toggleShowHidden = toggleShowHidden;
+window.applyFilters = applyFilters;
 
 // Init
 restoreSession();
