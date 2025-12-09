@@ -391,16 +391,12 @@
                 <div class="label">Всего пользователей</div>
             </div>
             <div class="summary-card">
-                <div class="value" id="usersWithTodos">-</div>
-                <div class="label">С задачами</div>
-            </div>
-            <div class="summary-card">
-                <div class="value" id="usersWithEvents">-</div>
-                <div class="label">С событиями</div>
+                <div class="value" id="activeUsers">-</div>
+                <div class="label">Активных <span id="loadedCount" style="font-size:12px;color:#666;"></span></div>
             </div>
             <div class="summary-card">
                 <div class="value" id="inactiveUsers">-</div>
-                <div class="label">Без активности</div>
+                <div class="label">Неактивных</div>
             </div>
         </div>
 
@@ -410,10 +406,8 @@
                 <label>Показать:</label>
                 <select id="filterActivity" onchange="applyFilters()">
                     <option value="all">Все пользователи</option>
-                    <option value="active">С активностью</option>
-                    <option value="inactive">Без активности</option>
-                    <option value="todos">С задачами</option>
-                    <option value="events">С событиями</option>
+                    <option value="active">Активные</option>
+                    <option value="inactive">Неактивные</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -447,10 +441,50 @@
 const API_BASE = '/api/admin';
 const STORAGE_KEY = 'admin_session_token';
 const HIDDEN_USERS_KEY = 'admin_hidden_users';
+const CACHE_KEY = 'admin_report_cache';
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 let sessionToken = null;
 let reportData = null;
 let hiddenUsers = new Set();
 let showHiddenUsers = false;
+
+// Cache functions
+function saveToCache() {
+    if (!reportData) return;
+    const cacheData = {
+        timestamp: Date.now(),
+        data: reportData
+    };
+    try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+    } catch (e) {
+        console.warn('Cache save failed:', e);
+    }
+}
+
+function loadFromCache() {
+    try {
+        const cached = sessionStorage.getItem(CACHE_KEY);
+        if (!cached) return null;
+
+        const { timestamp, data } = JSON.parse(cached);
+
+        // Check TTL
+        if (Date.now() - timestamp > CACHE_TTL_MS) {
+            sessionStorage.removeItem(CACHE_KEY);
+            return null;
+        }
+
+        return data;
+    } catch (e) {
+        return null;
+    }
+}
+
+function clearCache() {
+    sessionStorage.removeItem(CACHE_KEY);
+}
 
 // Background loading configuration
 const LOADING_CONFIG = {
@@ -590,6 +624,22 @@ function logout() {
 // Load report
 async function loadReport() {
     try {
+        // Try to load from cache first
+        const cached = loadFromCache();
+        if (cached) {
+            reportData = cached;
+            updateSummary();
+            renderUsers();
+
+            // Check if there are users without loaded data
+            const hasUnloaded = reportData.users.some(u => u.todos === null || u.events === null);
+            if (hasUnloaded) {
+                startBackgroundLoading();
+            }
+            return;
+        }
+
+        // No cache — load from server
         const res = await fetch(`${API_BASE}/report?days_back=90&days_forward=90`, {
             headers: { 'Authorization': `Bearer ${sessionToken}` }
         });
@@ -617,6 +667,9 @@ async function loadReport() {
 }
 
 function refreshReport() {
+    // Clear cache
+    clearCache();
+
     // Stop any running background loading
     stopBackgroundLoading();
 
@@ -631,6 +684,9 @@ function refreshReport() {
             u.events_future = undefined;
         });
     }
+
+    // Reset reportData to force fresh load
+    reportData = null;
 
     document.getElementById('usersList').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     updateLoadingProgress(0, 0, 'idle');
@@ -761,6 +817,9 @@ async function loadSingleUserData(user, type) {
         updateUserCardStats(userId);
         updateSummary();
 
+        // Save to cache after each user loaded
+        saveToCache();
+
     } catch (e) {
         if (e.name === 'AbortError') {
             console.log(`Timeout loading ${type} for user ${userId}`);
@@ -820,16 +879,32 @@ function updateSummary() {
 
     document.getElementById('totalUsers').textContent = visibleUsers.length;
 
-    // Count users with loaded data
-    const loadedUsers = visibleUsers.filter(u => u.todos !== null);
-    const withTodos = loadedUsers.filter(u => u.todos_count > 0).length;
-    const withEvents = loadedUsers.filter(u => u.events_count > 0).length;
-    const inactive = loadedUsers.filter(u => u.todos_count === 0 && u.events_count === 0).length;
+    // Count users with fully loaded data (both todos and events)
+    const loadedUsers = visibleUsers.filter(u => u.todos !== null && u.events !== null);
+    const loadedCount = loadedUsers.length;
+    const totalCount = visibleUsers.length;
 
-    // Show counts if we have loaded data, otherwise show "—"
-    document.getElementById('usersWithTodos').textContent = loadedUsers.length > 0 ? withTodos : '—';
-    document.getElementById('usersWithEvents').textContent = loadedUsers.length > 0 ? withEvents : '—';
-    document.getElementById('inactiveUsers').textContent = loadedUsers.length > 0 ? inactive : '—';
+    // Active = has future events OR has active (incomplete) todos
+    const active = loadedUsers.filter(u =>
+        (u.events_future > 0) || (u.todos_active > 0)
+    ).length;
+
+    // Inactive = no future events AND no active todos
+    const inactive = loadedUsers.filter(u =>
+        u.events_future === 0 && u.todos_active === 0
+    ).length;
+
+    // Show counts with loading progress
+    const loadedCountEl = document.getElementById('loadedCount');
+    if (loadedCount < totalCount) {
+        loadedCountEl.textContent = `(${loadedCount}/${totalCount})`;
+        document.getElementById('activeUsers').textContent = loadedCount > 0 ? active : '—';
+        document.getElementById('inactiveUsers').textContent = loadedCount > 0 ? inactive : '—';
+    } else {
+        loadedCountEl.textContent = '';
+        document.getElementById('activeUsers').textContent = active;
+        document.getElementById('inactiveUsers').textContent = inactive;
+    }
 }
 
 function applyFilters() {
@@ -849,15 +924,17 @@ function getFilteredUsers() {
         const isHidden = isUserHidden(user.user_id);
         if (isHidden && !showHiddenUsers) return false;
 
-        // Activity filter (only works for users with loaded data)
-        if (activityFilter !== 'all' && user.todos === null) {
+        // Activity filter (only works for users with fully loaded data)
+        if (activityFilter !== 'all' && (user.todos === null || user.events === null)) {
             // Data not loaded yet - show all users
             return true;
         }
-        if (activityFilter === 'active' && user.todos_count === 0 && user.events_count === 0) return false;
-        if (activityFilter === 'inactive' && (user.todos_count > 0 || user.events_count > 0)) return false;
-        if (activityFilter === 'todos' && user.todos_count === 0) return false;
-        if (activityFilter === 'events' && user.events_count === 0) return false;
+
+        // Active = has future events OR has active (incomplete) todos
+        const isActive = (user.events_future > 0) || (user.todos_active > 0);
+
+        if (activityFilter === 'active' && !isActive) return false;
+        if (activityFilter === 'inactive' && isActive) return false;
 
         return true;
     });
@@ -939,10 +1016,18 @@ async function toggleUser(index) {
     const isExpanding = !details.classList.contains('expanded');
     details.classList.toggle('expanded');
 
-    // Load data on first expand
     if (isExpanding) {
         const user = getFilteredUsers()[index];
-        if (user && user.todos === null) {
+        const content = document.getElementById(`content-${index}`);
+
+        if (!user) return;
+
+        if (user.todos !== null && user.events !== null) {
+            // Data already loaded — render immediately without loader
+            content.innerHTML = renderTodos(user);
+        } else {
+            // Data not loaded — show loader and load
+            content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
             await loadUserData(index, user.user_id);
         }
     }
@@ -951,6 +1036,16 @@ async function toggleUser(index) {
 // Load todos and events for a user
 async function loadUserData(index, userId) {
     const content = document.getElementById(`content-${index}`);
+
+    // Check if data already loaded
+    const userIndex = reportData.users.findIndex(u => u.user_id === userId);
+    if (userIndex !== -1 && reportData.users[userIndex].todos !== null && reportData.users[userIndex].events !== null) {
+        // Data already loaded — just render
+        content.innerHTML = renderTodos(reportData.users[userIndex]);
+        return;
+    }
+
+    // Show loader only if data not loaded
     content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
     try {
