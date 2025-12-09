@@ -267,6 +267,90 @@
         }
         .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
 
+        /* Dialog Styles */
+        .dialog-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .dialog-date-separator {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a2a;
+            margin: 8px 0;
+        }
+        .dialog-msg {
+            padding: 10px 14px;
+            border-radius: 12px;
+            max-width: 85%;
+            font-size: 13px;
+        }
+        .dialog-msg-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: #888;
+        }
+        .dialog-msg-icon { font-size: 14px; }
+        .dialog-msg-type { font-weight: 500; }
+        .dialog-msg-time { margin-left: auto; color: #666; }
+        .dialog-msg-text {
+            color: #e0e0e0;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .dialog-msg-error-text {
+            color: #ff6b6b;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+        /* User messages - right aligned, blue */
+        .dialog-msg-user {
+            background: #1a3a5c;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        /* Bot messages - left aligned, gray */
+        .dialog-msg-bot {
+            background: #2a2a2a;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        /* System/event messages - centered, dark */
+        .dialog-msg-system {
+            background: #1a1a1a;
+            align-self: center;
+            border: 1px solid #333;
+        }
+        .dialog-msg-event {
+            background: #1a2a1a;
+            align-self: center;
+            border: 1px solid #2a3a2a;
+        }
+        .dialog-msg-error {
+            background: #2a1a1a;
+            align-self: center;
+            border: 1px solid #3a2a2a;
+        }
+        .dialog-msg-consent-ok {
+            background: #1a2a1a;
+            align-self: center;
+            border: 1px solid #2a4a2a;
+        }
+        .dialog-msg-consent-no {
+            background: #2a1a1a;
+            align-self: center;
+            border: 1px solid #4a2a2a;
+        }
+
         /* Loading */
         .loading {
             display: flex;
@@ -1002,6 +1086,7 @@ function renderUserCard(user, index) {
                 <div class="details-tabs">
                     <div class="details-tab active" onclick="switchTab(event, ${index}, 'todos')">Задачи</div>
                     <div class="details-tab" onclick="switchTab(event, ${index}, 'events')">События</div>
+                    <div class="details-tab" onclick="switchTab(event, ${index}, 'dialog')">💬 Диалог</div>
                 </div>
                 <div class="details-content" id="content-${index}">
                     <div class="loading"><div class="spinner"></div></div>
@@ -1100,7 +1185,7 @@ async function loadUserData(index, userId) {
     }
 }
 
-function switchTab(e, index, tab) {
+async function switchTab(e, index, tab) {
     e.stopPropagation();
     const user = getFilteredUsers()[index];
     const tabs = document.querySelectorAll(`#user-${index} .details-tab`);
@@ -1108,7 +1193,15 @@ function switchTab(e, index, tab) {
     e.target.classList.add('active');
 
     const content = document.getElementById(`content-${index}`);
-    content.innerHTML = tab === 'todos' ? renderTodos(user) : renderEvents(user);
+
+    if (tab === 'todos') {
+        content.innerHTML = renderTodos(user);
+    } else if (tab === 'events') {
+        content.innerHTML = renderEvents(user);
+    } else if (tab === 'dialog') {
+        content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+        await loadAndRenderDialog(user.user_id, content);
+    }
 }
 
 function renderTodos(user) {
@@ -1196,9 +1289,129 @@ function formatTime(d) {
     return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDateTime(dateStr) {
+    const d = new Date(dateStr);
+    return d.toLocaleString('ru-RU', {
+        day: '2-digit', month: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Dialog functions
+async function loadAndRenderDialog(userId, container) {
+    try {
+        const res = await fetch(`${API_BASE}/users/${userId}/dialog?limit=500`, {
+            headers: { 'Authorization': `Bearer ${sessionToken}` }
+        });
+
+        if (!res.ok) {
+            container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>Ошибка загрузки диалога</div></div>';
+            return;
+        }
+
+        const dialog = await res.json();
+        container.innerHTML = renderDialog(dialog);
+    } catch (e) {
+        console.error('loadAndRenderDialog error:', e);
+        container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>Ошибка загрузки</div></div>';
+    }
+}
+
+function renderDialog(dialog) {
+    if (!dialog || dialog.length === 0) {
+        return '<div class="empty-state"><div class="icon">💬</div><div>Диалог пуст</div></div>';
+    }
+
+    // Group by date
+    const grouped = {};
+    dialog.forEach(entry => {
+        const date = new Date(entry.timestamp).toLocaleDateString('ru-RU');
+        if (!grouped[date]) grouped[date] = [];
+        grouped[date].push(entry);
+    });
+
+    let html = '<div class="dialog-container">';
+
+    for (const [date, entries] of Object.entries(grouped)) {
+        html += `<div class="dialog-date-separator">${date}</div>`;
+
+        entries.forEach(entry => {
+            const time = new Date(entry.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            const isBot = entry.action_type === 'bot_response';
+            const isUser = ['text_message', 'voice_message'].includes(entry.action_type);
+            const isConsent = entry.action_type.startsWith('consent_');
+            const isEvent = ['event_create', 'event_update', 'event_delete', 'event_query'].includes(entry.action_type);
+            const isError = !entry.success || entry.action_type.includes('error');
+
+            let msgClass = 'dialog-msg-system';
+            let icon = '⚙️';
+
+            if (isBot) {
+                msgClass = 'dialog-msg-bot';
+                icon = '🤖';
+            } else if (isUser) {
+                msgClass = 'dialog-msg-user';
+                icon = entry.action_type === 'voice_message' ? '🎤' : '👤';
+            } else if (isConsent) {
+                msgClass = entry.action_type.includes('accepted') ? 'dialog-msg-consent-ok' : 'dialog-msg-consent-no';
+                icon = entry.action_type.includes('accepted') ? '✅' : '❌';
+            } else if (isEvent) {
+                msgClass = 'dialog-msg-event';
+                icon = '📅';
+            } else if (isError) {
+                msgClass = 'dialog-msg-error';
+                icon = '⚠️';
+            }
+
+            const details = entry.details || getActionLabel(entry.action_type);
+
+            html += `
+                <div class="dialog-msg ${msgClass}">
+                    <div class="dialog-msg-header">
+                        <span class="dialog-msg-icon">${icon}</span>
+                        <span class="dialog-msg-type">${getActionLabel(entry.action_type)}</span>
+                        <span class="dialog-msg-time">${time}</span>
+                    </div>
+                    <div class="dialog-msg-text">${escapeHtml(details)}</div>
+                    ${entry.error_message ? `<div class="dialog-msg-error-text">Ошибка: ${escapeHtml(entry.error_message)}</div>` : ''}
+                </div>
+            `;
+        });
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function getActionLabel(actionType) {
+    const labels = {
+        'user_login': 'Вход (/start)',
+        'text_message': 'Сообщение',
+        'voice_message': 'Голосовое',
+        'bot_response': 'Ответ бота',
+        'event_create': 'Создание события',
+        'event_update': 'Изменение события',
+        'event_delete': 'Удаление события',
+        'event_query': 'Запрос событий',
+        'webapp_open': 'Открытие WebApp',
+        'consent_advertising_accepted': 'Согласие на рекламу',
+        'consent_advertising_declined': 'Отказ от рекламы',
+        'consent_privacy_accepted': 'Согласие на обработку данных',
+        'consent_privacy_declined': 'Отказ от обработки данных',
+        'error': 'Ошибка',
+        'llm_error': 'Ошибка AI',
+        'llm_parse_error': 'Ошибка парсинга',
+        'llm_timeout': 'Таймаут AI',
+        'calendar_error': 'Ошибка календаря',
+        'stt_error': 'Ошибка распознавания речи',
+        'intent_unclear': 'Непонятный запрос'
+    };
+    return labels[actionType] || actionType;
 }
 
 // Expose functions to window for onclick handlers
@@ -1208,6 +1421,7 @@ window.switchTab = switchTab;
 window.toggleUserHidden = toggleUserHidden;
 window.toggleShowHidden = toggleShowHidden;
 window.applyFilters = applyFilters;
+window.loadAndRenderDialog = loadAndRenderDialog;
 
 // Init
 restoreSession();

@@ -75,6 +75,20 @@ class TelegramHandler:
         # Structure: {"event_ids": ["uuid1", "uuid2"], "messages_age": 0}
         self.event_context: LRUDict[str, dict] = LRUDict(max_size=1000)
 
+    def _log_bot_response(self, user_id: str, response_text: str):
+        """Log bot response to analytics for dialog history."""
+        if ANALYTICS_ENABLED and analytics_service:
+            try:
+                from app.models.analytics import ActionType
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.BOT_RESPONSE,
+                    details=response_text[:500] if response_text else None,
+                    success=True
+                )
+            except Exception as e:
+                logger.warning("analytics_bot_response_log_failed", error=str(e))
+
     async def handle_update(self, update: Update) -> None:
         """
         Handle incoming Telegram update.
@@ -565,6 +579,21 @@ Housler.ru сделал подборку сервисов, которые пом
                 if consent_type == "advertising":
                     user_preferences.set_advertising_consent(user_id, True)
                     logger.info("advertising_consent_given", user_id=user_id)
+                    # Log consent to analytics
+                    if ANALYTICS_ENABLED and analytics_service:
+                        try:
+                            from app.models.analytics import ActionType
+                            analytics_service.log_action(
+                                user_id=user_id,
+                                action_type=ActionType.CONSENT_ADVERTISING_ACCEPTED,
+                                details="Согласие на рекламу принято",
+                                success=True,
+                                username=update.effective_user.username if update.effective_user else None,
+                                first_name=update.effective_user.first_name if update.effective_user else None,
+                                last_name=update.effective_user.last_name if update.effective_user else None
+                            )
+                        except Exception as e:
+                            logger.warning("analytics_consent_log_failed", error=str(e))
                     await query.edit_message_text("✅ Согласие на получение рекламы принято")
 
                     # Now ask for privacy consent
@@ -573,6 +602,21 @@ Housler.ru сделал подборку сервисов, которые пом
                 elif consent_type == "privacy":
                     user_preferences.set_privacy_consent(user_id, True)
                     logger.info("privacy_consent_given", user_id=user_id)
+                    # Log consent to analytics
+                    if ANALYTICS_ENABLED and analytics_service:
+                        try:
+                            from app.models.analytics import ActionType
+                            analytics_service.log_action(
+                                user_id=user_id,
+                                action_type=ActionType.CONSENT_PRIVACY_ACCEPTED,
+                                details="Согласие на обработку данных принято",
+                                success=True,
+                                username=update.effective_user.username if update.effective_user else None,
+                                first_name=update.effective_user.first_name if update.effective_user else None,
+                                last_name=update.effective_user.last_name if update.effective_user else None
+                            )
+                        except Exception as e:
+                            logger.warning("analytics_consent_log_failed", error=str(e))
                     await query.edit_message_text("✅ Согласие на обработку данных принято")
 
                     # Now show welcome message - call _handle_start but pass a message object
@@ -587,6 +631,21 @@ Housler.ru сделал подборку сервисов, которые пом
             else:
                 # User declined
                 if consent_type == "advertising":
+                    # Log decline to analytics
+                    if ANALYTICS_ENABLED and analytics_service:
+                        try:
+                            from app.models.analytics import ActionType
+                            analytics_service.log_action(
+                                user_id=user_id,
+                                action_type=ActionType.CONSENT_ADVERTISING_DECLINED,
+                                details="Согласие на рекламу отклонено",
+                                success=True,
+                                username=update.effective_user.username if update.effective_user else None,
+                                first_name=update.effective_user.first_name if update.effective_user else None,
+                                last_name=update.effective_user.last_name if update.effective_user else None
+                            )
+                        except Exception as e:
+                            logger.warning("analytics_consent_log_failed", error=str(e))
                     await query.edit_message_text(
                         "❌ Без согласия на получение рекламы продолжить невозможно.\n\nПопробуйте снова:"
                     )
@@ -594,6 +653,21 @@ Housler.ru сделал подборку сервисов, которые пом
                     await self._ask_advertising_consent(update, user_id)
 
                 elif consent_type == "privacy":
+                    # Log decline to analytics
+                    if ANALYTICS_ENABLED and analytics_service:
+                        try:
+                            from app.models.analytics import ActionType
+                            analytics_service.log_action(
+                                user_id=user_id,
+                                action_type=ActionType.CONSENT_PRIVACY_DECLINED,
+                                details="Согласие на обработку данных отклонено",
+                                success=True,
+                                username=update.effective_user.username if update.effective_user else None,
+                                first_name=update.effective_user.first_name if update.effective_user else None,
+                                last_name=update.effective_user.last_name if update.effective_user else None
+                            )
+                        except Exception as e:
+                            logger.warning("analytics_consent_log_failed", error=str(e))
                     await query.edit_message_text(
                         "❌ Без согласия на обработку данных продолжить невозможно.\n\nПопробуйте снова:"
                     )
@@ -1159,9 +1233,9 @@ Housler.ru сделал подборку сервисов, которые пом
                     )
                 except Exception as analytics_err:
                     logger.warning("analytics_log_failed", error=str(analytics_err))
-            await update.message.reply_text(
-                event_dto.clarify_question or "Уточните, пожалуйста."
-            )
+            clarify_msg = event_dto.clarify_question or "Уточните, пожалуйста."
+            await update.message.reply_text(clarify_msg)
+            self._log_bot_response(user_id, clarify_msg)
             return
 
         if event_dto.intent == IntentType.CREATE:
@@ -1246,10 +1320,11 @@ Housler.ru сделал подборку сервисов, которые пом
             if event_dto.location:
                 message += f" ({event_dto.location})"
             await update.message.reply_text(message)
+            self._log_bot_response(user_id, message)
         else:
-            await update.message.reply_text(
-                "Не получилось. Попробуйте ещё раз одной фразой."
-            )
+            error_msg = "Не получилось. Попробуйте ещё раз одной фразой."
+            await update.message.reply_text(error_msg)
+            self._log_bot_response(user_id, error_msg)
 
     async def _handle_update(self, update: Update, user_id: str, event_dto) -> None:
         """Handle event update."""
@@ -1406,7 +1481,9 @@ Housler.ru сделал подборку сервисов, которые пом
         events = await calendar_service.list_events(user_id, start_date, end_date)
 
         if not events:
-            await update.message.reply_text("Пусто — ничего не запланировано.")
+            empty_msg = "Пусто — ничего не запланировано."
+            await update.message.reply_text(empty_msg)
+            self._log_bot_response(user_id, empty_msg)
             return
 
         # Sort events by start time
@@ -1422,6 +1499,7 @@ Housler.ru сделал подборку сервисов, которые пом
                 message += f"  📍 {event.location}\n"
 
         await update.message.reply_text(message)
+        self._log_bot_response(user_id, message)
 
     async def _handle_free_slots(self, update: Update, user_id: str, event_dto) -> None:
         """Handle free slots query."""
