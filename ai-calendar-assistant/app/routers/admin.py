@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 import structlog
 import bcrypt
+import pytz
 import secrets
 import os
 import jwt
@@ -559,7 +560,9 @@ async def get_full_report(
         # Get all users from analytics
         all_users = analytics_service.get_all_users_details()
 
-        now = datetime.now()
+        # Use timezone-aware datetime (events from calendar_service have timezone)
+        tz = pytz.timezone(settings.default_timezone)
+        now = datetime.now(tz)
         start_date = now - timedelta(days=days_back)
         end_date = now + timedelta(days=days_forward)
 
