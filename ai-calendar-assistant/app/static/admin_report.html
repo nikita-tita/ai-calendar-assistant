@@ -371,10 +371,13 @@
 <!-- Main Dashboard -->
 <div id="dashboard" style="display:none;">
     <header class="header">
-        <h1>User Report</h1>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <h1>User Report</h1>
+            <span id="loadingProgress" class="loading-progress" style="display:none;font-size:13px;color:#9ca3af;"></span>
+        </div>
         <div class="header-actions">
             <button onclick="toggleShowHidden()" id="showHiddenToggle" class="toggle-btn" title="Показать скрытых пользователей">👁</button>
-            <button onclick="refreshReport()" class="btn btn-outline">Обновить</button>
+            <button onclick="refreshReport()" class="btn btn-outline">🔄 Обновить</button>
             <a href="/static/admin.html" class="btn btn-outline">Dashboard</a>
             <button onclick="logout()" class="btn btn-danger">Выйти</button>
         </div>
@@ -448,6 +451,23 @@ let sessionToken = null;
 let reportData = null;
 let hiddenUsers = new Set();
 let showHiddenUsers = false;
+
+// Background loading configuration
+const LOADING_CONFIG = {
+    CONCURRENT_TODOS: 4,      // Todos are fast (local files)
+    CONCURRENT_EVENTS: 2,     // Events are slow (CalDAV HTTP)
+    DELAY_BETWEEN_MS: 150,    // Pause between batches
+    REQUEST_TIMEOUT_MS: 15000 // Request timeout
+};
+
+// Loading state
+let loadingState = {
+    isRunning: false,
+    phase: 'idle', // 'idle' | 'todos' | 'events' | 'done'
+    loaded: 0,
+    total: 0,
+    aborted: false
+};
 
 // Load hidden users from localStorage
 function loadHiddenUsers() {
@@ -582,6 +602,9 @@ async function loadReport() {
         reportData = await res.json();
         updateSummary();
         renderUsers();
+
+        // Start background loading of todos and events
+        startBackgroundLoading();
     } catch (e) {
         console.error('Error loading report:', e);
         document.getElementById('usersList').innerHTML = `
@@ -594,8 +617,190 @@ async function loadReport() {
 }
 
 function refreshReport() {
+    // Stop any running background loading
+    stopBackgroundLoading();
+
+    // Reset all user data
+    if (reportData && reportData.users) {
+        reportData.users.forEach(u => {
+            u.todos = null;
+            u.events = null;
+            u.todos_count = null;
+            u.events_count = null;
+            u.todos_active = undefined;
+            u.events_future = undefined;
+        });
+    }
+
     document.getElementById('usersList').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    updateLoadingProgress(0, 0, 'idle');
     loadReport();
+}
+
+// Stop background loading
+function stopBackgroundLoading() {
+    loadingState.aborted = true;
+    loadingState.isRunning = false;
+}
+
+// Update loading progress in header
+function updateLoadingProgress(loaded, total, phase) {
+    loadingState.loaded = loaded;
+    loadingState.total = total;
+    loadingState.phase = phase;
+
+    const progressEl = document.getElementById('loadingProgress');
+    if (!progressEl) return;
+
+    if (phase === 'idle' || phase === 'done') {
+        progressEl.style.display = 'none';
+    } else {
+        progressEl.style.display = 'inline';
+        const phaseLabel = phase === 'todos' ? 'задачи' : 'события';
+        progressEl.textContent = `⏳ ${phaseLabel}: ${loaded}/${total}`;
+    }
+}
+
+// Background loading - main function
+async function startBackgroundLoading() {
+    if (loadingState.isRunning) return;
+
+    loadingState.isRunning = true;
+    loadingState.aborted = false;
+
+    // Get users to load (exclude test users)
+    const usersToLoad = reportData.users.filter(u => !TEST_USERNAMES.includes(u.username));
+    const total = usersToLoad.length;
+
+    if (total === 0) {
+        loadingState.isRunning = false;
+        updateLoadingProgress(0, 0, 'done');
+        return;
+    }
+
+    // Phase 1: Load todos (fast, local files)
+    updateLoadingProgress(0, total, 'todos');
+    await loadDataInBatches(usersToLoad, 'todos', LOADING_CONFIG.CONCURRENT_TODOS);
+
+    if (loadingState.aborted) {
+        loadingState.isRunning = false;
+        return;
+    }
+
+    // Phase 2: Load events (slow, CalDAV)
+    updateLoadingProgress(0, total, 'events');
+    await loadDataInBatches(usersToLoad, 'events', LOADING_CONFIG.CONCURRENT_EVENTS);
+
+    loadingState.isRunning = false;
+    updateLoadingProgress(total, total, 'done');
+}
+
+// Load data in batches with concurrency control
+async function loadDataInBatches(users, type, concurrency) {
+    let loaded = 0;
+
+    for (let i = 0; i < users.length; i += concurrency) {
+        if (loadingState.aborted) return;
+
+        const batch = users.slice(i, i + concurrency);
+        const promises = batch.map(user => loadSingleUserData(user, type));
+
+        await Promise.all(promises);
+
+        loaded += batch.length;
+        updateLoadingProgress(loaded, users.length, type);
+
+        // Small delay between batches to not overload server
+        if (i + concurrency < users.length) {
+            await sleep(LOADING_CONFIG.DELAY_BETWEEN_MS);
+        }
+    }
+}
+
+// Load single user's todos or events
+async function loadSingleUserData(user, type) {
+    if (loadingState.aborted) return;
+
+    const userId = user.user_id;
+    const endpoint = type === 'todos'
+        ? `${API_BASE}/users/${userId}/todos`
+        : `${API_BASE}/users/${userId}/events`;
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), LOADING_CONFIG.REQUEST_TIMEOUT_MS);
+
+        const res = await fetch(endpoint, {
+            headers: { 'Authorization': `Bearer ${sessionToken}` },
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        // Update user data in reportData
+        const userIndex = reportData.users.findIndex(u => u.user_id === userId);
+        if (userIndex === -1) return;
+
+        const now = new Date();
+
+        if (type === 'todos') {
+            reportData.users[userIndex].todos = data;
+            reportData.users[userIndex].todos_count = data.length;
+            reportData.users[userIndex].todos_active = data.filter(t => !t.completed).length;
+        } else {
+            reportData.users[userIndex].events = data;
+            reportData.users[userIndex].events_count = data.length;
+            reportData.users[userIndex].events_future = data.filter(e => new Date(e.start) >= now).length;
+        }
+
+        // Update UI for this user
+        updateUserCardStats(userId);
+        updateSummary();
+
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            console.log(`Timeout loading ${type} for user ${userId}`);
+        } else {
+            console.error(`Error loading ${type} for user ${userId}:`, e);
+        }
+    }
+}
+
+// Update stats in a single user card without re-rendering everything
+function updateUserCardStats(userId) {
+    const userIndex = reportData.users.findIndex(u => u.user_id === userId);
+    if (userIndex === -1) return;
+
+    const user = reportData.users[userIndex];
+
+    // Find the card in DOM by user_id
+    const card = document.querySelector(`[data-user-id="${userId}"]`);
+    if (!card) return;
+
+    // Update todos stat
+    const todosActive = user.todos_active !== undefined ? user.todos_active : '—';
+    const todosCount = user.todos_count !== null ? user.todos_count : '—';
+    const statTodos = card.querySelector('[id^="stat-todos-"]');
+    if (statTodos) {
+        statTodos.innerHTML = `<div class="count">${todosActive}/${todosCount}</div><div class="label">Задач</div>`;
+    }
+
+    // Update events stat
+    const eventsFuture = user.events_future !== undefined ? user.events_future : '—';
+    const eventsCount = user.events_count !== null ? user.events_count : '—';
+    const statEvents = card.querySelector('[id^="stat-events-"]');
+    if (statEvents) {
+        statEvents.innerHTML = `<div class="count">${eventsFuture}/${eventsCount}</div><div class="label">Событий</div>`;
+    }
+}
+
+// Helper: sleep
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Test users to exclude from stats
