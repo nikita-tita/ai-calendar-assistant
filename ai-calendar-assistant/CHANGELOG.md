@@ -32,12 +32,20 @@
 - **Bug:** Ошибка `can't compare offset-naive and offset-aware datetimes`
   - Причина: `datetime.now()` без timezone сравнивался с событиями из CalDAV (с timezone)
   - Решение: использование `datetime.now(tz)` с timezone из settings
+- **Perf:** Таймаут загрузки отчёта (40 пользователей × 5 сек CalDAV = 200 сек)
+  - Причина: `/report` загружал todos и events для ВСЕХ пользователей последовательно
+  - Решение: Lazy loading — данные загружаются по клику на карточку пользователя
 
 ### Technical
-- `app/routers/admin.py` — новый endpoint `/report`
-- `app/static/admin_report.html` — новая страница отчёта
+- `app/routers/admin.py`:
+  - Упрощён endpoint `/report` — возвращает только базовую инфо пользователей
+  - Новый endpoint `GET /users/{id}/todos` — загрузка задач по требованию
+  - Существующий `GET /users/{id}/events` используется для событий
+- `app/static/admin_report.html`:
+  - Lazy loading при раскрытии карточки пользователя
+  - Параллельная загрузка todos и events через `Promise.all`
+  - Обновление статистики в header карточки после загрузки
 - Дизайн в соответствии с ЧБ UX/UI гайдом (цвета #0b0b0b, #1a1a1a, шрифт Inter)
-- Error handling в `renderTodos()` и `renderEvents()` с try-catch
 
 ---
 
