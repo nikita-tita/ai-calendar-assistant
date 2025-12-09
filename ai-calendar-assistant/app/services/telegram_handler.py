@@ -1285,11 +1285,19 @@ Housler.ru сделал подборку сервисов, которые пом
 
     async def _handle_create(self, update: Update, user_id: str, event_dto) -> None:
         """Handle event creation."""
-        # Validate required fields
-        if not event_dto.title or not event_dto.start_time:
-            await update.message.reply_text(
-                "Недостаточно данных. Укажите название и время."
-            )
+        # Validate required fields with helpful error messages
+        if not event_dto.title:
+            msg = "Не понял название. Скажите, например: «Встреча в 15:00»"
+            await update.message.reply_text(msg)
+            self._log_bot_response(user_id, msg)
+            return
+
+        # start_time should always be set after default time fallback,
+        # but keep safety check just in case
+        if not event_dto.start_time:
+            msg = "Не понял время. Укажите: «завтра в 10:00» или «в 15:30»"
+            await update.message.reply_text(msg)
+            self._log_bot_response(user_id, msg)
             return
 
         # Create event
@@ -1481,7 +1489,26 @@ Housler.ru сделал подборку сервисов, которые пом
         events = await calendar_service.list_events(user_id, start_date, end_date)
 
         if not events:
-            empty_msg = "Пусто — ничего не запланировано."
+            # Contextual hint based on query date
+            today = datetime.now().date()
+            query_date = (event_dto.query_date_start or datetime.now()).date()
+
+            if query_date == today:
+                day_word = "сегодня"
+                example_time = "в 14:00" if datetime.now().hour < 14 else "в 18:00"
+            elif query_date == today + timedelta(days=1):
+                day_word = "завтра"
+                example_time = "в 10:00"
+            else:
+                day_word = query_date.strftime("%d.%m")
+                example_time = "в 10:00"
+
+            empty_msg = f"""📭 На {day_word} пусто.
+
+Чтобы добавить — напишите:
+• «Встреча {example_time}»
+• «Позвонить маме» (задача)"""
+
             await update.message.reply_text(empty_msg)
             self._log_bot_response(user_id, empty_msg)
             return
@@ -1616,6 +1643,13 @@ Housler.ru сделал подборку сервисов, которые пом
             await update.message.reply_text(
                 "Не указан тип повторения (ежедневно, еженедельно, ежемесячно)."
             )
+            return
+
+        # Safety check: start_time required for recurring events
+        if not event_dto.start_time:
+            msg = "Для повторяющихся событий укажите время: «каждый день в 10:00»"
+            await update.message.reply_text(msg)
+            self._log_bot_response(user_id, msg)
             return
 
         # Default: create recurring events for 30 days

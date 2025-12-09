@@ -1235,6 +1235,33 @@ Respuesta JSON:""",
         if not end_time:
             end_time = parsed_end
 
+        # FALLBACK: Set default start_time for CREATE intent if not specified
+        # This prevents NoneType + timedelta crash in calendar_radicale.py
+        if intent == IntentType.CREATE and not start_time:
+            import pytz
+            tz = pytz.timezone(settings.default_timezone)
+            now = datetime.now(tz)
+
+            # Check for relative date markers in user text
+            text_lower = user_text.lower()
+            if any(w in text_lower for w in ["завтра", "tomorrow", "mañana", "غداً"]):
+                # Tomorrow at 09:00
+                start_time = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+            elif any(w in text_lower for w in ["послезавтра", "day after tomorrow", "pasado mañana"]):
+                # Day after tomorrow at 09:00
+                start_time = (now + timedelta(days=2)).replace(hour=9, minute=0, second=0, microsecond=0)
+            else:
+                # Today: next round hour if before 18:00, otherwise tomorrow 09:00
+                if now.hour < 18:
+                    start_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+                else:
+                    start_time = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+
+            logger.info("default_start_time_set",
+                        start_time=start_time.isoformat(),
+                        reason="no_time_specified",
+                        user_text=user_text[:50])
+
         duration_minutes = input_data.get("duration_minutes", parsed_duration)
 
         # Build DTO

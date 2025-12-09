@@ -190,6 +190,13 @@ class RadicaleService:
         """
         import pytz  # Import here for thread safety
 
+        # Safety check: start_time must exist to prevent NoneType + timedelta crash
+        if not event.start_time:
+            logger.error("create_event_missing_start_time",
+                        user_id=user_id,
+                        title=event.title)
+            return None
+
         calendar = self._get_user_calendar(user_id)
         if not calendar:
             return None
