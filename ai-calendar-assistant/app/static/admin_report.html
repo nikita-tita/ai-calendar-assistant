@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Report - AI Calendar Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0b0b0b;
+            color: #ffffff;
+            min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .header-actions { display: flex; gap: 12px; align-items: center; }
+
+        /* Buttons */
+        .btn {
+            background: #181A20;
+            color: #fff;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #252830; }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #333;
+        }
+        .btn-outline:hover { background: #1a1a1a; }
+        .btn-danger { background: #333; }
+        .btn-danger:hover { background: #444; }
+
+        /* Login Screen */
+        .login-screen {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .login-card {
+            background: #1a1a1a;
+            padding: 40px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-card h2 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #9ca3af;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            background: #0b0b0b;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #555;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .summary-card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .summary-card .value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .summary-card .label {
+            font-size: 14px;
+            color: #9ca3af;
+        }
+
+        /* Filters */
+        .filters {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .filter-group label {
+            font-size: 14px;
+            color: #9ca3af;
+        }
+        .filter-group select {
+            background: #0b0b0b;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        .filter-group select:focus { outline: none; border-color: #555; }
+
+        /* User Cards */
+        .users-list { display: flex; flex-direction: column; gap: 16px; }
+        .user-card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .user-card.inactive { opacity: 0.6; }
+        .user-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .user-header:hover { background: #222; }
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: #181A20;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .user-name { font-weight: 600; font-size: 15px; }
+        .user-id { font-size: 13px; color: #9ca3af; font-family: monospace; }
+        .user-stats {
+            display: flex;
+            gap: 16px;
+        }
+        .user-stat {
+            text-align: right;
+        }
+        .user-stat .count { font-weight: 600; font-size: 15px; }
+        .user-stat .label { font-size: 12px; color: #9ca3af; }
+
+        /* User Details */
+        .user-details {
+            display: none;
+            border-top: 1px solid #2a2a2a;
+        }
+        .user-details.expanded { display: block; }
+        .details-tabs {
+            display: flex;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .details-tab {
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #9ca3af;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .details-tab:hover { color: #fff; }
+        .details-tab.active {
+            color: #fff;
+            border-bottom-color: #fff;
+        }
+        .details-content { padding: 16px 20px; }
+
+        /* Items List */
+        .items-list { display: flex; flex-direction: column; gap: 8px; }
+        .item-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #0b0b0b;
+            border-radius: 8px;
+        }
+        .item-row.completed { opacity: 0.5; }
+        .item-row.past { opacity: 0.7; }
+        .item-checkbox {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #444;
+            border-radius: 6px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .item-checkbox.checked {
+            background: #181A20;
+            border-color: #181A20;
+        }
+        .item-checkbox.checked::after {
+            content: '✓';
+            font-size: 12px;
+        }
+        .item-time {
+            font-size: 13px;
+            color: #9ca3af;
+            width: 80px;
+            flex-shrink: 0;
+        }
+        .item-title { font-size: 14px; flex: 1; }
+        .item-date {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 2px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #9ca3af;
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal.visible { display: flex; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .user-stats { display: none; }
+            .filters { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="login-screen">
+    <div class="login-card">
+        <h2>User Report</h2>
+        <form id="loginForm">
+            <div class="form-group">
+                <label>Первый пароль</label>
+                <input type="password" id="password1" required>
+            </div>
+            <div class="form-group">
+                <label>Второй пароль</label>
+                <input type="password" id="password2" required>
+            </div>
+            <div class="form-group">
+                <label>Третий пароль</label>
+                <input type="password" id="password3" required>
+            </div>
+            <button type="submit" class="btn" style="width:100%;margin-top:16px;">Войти</button>
+        </form>
+        <div id="loginError" style="display:none;margin-top:16px;padding:12px;background:#331a1a;border-radius:8px;color:#ff6b6b;font-size:14px;"></div>
+    </div>
+</div>
+
+<!-- Main Dashboard -->
+<div id="dashboard" style="display:none;">
+    <header class="header">
+        <h1>User Report</h1>
+        <div class="header-actions">
+            <button onclick="refreshReport()" class="btn btn-outline">Обновить</button>
+            <a href="/static/admin.html" class="btn btn-outline">Dashboard</a>
+            <button onclick="logout()" class="btn btn-danger">Выйти</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Summary -->
+        <div class="summary-grid" id="summaryGrid">
+            <div class="summary-card">
+                <div class="value" id="totalUsers">-</div>
+                <div class="label">Всего пользователей</div>
+            </div>
+            <div class="summary-card">
+                <div class="value" id="usersWithTodos">-</div>
+                <div class="label">С задачами</div>
+            </div>
+            <div class="summary-card">
+                <div class="value" id="usersWithEvents">-</div>
+                <div class="label">С событиями</div>
+            </div>
+            <div class="summary-card">
+                <div class="value" id="inactiveUsers">-</div>
+                <div class="label">Без активности</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filter-group">
+                <label>Показать:</label>
+                <select id="filterActivity" onchange="applyFilters()">
+                    <option value="all">Все пользователи</option>
+                    <option value="active">С активностью</option>
+                    <option value="inactive">Без активности</option>
+                    <option value="todos">С задачами</option>
+                    <option value="events">С событиями</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>События:</label>
+                <select id="filterEvents" onchange="applyFilters()">
+                    <option value="all">Все</option>
+                    <option value="future">Предстоящие</option>
+                    <option value="past">Прошедшие</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Задачи:</label>
+                <select id="filterTodos" onchange="applyFilters()">
+                    <option value="all">Все</option>
+                    <option value="active">Активные</option>
+                    <option value="completed">Выполненные</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Users List -->
+        <div id="usersList" class="users-list">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_BASE = '/api/admin';
+const STORAGE_KEY = 'admin_session_token';
+let sessionToken = null;
+let reportData = null;
+
+// Restore session
+async function restoreSession() {
+    const savedToken = localStorage.getItem(STORAGE_KEY);
+    if (savedToken) {
+        try {
+            const res = await fetch(`${API_BASE}/stats`, {
+                headers: { 'Authorization': `Bearer ${savedToken}` }
+            });
+            if (res.ok) {
+                sessionToken = savedToken;
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+                loadReport();
+            } else {
+                localStorage.removeItem(STORAGE_KEY);
+            }
+        } catch (e) {
+            localStorage.removeItem(STORAGE_KEY);
+        }
+    }
+}
+
+// Login
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pwd1 = document.getElementById('password1').value;
+    const pwd2 = document.getElementById('password2').value;
+    const pwd3 = document.getElementById('password3').value;
+
+    try {
+        const res = await fetch(`${API_BASE}/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password1: pwd1, password2: pwd2, password3: pwd3 })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.valid) {
+            sessionToken = data.token;
+            localStorage.setItem(STORAGE_KEY, data.token);
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            loadReport();
+        } else {
+            showLoginError(data.error || 'Неверные пароли');
+        }
+    } catch (e) {
+        showLoginError('Ошибка соединения');
+    }
+});
+
+function showLoginError(msg) {
+    const el = document.getElementById('loginError');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+
+function logout() {
+    sessionToken = null;
+    localStorage.removeItem(STORAGE_KEY);
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('password1').value = '';
+    document.getElementById('password2').value = '';
+    document.getElementById('password3').value = '';
+}
+
+// Load report
+async function loadReport() {
+    try {
+        const res = await fetch(`${API_BASE}/report?days_back=90&days_forward=90`, {
+            headers: { 'Authorization': `Bearer ${sessionToken}` }
+        });
+
+        if (res.status === 401) {
+            logout();
+            return;
+        }
+
+        reportData = await res.json();
+        updateSummary();
+        renderUsers();
+    } catch (e) {
+        console.error('Error loading report:', e);
+        document.getElementById('usersList').innerHTML = `
+            <div class="empty-state">
+                <div class="icon">⚠️</div>
+                <div>Ошибка загрузки данных</div>
+            </div>
+        `;
+    }
+}
+
+function refreshReport() {
+    document.getElementById('usersList').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    loadReport();
+}
+
+function updateSummary() {
+    if (!reportData) return;
+    const s = reportData.summary;
+    document.getElementById('totalUsers').textContent = s.total_users;
+    document.getElementById('usersWithTodos').textContent = s.users_with_todos;
+    document.getElementById('usersWithEvents').textContent = s.users_with_events;
+    document.getElementById('inactiveUsers').textContent = s.inactive_users;
+}
+
+function applyFilters() {
+    renderUsers();
+}
+
+function getFilteredUsers() {
+    if (!reportData) return [];
+
+    const activityFilter = document.getElementById('filterActivity').value;
+    const eventsFilter = document.getElementById('filterEvents').value;
+    const todosFilter = document.getElementById('filterTodos').value;
+
+    return reportData.users.filter(user => {
+        // Activity filter
+        if (activityFilter === 'active' && !user.has_activity) return false;
+        if (activityFilter === 'inactive' && user.has_activity) return false;
+        if (activityFilter === 'todos' && user.todos_count === 0) return false;
+        if (activityFilter === 'events' && user.events_count === 0) return false;
+
+        return true;
+    });
+}
+
+function renderUsers() {
+    const users = getFilteredUsers();
+    const container = document.getElementById('usersList');
+
+    if (users.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">📋</div>
+                <div>Нет пользователей по заданным фильтрам</div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = users.map((user, index) => renderUserCard(user, index)).join('');
+}
+
+function renderUserCard(user, index) {
+    const name = user.username ? `@${user.username}` :
+                 (user.first_name || user.last_name) ? `${user.first_name || ''} ${user.last_name || ''}`.trim() :
+                 `User ${user.user_id}`;
+
+    const initial = name.charAt(0) === '@' ? name.charAt(1).toUpperCase() : name.charAt(0).toUpperCase();
+
+    return `
+        <div class="user-card ${!user.has_activity ? 'inactive' : ''}" id="user-${index}">
+            <div class="user-header" onclick="toggleUser(${index})">
+                <div class="user-info">
+                    <div class="user-avatar">${initial}</div>
+                    <div>
+                        <div class="user-name">${escapeHtml(name)}</div>
+                        <div class="user-id">${user.user_id}</div>
+                    </div>
+                </div>
+                <div class="user-stats">
+                    <div class="user-stat">
+                        <div class="count">${user.todos_active}/${user.todos_count}</div>
+                        <div class="label">Задач</div>
+                    </div>
+                    <div class="user-stat">
+                        <div class="count">${user.events_future}/${user.events_count}</div>
+                        <div class="label">Событий</div>
+                    </div>
+                </div>
+            </div>
+            <div class="user-details" id="details-${index}">
+                <div class="details-tabs">
+                    <div class="details-tab active" onclick="switchTab(${index}, 'todos')">Задачи (${user.todos_count})</div>
+                    <div class="details-tab" onclick="switchTab(${index}, 'events')">События (${user.events_count})</div>
+                </div>
+                <div class="details-content" id="content-${index}">
+                    ${renderTodos(user)}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function toggleUser(index) {
+    const details = document.getElementById(`details-${index}`);
+    details.classList.toggle('expanded');
+}
+
+function switchTab(index, tab) {
+    const user = getFilteredUsers()[index];
+    const tabs = document.querySelectorAll(`#user-${index} .details-tab`);
+    tabs.forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+
+    const content = document.getElementById(`content-${index}`);
+    content.innerHTML = tab === 'todos' ? renderTodos(user) : renderEvents(user);
+}
+
+function renderTodos(user) {
+    const todosFilter = document.getElementById('filterTodos').value;
+    let todos = user.todos;
+
+    if (todosFilter === 'active') {
+        todos = todos.filter(t => !t.completed);
+    } else if (todosFilter === 'completed') {
+        todos = todos.filter(t => t.completed);
+    }
+
+    if (todos.length === 0) {
+        return '<div class="empty-state"><div class="icon">✓</div><div>Нет задач</div></div>';
+    }
+
+    return `
+        <div class="items-list">
+            ${todos.map(todo => `
+                <div class="item-row ${todo.completed ? 'completed' : ''}">
+                    <div class="item-checkbox ${todo.completed ? 'checked' : ''}"></div>
+                    <div style="flex:1">
+                        <div class="item-title">${escapeHtml(todo.title)}</div>
+                        ${todo.due_date ? `<div class="item-date">Срок: ${formatDate(todo.due_date)}</div>` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderEvents(user) {
+    const eventsFilter = document.getElementById('filterEvents').value;
+    const now = new Date();
+    let events = user.events;
+
+    if (eventsFilter === 'future') {
+        events = events.filter(e => new Date(e.start) >= now);
+    } else if (eventsFilter === 'past') {
+        events = events.filter(e => new Date(e.start) < now);
+    }
+
+    // Sort by date
+    events.sort((a, b) => new Date(a.start) - new Date(b.start));
+
+    if (events.length === 0) {
+        return '<div class="empty-state"><div class="icon">📅</div><div>Нет событий</div></div>';
+    }
+
+    return `
+        <div class="items-list">
+            ${events.map(event => {
+                const start = new Date(event.start);
+                const isPast = start < now;
+                return `
+                    <div class="item-row ${isPast ? 'past' : ''}">
+                        <div class="item-time">${formatTime(start)}</div>
+                        <div style="flex:1">
+                            <div class="item-title">${escapeHtml(event.title)}</div>
+                            <div class="item-date">${formatDate(event.start)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function formatDate(dateStr) {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatTime(d) {
+    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Init
+restoreSession();
+</script>
+
+</body>
+</html>
