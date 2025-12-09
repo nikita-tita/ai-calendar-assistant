@@ -29,6 +29,9 @@
 ### Fixed
 - **Bug:** `switchTab()` вызывался без передачи event
   - Добавлен параметр `e` для корректного `e.stopPropagation()`
+- **Bug:** Ошибка `can't compare offset-naive and offset-aware datetimes`
+  - Причина: `datetime.now()` без timezone сравнивался с событиями из CalDAV (с timezone)
+  - Решение: использование `datetime.now(tz)` с timezone из settings
 
 ### Technical
 - `app/routers/admin.py` — новый endpoint `/report`
