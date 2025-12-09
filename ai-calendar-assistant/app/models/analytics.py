@@ -16,7 +16,13 @@ class ActionType(str, Enum):
     EVENT_QUERY = "event_query"
     TEXT_MESSAGE = "text_message"
     VOICE_MESSAGE = "voice_message"
+    BOT_RESPONSE = "bot_response"     # Bot's reply to user
     WEBAPP_OPEN = "webapp_open"
+    # Consent tracking
+    CONSENT_ADVERTISING_ACCEPTED = "consent_advertising_accepted"
+    CONSENT_ADVERTISING_DECLINED = "consent_advertising_declined"
+    CONSENT_PRIVACY_ACCEPTED = "consent_privacy_accepted"
+    CONSENT_PRIVACY_DECLINED = "consent_privacy_declined"
     ERROR = "error"
     # Error types for detailed tracking
     LLM_ERROR = "llm_error"           # Yandex GPT API errors
