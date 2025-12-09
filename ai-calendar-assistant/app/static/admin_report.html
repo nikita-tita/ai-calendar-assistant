@@ -598,11 +598,11 @@ function refreshReport() {
 
 function updateSummary() {
     if (!reportData) return;
-    const s = reportData.summary;
-    document.getElementById('totalUsers').textContent = s.total_users;
-    document.getElementById('usersWithTodos').textContent = s.users_with_todos;
-    document.getElementById('usersWithEvents').textContent = s.users_with_events;
-    document.getElementById('inactiveUsers').textContent = s.inactive_users;
+    document.getElementById('totalUsers').textContent = reportData.summary.total_users || 0;
+    // These are calculated client-side after data loads
+    document.getElementById('usersWithTodos').textContent = '—';
+    document.getElementById('usersWithEvents').textContent = '—';
+    document.getElementById('inactiveUsers').textContent = '—';
 }
 
 function applyFilters() {
@@ -619,9 +619,13 @@ function getFilteredUsers() {
         const isHidden = isUserHidden(user.user_id);
         if (isHidden && !showHiddenUsers) return false;
 
-        // Activity filter
-        if (activityFilter === 'active' && !user.has_activity) return false;
-        if (activityFilter === 'inactive' && user.has_activity) return false;
+        // Activity filter (only works for users with loaded data)
+        if (activityFilter !== 'all' && user.todos === null) {
+            // Data not loaded yet - show all users
+            return true;
+        }
+        if (activityFilter === 'active' && user.todos_count === 0 && user.events_count === 0) return false;
+        if (activityFilter === 'inactive' && (user.todos_count > 0 || user.events_count > 0)) return false;
         if (activityFilter === 'todos' && user.todos_count === 0) return false;
         if (activityFilter === 'events' && user.events_count === 0) return false;
 
@@ -657,8 +661,14 @@ function renderUserCard(user, index) {
     const hideBtnClass = isHidden ? 'hidden-user' : '';
     const hideIcon = isHidden ? '👁‍🗨' : '👁';
 
+    // Show counts only if loaded
+    const todosCount = user.todos_count !== null ? user.todos_count : '—';
+    const eventsCount = user.events_count !== null ? user.events_count : '—';
+    const todosActive = user.todos_active !== undefined ? user.todos_active : '—';
+    const eventsFuture = user.events_future !== undefined ? user.events_future : '—';
+
     return `
-        <div class="user-card ${!user.has_activity ? 'inactive' : ''} ${hiddenClass}" id="user-${index}">
+        <div class="user-card ${hiddenClass}" id="user-${index}" data-user-id="${user.user_id}">
             <div class="user-header" onclick="toggleUser(${index})">
                 <div class="user-info">
                     <div class="user-avatar">${initial}</div>
@@ -668,12 +678,12 @@ function renderUserCard(user, index) {
                     </div>
                 </div>
                 <div class="user-stats">
-                    <div class="user-stat">
-                        <div class="count">${user.todos_active}/${user.todos_count}</div>
+                    <div class="user-stat" id="stat-todos-${index}">
+                        <div class="count">${todosActive}/${todosCount}</div>
                         <div class="label">Задач</div>
                     </div>
-                    <div class="user-stat">
-                        <div class="count">${user.events_future}/${user.events_count}</div>
+                    <div class="user-stat" id="stat-events-${index}">
+                        <div class="count">${eventsFuture}/${eventsCount}</div>
                         <div class="label">Событий</div>
                     </div>
                     <button class="hide-btn ${hideBtnClass}" onclick="toggleUserHidden(event, '${user.user_id}')" title="${isHidden ? 'Показать' : 'Скрыть'}">
@@ -683,20 +693,83 @@ function renderUserCard(user, index) {
             </div>
             <div class="user-details" id="details-${index}">
                 <div class="details-tabs">
-                    <div class="details-tab active" onclick="switchTab(event, ${index}, 'todos')">Задачи (${user.todos_count})</div>
-                    <div class="details-tab" onclick="switchTab(event, ${index}, 'events')">События (${user.events_count})</div>
+                    <div class="details-tab active" onclick="switchTab(event, ${index}, 'todos')">Задачи</div>
+                    <div class="details-tab" onclick="switchTab(event, ${index}, 'events')">События</div>
                 </div>
                 <div class="details-content" id="content-${index}">
-                    ${renderTodos(user)}
+                    <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
         </div>
     `;
 }
 
-function toggleUser(index) {
+async function toggleUser(index) {
     const details = document.getElementById(`details-${index}`);
+    const isExpanding = !details.classList.contains('expanded');
     details.classList.toggle('expanded');
+
+    // Load data on first expand
+    if (isExpanding) {
+        const user = getFilteredUsers()[index];
+        if (user && user.todos === null) {
+            await loadUserData(index, user.user_id);
+        }
+    }
+}
+
+// Load todos and events for a user
+async function loadUserData(index, userId) {
+    const content = document.getElementById(`content-${index}`);
+    content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    try {
+        // Load todos and events in parallel
+        const [todosRes, eventsRes] = await Promise.all([
+            fetch(`${API_BASE}/users/${userId}/todos`, {
+                headers: { 'Authorization': `Bearer ${sessionToken}` }
+            }),
+            fetch(`${API_BASE}/users/${userId}/events`, {
+                headers: { 'Authorization': `Bearer ${sessionToken}` }
+            })
+        ]);
+
+        const todos = todosRes.ok ? await todosRes.json() : [];
+        const events = eventsRes.ok ? await eventsRes.json() : [];
+
+        // Update user data in reportData
+        const userIndex = reportData.users.findIndex(u => u.user_id === userId);
+        if (userIndex !== -1) {
+            const now = new Date();
+            reportData.users[userIndex].todos = todos;
+            reportData.users[userIndex].events = events;
+            reportData.users[userIndex].todos_count = todos.length;
+            reportData.users[userIndex].todos_active = todos.filter(t => !t.completed).length;
+            reportData.users[userIndex].todos_completed = todos.filter(t => t.completed).length;
+            reportData.users[userIndex].events_count = events.length;
+            reportData.users[userIndex].events_past = events.filter(e => new Date(e.start) < now).length;
+            reportData.users[userIndex].events_future = events.filter(e => new Date(e.start) >= now).length;
+
+            // Update stats in header
+            const todosActive = reportData.users[userIndex].todos_active;
+            const todosCount = reportData.users[userIndex].todos_count;
+            const eventsFuture = reportData.users[userIndex].events_future;
+            const eventsCount = reportData.users[userIndex].events_count;
+
+            const statTodos = document.getElementById(`stat-todos-${index}`);
+            const statEvents = document.getElementById(`stat-events-${index}`);
+            if (statTodos) statTodos.innerHTML = `<div class="count">${todosActive}/${todosCount}</div><div class="label">Задач</div>`;
+            if (statEvents) statEvents.innerHTML = `<div class="count">${eventsFuture}/${eventsCount}</div><div class="label">Событий</div>`;
+        }
+
+        // Render todos by default
+        const user = reportData.users.find(u => u.user_id === userId);
+        content.innerHTML = renderTodos(user);
+
+    } catch (e) {
+        console.error('Error loading user data:', e);
+        content.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>Ошибка загрузки</div></div>';
+    }
 }
 
 function switchTab(e, index, tab) {
