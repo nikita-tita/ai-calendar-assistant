@@ -252,7 +252,18 @@ class TelegramHandler:
             return
 
         # Both consents given - show welcome message
-        welcome_message = """👋 Привет! Я ваш персональный ИИ-помощник по планированию.
+        await self._send_welcome_message(update.message, user_id)
+
+    async def _send_welcome_message(self, message, user_id: str) -> None:
+        """Send welcome message and setup keyboard.
+
+        Reusable helper for both /start command and callback buttons.
+
+        Args:
+            message: Telegram Message object (from update.message or query.message)
+            user_id: User ID string
+        """
+        welcome_text = """👋 Привет! Я ваш персональный ИИ-помощник по планированию.
 
 📅 **Создавайте события:**
 • "Встреча завтра в 14:00 с клиентом"
@@ -271,26 +282,24 @@ class TelegramHandler:
 
 🎤 Можете использовать голос — удобно за рулем."""
 
-        # Создаем клавиатуру с кнопками (чистые текстовые кнопки без WebApp)
         keyboard = ReplyKeyboardMarkup([
             [KeyboardButton("📋 Дела на сегодня")],
             [KeyboardButton("📅 Дела на завтра"), KeyboardButton("✅ Задачи")],
             [KeyboardButton("⚙️ Настройки"), KeyboardButton("💡 Полезное")]
         ], resize_keyboard=True)
 
-        await update.message.reply_text(welcome_message, reply_markup=keyboard, parse_mode="Markdown")
+        await message.reply_text(welcome_text, reply_markup=keyboard, parse_mode="Markdown")
 
-        # Устанавливаем WebApp button слева от поля ввода (кабинет календаря)
+        # Setup WebApp MenuButton
         try:
             from telegram import MenuButtonWebApp, WebAppInfo
-            # Use webapp URL from config (add version parameter to bust Telegram cache)
             webapp_url = f"{settings.telegram_webapp_url}?v=2025103001"
             menu_button = MenuButtonWebApp(
                 text="🗓 Кабинет",
                 web_app=WebAppInfo(url=webapp_url)
             )
             await self.bot.set_chat_menu_button(
-                chat_id=update.effective_chat.id,
+                chat_id=message.chat_id,
                 menu_button=menu_button
             )
             logger.info("menu_button_webapp_set", user_id=user_id, webapp_url=webapp_url)
@@ -299,7 +308,7 @@ class TelegramHandler:
 
     async def _ask_advertising_consent(self, update: Update, user_id: str) -> None:
         """Ask for advertising consent."""
-        message = """Для дальнейшего взаимодействия с ботом необходимо дать согласие на получение новостей и рекламных рассылок.
+        message_text = """Для дальнейшего взаимодействия с ботом необходимо дать согласие на получение новостей и рекламных рассылок.
 
 [Соглашение на получение рекламы](https://housler.ru/doc/clients/soglasiya/advertising-agreement/)"""
 
@@ -310,7 +319,11 @@ class TelegramHandler:
             ]
         ])
 
-        await update.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
+        # Send to correct place (message or callback_query)
+        if update.message:
+            await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode="Markdown")
+        elif update.callback_query:
+            await update.callback_query.message.reply_text(message_text, reply_markup=keyboard, parse_mode="Markdown")
 
     async def _ask_privacy_consent(self, update: Update, user_id: str) -> None:
         """Ask for privacy policy consent."""
@@ -619,14 +632,8 @@ Housler.ru сделал подборку сервисов, которые пом
                             logger.warning("analytics_consent_log_failed", error=str(e))
                     await query.edit_message_text("✅ Согласие на обработку данных принято")
 
-                    # Now show welcome message - call _handle_start but pass a message object
-                    # Create a fake update with message
-                    from telegram import Message
-                    fake_update = Update(
-                        update_id=update.update_id,
-                        message=query.message
-                    )
-                    await self._handle_start(fake_update, user_id)
+                    # Send welcome message directly via helper
+                    await self._send_welcome_message(query.message, user_id)
 
             else:
                 # User declined
@@ -873,9 +880,28 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Handle broadcast button (triggers /start)
         elif data == "broadcast:start":
-            await query.answer("Обновляю...")
-            # Simulate /start command
-            await self._handle_start(update, user_id)
+            await query.answer()
+
+            # Remove button from message to prevent duplicate clicks
+            try:
+                await query.edit_message_reply_markup(reply_markup=None)
+            except Exception:
+                pass  # Message may have been already edited
+
+            # Check consents (same logic as /start)
+            advertising_consent = user_preferences.get_advertising_consent(user_id)
+            privacy_consent = user_preferences.get_privacy_consent(user_id)
+
+            if not advertising_consent:
+                await self._ask_advertising_consent(update, user_id)
+                return
+
+            if not privacy_consent:
+                await self._ask_privacy_consent(update, user_id)
+                return
+
+            # Send welcome message via query.message (not update.message which is None)
+            await self._send_welcome_message(query.message, user_id)
 
     def _get_user_timezone(self, update: Update) -> str:
         """Get user timezone from stored preferences or default to Moscow."""
