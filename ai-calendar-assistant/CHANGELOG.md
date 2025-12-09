@@ -6,6 +6,38 @@
 
 ---
 
+## [2025-12-09] - Admin Report Panel
+
+### Added
+- **Страница отчёта по пользователям** (`/static/admin_report.html`)
+  - Просмотр todos и events всех пользователей в реальном времени
+  - Фильтрация по статусу: все / с задачами / с событиями / без активности
+  - Поиск по имени пользователя и Telegram ID
+  - Статистика: всего пользователей, с задачами, с событиями
+
+- **API endpoint** `GET /api/admin/report`
+  - Возвращает todos и events всех пользователей
+  - Параметры: `days_back`, `days_forward` для диапазона событий
+  - JWT авторизация через заголовок Authorization
+
+- **Скрытие пользователей из выдачи**
+  - Кнопка-глазик на карточке пользователя
+  - Сохранение в localStorage (`admin_hidden_users`)
+  - Глобальный тоггл для показа/скрытия всех скрытых
+  - Скрытые карточки отображаются с пониженной прозрачностью
+
+### Fixed
+- **Bug:** `switchTab()` вызывался без передачи event
+  - Добавлен параметр `e` для корректного `e.stopPropagation()`
+
+### Technical
+- `app/routers/admin.py` — новый endpoint `/report`
+- `app/static/admin_report.html` — новая страница отчёта
+- Дизайн в соответствии с ЧБ UX/UI гайдом (цвета #0b0b0b, #1a1a1a, шрифт Inter)
+- Error handling в `renderTodos()` и `renderEvents()` с try-catch
+
+---
+
 ## [2025-12-05] - High Load Resilience Refactoring
 
 ### Added

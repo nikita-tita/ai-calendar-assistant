@@ -296,6 +296,45 @@
         }
         .modal.visible { display: flex; }
 
+        /* Hide Button */
+        .hide-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: #9ca3af;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .hide-btn:hover { background: #252830; color: #fff; }
+        .hide-btn.hidden-user { color: #555; }
+        .user-card.is-hidden { opacity: 0.4; }
+        .user-card.is-hidden .user-name { text-decoration: line-through; }
+
+        /* Global Toggle */
+        .toggle-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: transparent;
+            color: #9ca3af;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+        .toggle-btn:hover { background: #1a1a1a; color: #fff; }
+        .toggle-btn.active { background: #181A20; border-color: #181A20; color: #fff; }
+
         /* Responsive */
         @media (max-width: 768px) {
             .summary-grid { grid-template-columns: repeat(2, 1fr); }
@@ -334,6 +373,7 @@
     <header class="header">
         <h1>User Report</h1>
         <div class="header-actions">
+            <button onclick="toggleShowHidden()" id="showHiddenToggle" class="toggle-btn" title="Показать скрытых пользователей">👁</button>
             <button onclick="refreshReport()" class="btn btn-outline">Обновить</button>
             <a href="/static/admin.html" class="btn btn-outline">Dashboard</a>
             <button onclick="logout()" class="btn btn-danger">Выйти</button>
@@ -403,11 +443,63 @@
 <script>
 const API_BASE = '/api/admin';
 const STORAGE_KEY = 'admin_session_token';
+const HIDDEN_USERS_KEY = 'admin_hidden_users';
 let sessionToken = null;
 let reportData = null;
+let hiddenUsers = new Set();
+let showHiddenUsers = false;
+
+// Load hidden users from localStorage
+function loadHiddenUsers() {
+    try {
+        const saved = localStorage.getItem(HIDDEN_USERS_KEY);
+        hiddenUsers = saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch (e) {
+        hiddenUsers = new Set();
+    }
+}
+
+// Save hidden users to localStorage
+function saveHiddenUsers() {
+    localStorage.setItem(HIDDEN_USERS_KEY, JSON.stringify([...hiddenUsers]));
+}
+
+// Toggle user visibility
+function toggleUserHidden(e, userId) {
+    e.stopPropagation();
+    if (hiddenUsers.has(userId)) {
+        hiddenUsers.delete(userId);
+    } else {
+        hiddenUsers.add(userId);
+    }
+    saveHiddenUsers();
+    renderUsers();
+}
+
+// Toggle global show hidden
+function toggleShowHidden() {
+    showHiddenUsers = !showHiddenUsers;
+    const btn = document.getElementById('showHiddenToggle');
+    if (showHiddenUsers) {
+        btn.classList.add('active');
+        btn.textContent = '👁‍🗨';
+        btn.title = 'Скрыть скрытых пользователей';
+    } else {
+        btn.classList.remove('active');
+        btn.textContent = '👁';
+        btn.title = 'Показать скрытых пользователей';
+    }
+    renderUsers();
+}
+
+// Check if user is hidden
+function isUserHidden(userId) {
+    return hiddenUsers.has(userId);
+}
 
 // Restore session
 async function restoreSession() {
+    loadHiddenUsers(); // Load hidden users on startup
     const savedToken = localStorage.getItem(STORAGE_KEY);
     if (savedToken) {
         try {
@@ -521,10 +613,12 @@ function getFilteredUsers() {
     if (!reportData) return [];
 
     const activityFilter = document.getElementById('filterActivity').value;
-    const eventsFilter = document.getElementById('filterEvents').value;
-    const todosFilter = document.getElementById('filterTodos').value;
 
     return reportData.users.filter(user => {
+        // Hidden users filter
+        const isHidden = isUserHidden(user.user_id);
+        if (isHidden && !showHiddenUsers) return false;
+
         // Activity filter
         if (activityFilter === 'active' && !user.has_activity) return false;
         if (activityFilter === 'inactive' && user.has_activity) return false;
@@ -558,9 +652,13 @@ function renderUserCard(user, index) {
                  `User ${user.user_id}`;
 
     const initial = name.charAt(0) === '@' ? name.charAt(1).toUpperCase() : name.charAt(0).toUpperCase();
+    const isHidden = isUserHidden(user.user_id);
+    const hiddenClass = isHidden ? 'is-hidden' : '';
+    const hideBtnClass = isHidden ? 'hidden-user' : '';
+    const hideIcon = isHidden ? '👁‍🗨' : '👁';
 
     return `
-        <div class="user-card ${!user.has_activity ? 'inactive' : ''}" id="user-${index}">
+        <div class="user-card ${!user.has_activity ? 'inactive' : ''} ${hiddenClass}" id="user-${index}">
             <div class="user-header" onclick="toggleUser(${index})">
                 <div class="user-info">
                     <div class="user-avatar">${initial}</div>
@@ -578,12 +676,15 @@ function renderUserCard(user, index) {
                         <div class="count">${user.events_future}/${user.events_count}</div>
                         <div class="label">Событий</div>
                     </div>
+                    <button class="hide-btn ${hideBtnClass}" onclick="toggleUserHidden(event, '${user.user_id}')" title="${isHidden ? 'Показать' : 'Скрыть'}">
+                        ${hideIcon}
+                    </button>
                 </div>
             </div>
             <div class="user-details" id="details-${index}">
                 <div class="details-tabs">
-                    <div class="details-tab active" onclick="switchTab(${index}, 'todos')">Задачи (${user.todos_count})</div>
-                    <div class="details-tab" onclick="switchTab(${index}, 'events')">События (${user.events_count})</div>
+                    <div class="details-tab active" onclick="switchTab(event, ${index}, 'todos')">Задачи (${user.todos_count})</div>
+                    <div class="details-tab" onclick="switchTab(event, ${index}, 'events')">События (${user.events_count})</div>
                 </div>
                 <div class="details-content" id="content-${index}">
                     ${renderTodos(user)}
@@ -598,80 +699,91 @@ function toggleUser(index) {
     details.classList.toggle('expanded');
 }
 
-function switchTab(index, tab) {
+function switchTab(e, index, tab) {
+    e.stopPropagation();
     const user = getFilteredUsers()[index];
     const tabs = document.querySelectorAll(`#user-${index} .details-tab`);
     tabs.forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    e.target.classList.add('active');
 
     const content = document.getElementById(`content-${index}`);
     content.innerHTML = tab === 'todos' ? renderTodos(user) : renderEvents(user);
 }
 
 function renderTodos(user) {
-    const todosFilter = document.getElementById('filterTodos').value;
-    let todos = user.todos;
+    try {
+        const todosFilter = document.getElementById('filterTodos').value;
+        let todos = user.todos || [];
 
-    if (todosFilter === 'active') {
-        todos = todos.filter(t => !t.completed);
-    } else if (todosFilter === 'completed') {
-        todos = todos.filter(t => t.completed);
-    }
+        if (todosFilter === 'active') {
+            todos = todos.filter(t => !t.completed);
+        } else if (todosFilter === 'completed') {
+            todos = todos.filter(t => t.completed);
+        }
 
-    if (todos.length === 0) {
-        return '<div class="empty-state"><div class="icon">✓</div><div>Нет задач</div></div>';
-    }
+        if (todos.length === 0) {
+            return '<div class="empty-state"><div class="icon">✓</div><div>Нет задач</div></div>';
+        }
 
-    return `
-        <div class="items-list">
-            ${todos.map(todo => `
-                <div class="item-row ${todo.completed ? 'completed' : ''}">
-                    <div class="item-checkbox ${todo.completed ? 'checked' : ''}"></div>
-                    <div style="flex:1">
-                        <div class="item-title">${escapeHtml(todo.title)}</div>
-                        ${todo.due_date ? `<div class="item-date">Срок: ${formatDate(todo.due_date)}</div>` : ''}
+        return `
+            <div class="items-list">
+                ${todos.map(todo => `
+                    <div class="item-row ${todo.completed ? 'completed' : ''}">
+                        <div class="item-checkbox ${todo.completed ? 'checked' : ''}"></div>
+                        <div style="flex:1">
+                            <div class="item-title">${escapeHtml(todo.title || 'Без названия')}</div>
+                            ${todo.due_date ? `<div class="item-date">Срок: ${formatDate(todo.due_date)}</div>` : ''}
+                        </div>
                     </div>
-                </div>
-            `).join('')}
-        </div>
-    `;
+                `).join('')}
+            </div>
+        `;
+    } catch (e) {
+        console.error('renderTodos error:', e);
+        return '<div class="empty-state"><div class="icon">⚠️</div><div>Ошибка загрузки задач</div></div>';
+    }
 }
 
 function renderEvents(user) {
-    const eventsFilter = document.getElementById('filterEvents').value;
-    const now = new Date();
-    let events = user.events;
+    try {
+        const eventsFilter = document.getElementById('filterEvents').value;
+        const now = new Date();
+        let events = user.events || [];
 
-    if (eventsFilter === 'future') {
-        events = events.filter(e => new Date(e.start) >= now);
-    } else if (eventsFilter === 'past') {
-        events = events.filter(e => new Date(e.start) < now);
-    }
+        if (eventsFilter === 'future') {
+            events = events.filter(e => new Date(e.start) >= now);
+        } else if (eventsFilter === 'past') {
+            events = events.filter(e => new Date(e.start) < now);
+        }
 
-    // Sort by date
-    events.sort((a, b) => new Date(a.start) - new Date(b.start));
+        // Sort by date
+        events.sort((a, b) => new Date(a.start) - new Date(b.start));
 
-    if (events.length === 0) {
-        return '<div class="empty-state"><div class="icon">📅</div><div>Нет событий</div></div>';
-    }
+        if (events.length === 0) {
+            return '<div class="empty-state"><div class="icon">📅</div><div>Нет событий</div></div>';
+        }
 
-    return `
-        <div class="items-list">
-            ${events.map(event => {
-                const start = new Date(event.start);
-                const isPast = start < now;
-                return `
-                    <div class="item-row ${isPast ? 'past' : ''}">
-                        <div class="item-time">${formatTime(start)}</div>
-                        <div style="flex:1">
-                            <div class="item-title">${escapeHtml(event.title)}</div>
-                            <div class="item-date">${formatDate(event.start)}</div>
+        return `
+            <div class="items-list">
+                ${events.map(event => {
+                    const start = new Date(event.start);
+                    const isPast = start < now;
+                    return `
+                        <div class="item-row ${isPast ? 'past' : ''}">
+                            <div class="item-time">${formatTime(start)}</div>
+                            <div style="flex:1">
+                                <div class="item-title">${escapeHtml(event.title || 'Без названия')}</div>
+                                <div class="item-date">${formatDate(event.start)}</div>
+                            </div>
                         </div>
-                    </div>
-                `;
-            }).join('')}
-        </div>
-    `;
+                    `;
+                }).join('')}
+            </div>
+        `;
+    } catch (e) {
+        console.error('renderEvents error:', e);
+        return '<div class="empty-state"><div class="icon">⚠️</div><div>Ошибка загрузки событий</div></div>';
+    }
 }
 
 function formatDate(dateStr) {
