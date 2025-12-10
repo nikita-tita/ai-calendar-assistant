@@ -15,6 +15,7 @@ from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
 from app.services.translations import get_translation
 from app.utils.datetime_parser import format_datetime_human
+from app.services.analytics_service import analytics_service
 
 logger = structlog.get_logger()
 
@@ -228,6 +229,68 @@ class DailyRemindersService:
         except Exception as e:
             logger.error("evening_reminder_error", user_id=user_id, error=str(e), exc_info=True)
 
+    async def send_admin_daily_report(self):
+        """Send daily statistics report to admin user."""
+        if not settings.admin_user_id:
+            logger.debug("admin_daily_report_skipped", reason="admin_user_id not configured")
+            return
+
+        try:
+            admin_chat_id = int(settings.admin_user_id)
+
+            # Get LLM cost stats for last 24 hours
+            llm_stats = analytics_service.get_llm_cost_stats(hours=24)
+
+            # Get general dashboard stats
+            dashboard_stats = analytics_service.get_dashboard_stats()
+
+            # Get error stats
+            error_stats = analytics_service.get_error_stats(hours=24)
+
+            # Format the report
+            now = datetime.now(pytz.timezone('Europe/Moscow'))
+            date_str = now.strftime('%d.%m.%Y')
+
+            report = f"""📊 *Ежедневный отчёт* ({date_str})
+
+💰 *Расходы на Yandex GPT:*
+├ Запросов: {llm_stats['total_requests']}
+├ Токенов: {llm_stats['total_tokens']:,}
+├ Стоимость: {llm_stats['total_cost_rub']:.2f}₽
+├ Пользователей: {llm_stats['unique_users']}
+└ Ср. на пользователя: {llm_stats['avg_cost_per_user']:.2f}₽
+
+👥 *Активность:*
+├ Всего пользователей: {dashboard_stats.total_users}
+├ Активных сегодня: {dashboard_stats.active_users_today}
+├ Сообщений сегодня: {dashboard_stats.messages_today}
+└ Событий создано: {dashboard_stats.events_today}
+
+❌ *Ошибки (24ч):*
+└ Всего: {error_stats['total']}"""
+
+            # Add model breakdown if available
+            if llm_stats['by_model']:
+                report += "\n\n🤖 *По моделям:*"
+                for model, data in llm_stats['by_model'].items():
+                    report += f"\n├ {model}: {data['requests']} req, {data['cost']:.2f}₽"
+
+            await self.bot.send_message(
+                chat_id=admin_chat_id,
+                text=report,
+                parse_mode="Markdown"
+            )
+
+            logger.info("admin_daily_report_sent",
+                       admin_id=settings.admin_user_id,
+                       llm_cost=llm_stats['total_cost_rub'],
+                       llm_requests=llm_stats['total_requests'])
+
+        except TelegramError as e:
+            logger.error("admin_daily_report_telegram_error", error=str(e))
+        except Exception as e:
+            logger.error("admin_daily_report_error", error=str(e), exc_info=True)
+
     async def run_daily_schedule(self):
         """Run daily reminder schedule."""
         self.running = True
@@ -257,6 +320,19 @@ class DailyRemindersService:
                 if utc_now.hour == 0 and utc_now.minute == 0:
                     motivation_sent_today.clear()
                     logger.info("motivation_tracking_reset")
+
+                # Admin daily report (sent at configured time in MSK timezone)
+                if settings.admin_user_id:
+                    msk_tz = pytz.timezone('Europe/Moscow')
+                    msk_now = utc_now.astimezone(msk_tz)
+                    msk_time = msk_now.time()
+
+                    # Parse admin_report_time (default "23:00")
+                    report_hour, report_min = map(int, settings.admin_report_time.split(':'))
+                    report_time = time(report_hour, report_min)
+
+                    if is_time_match(time(msk_time.hour, msk_time.minute), report_time):
+                        await self.send_admin_daily_report()
 
                 # Check each user's local time
                 for user_id, chat_id in list(self.active_users.items()):
