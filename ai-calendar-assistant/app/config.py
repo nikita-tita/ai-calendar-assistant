@@ -132,8 +132,7 @@ class Settings(BaseSettings):
     forum_logger_chat_id: Optional[int] = None  # Telegram forum group chat ID
 
     # Admin settings
-    admin_user_id: Optional[str] = None  # Telegram user ID for daily reports (e.g., "2296243")
-    admin_report_time: str = "23:00"  # Time to send daily report (HH:MM in MSK)
+    admin_user_id: Optional[str] = None  # Telegram user ID - gets LLM stats in evening reminder
 
 
 # Global settings instance
