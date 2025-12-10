@@ -717,10 +717,23 @@ CRITICAL: For update/delete operations:
                 }
             }
 
-            # OPTIMIZED: Russian-only JSON instruction
-            json_instruction = f"""Верни ТОЛЬКО JSON. Схема:
-{json.dumps(function_schema, ensure_ascii=False, indent=2)}
+            # OPTIMIZED: Russian-only JSON instruction with explicit format example
+            # NOTE: Do NOT show full schema - LLM mirrors it literally with "properties" wrapper
+            json_instruction = """ФОРМАТ ОТВЕТА: Верни ТОЛЬКО JSON объект с параметрами.
 
+Пример для одного события:
+{"intent": "create", "title": "Встреча", "start_time": "2025-01-15T15:00:00+03:00"}
+
+Пример для нескольких событий:
+{"intent": "batch_confirm", "batch_actions": [{"intent": "create", "title": "Дорога", "start_time": "2025-01-15T19:00:00+03:00"}, {"intent": "create", "title": "Ужин", "start_time": "2025-01-15T20:00:00+03:00"}]}
+
+Пример для задачи:
+{"intent": "todo", "title": "Позвонить маме"}
+
+Пример для уточнения:
+{"intent": "clarify", "clarify_question": "Уточните время события"}
+
+ВАЖНО: Возвращай ТОЛЬКО значения параметров, НЕ структуру схемы!
 JSON:"""
 
             # Prepare the prompt for Yandex GPT
@@ -942,6 +955,13 @@ JSON:"""
             else:
                 input_data = data
                 logger.info("yandex_gpt_using_data_directly", input_data=input_data)
+
+            # DEFENSIVE: Handle if LLM returned full schema format with "properties" wrapper
+            # This happens when LLM mirrors the function schema structure literally
+            if "properties" in input_data and "type" in input_data:
+                logger.warning("yandex_gpt_schema_format_detected",
+                              message="LLM returned schema format - unwrapping properties")
+                input_data = input_data["properties"]
 
             # Check if this is a batch operation with batch_actions array
             if "batch_actions" in input_data and isinstance(input_data["batch_actions"], list):
