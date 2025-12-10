@@ -2,6 +2,8 @@
 
 Each user gets their own topic in a Telegram forum group.
 All messages and bot responses are logged for monitoring and support.
+
+Uses a SEPARATE bot to avoid load on the main calendar bot.
 """
 
 import asyncio
@@ -22,6 +24,7 @@ class ForumActivityLogger:
 
     Creates a topic per user and logs all interactions there.
     Uses async queue to avoid blocking main request flow.
+    Uses SEPARATE bot instance (not the main calendar bot).
     """
 
     # Topic icon colors (Telegram requires specific values)
@@ -34,14 +37,18 @@ class ForumActivityLogger:
         0xFB6F5F,  # Red
     ]
 
-    def __init__(self, bot: Bot, data_dir: str = "/var/lib/calendar-bot"):
-        """Initialize forum logger.
+    def __init__(self, data_dir: str = "/var/lib/calendar-bot"):
+        """Initialize forum logger with its own bot instance.
 
         Args:
-            bot: Telegram bot instance
             data_dir: Directory for storing topic mappings
         """
-        self.bot = bot
+        # Create separate bot instance for logging
+        if settings.forum_logger_bot_token:
+            self.bot = Bot(token=settings.forum_logger_bot_token)
+        else:
+            self.bot = None
+
         self.storage = EncryptedStorage(data_dir=data_dir)
         self.topics_file = "forum_topics.json"
         self.topics: Dict[str, int] = {}  # user_id -> thread_id
@@ -75,7 +82,9 @@ class ForumActivityLogger:
         """Check if forum logging is enabled."""
         return (
             settings.forum_logger_enabled and
-            settings.forum_logger_chat_id is not None
+            settings.forum_logger_bot_token is not None and
+            settings.forum_logger_chat_id is not None and
+            self.bot is not None
         )
 
     def start(self):
