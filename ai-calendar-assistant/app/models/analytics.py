@@ -18,11 +18,18 @@ class ActionType(str, Enum):
     VOICE_MESSAGE = "voice_message"
     BOT_RESPONSE = "bot_response"     # Bot's reply to user
     WEBAPP_OPEN = "webapp_open"
+    # Todo tracking
+    TODO_CREATE = "todo_create"
+    TODO_UPDATE = "todo_update"
+    TODO_DELETE = "todo_delete"
+    TODO_COMPLETE = "todo_complete"   # Toggle completion
     # Consent tracking
     CONSENT_ADVERTISING_ACCEPTED = "consent_advertising_accepted"
     CONSENT_ADVERTISING_DECLINED = "consent_advertising_declined"
     CONSENT_PRIVACY_ACCEPTED = "consent_privacy_accepted"
     CONSENT_PRIVACY_DECLINED = "consent_privacy_declined"
+    # Settings changes
+    SETTINGS_CHANGED = "settings_changed"
     ERROR = "error"
     # Error types for detailed tracking
     LLM_ERROR = "llm_error"           # Yandex GPT API errors

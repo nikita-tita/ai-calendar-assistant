@@ -6,6 +6,43 @@
 
 ---
 
+## [2025-12-10] - Extended Analytics & Bot Response Logging
+
+### Added
+- **Расширенное логирование задач (todos)**
+  - `ActionType.TODO_CREATE` — создание задачи
+  - `ActionType.TODO_UPDATE` — обновление задачи
+  - `ActionType.TODO_DELETE` — удаление задачи
+  - `ActionType.TODO_COMPLETE` — переключение статуса (выполнено/не выполнено)
+  - `ActionType.SETTINGS_CHANGED` — изменение настроек пользователя
+  - Все операции с задачами теперь видны в диалоге пользователя
+
+- **Полное логирование ответов бота**
+  - Добавлены `_log_bot_response()` вызовы во все reply_text
+  - Теперь записываются все ответы бота в dialog history:
+    - Rate limit сообщения
+    - Ошибки обработки
+    - Список задач
+    - Создание/обновление/удаление событий
+    - Поиск свободных слотов
+    - Пакетное создание событий
+    - Повторяющиеся события
+    - Массовое удаление по критериям
+    - Удаление дубликатов
+    - Создание задач
+
+### Technical
+- `app/models/analytics.py` — новые ActionTypes для todos
+- `app/services/todos_service.py` — интеграция с analytics_service
+- `app/services/telegram_handler.py` — добавлено ~30 вызовов _log_bot_response()
+
+### Impact
+- В админке теперь виден полный диалог бот ↔ пользователь
+- Все операции с задачами отслеживаются для аналитики
+- Улучшена прозрачность работы бота для отладки
+
+---
+
 ## [2025-12-09] - Default Time for Events & Empty Schedule UX
 
 ### Fixed
