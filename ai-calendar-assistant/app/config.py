@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_per_minute: int = 10
 
+    # Forum Activity Logger (logs user activity to Telegram forum topics)
+    forum_logger_enabled: bool = False
+    forum_logger_chat_id: Optional[int] = None  # Telegram forum group chat ID
+
 
 # Global settings instance
 settings = Settings()
