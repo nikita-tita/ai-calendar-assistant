@@ -45,9 +45,6 @@ EVENT_TYPES = [
     ActionType.EVENT_CREATE,
     ActionType.EVENT_UPDATE,
     ActionType.EVENT_DELETE,
-    ActionType.TODO_CREATE,
-    ActionType.TODO_COMPLETE,
-    ActionType.TODO_DELETE,
 ]
 
 # Topic icon colors
@@ -149,9 +146,6 @@ async def migrate_user_dialog(bot: Bot, chat_id: int, user_id: str, user_name: s
                 ActionType.EVENT_CREATE: "📅",
                 ActionType.EVENT_UPDATE: "✏️",
                 ActionType.EVENT_DELETE: "🗑",
-                ActionType.TODO_CREATE: "✅",
-                ActionType.TODO_COMPLETE: "☑️",
-                ActionType.TODO_DELETE: "❌",
             }
             emoji = emoji_map.get(entry.action_type, "📌")
             text = f"{emoji} [{ts}] *{entry.action_type}*\n{entry.details or ''}"
