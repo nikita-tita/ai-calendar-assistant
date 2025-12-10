@@ -618,8 +618,22 @@ CRITICAL: For update/delete operations:
                     if hasattr(event, 'id') and event.id:
                         event_id_enum.append(str(event.id))
 
-            # Prepare the full user message with events context
-            user_message_content = events_prefix + user_text
+            # Prepare dialog history context for better understanding
+            dialog_context = ""
+            if conversation_history and len(conversation_history) > 0:
+                dialog_context = "<dialog_history>\n"
+                for msg in conversation_history[-10:]:  # Last 10 messages max
+                    role = msg.get('role', 'user')
+                    text = msg.get('text', msg.get('content', ''))[:300]  # Limit each message
+                    if role == 'user':
+                        dialog_context += f"Пользователь: {text}\n"
+                    else:
+                        dialog_context += f"Бот: {text}\n"
+                dialog_context += "</dialog_history>\n\n"
+                dialog_context += "ВАЖНО: Используй контекст диалога для понимания намерений пользователя.\n\n"
+
+            # Prepare the full user message with events context and dialog history
+            user_message_content = events_prefix + dialog_context + user_text
 
             # Build function schema
             function_schema = {

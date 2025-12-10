@@ -90,8 +90,18 @@ class TelegramHandler:
         # Structure: [{"role": "user", "text": "..."}, {"role": "assistant", "text": "..."}]
         self.dialog_history: LRUDict[str, list] = LRUDict(max_size=1000)
 
-    def _log_bot_response(self, user_id: str, response_text: str):
-        """Log bot response to analytics and forum logger."""
+    def _log_bot_response(self, user_id: str, response_text: str, user_text: str = None):
+        """Log bot response to analytics, forum logger, and dialog history.
+
+        Args:
+            user_id: Telegram user ID
+            response_text: Bot's response
+            user_text: Original user message (for dialog history)
+        """
+        # Save to dialog history for LLM context
+        if user_text:
+            self._add_to_dialog_history(user_id, user_text, response_text)
+
         # Log to analytics
         if ANALYTICS_ENABLED and analytics_service:
             try:
@@ -1050,6 +1060,58 @@ Housler.ru сделал подборку сервисов, которые пом
 
     # ========== End Event Context Methods ==========
 
+    # ========== Dialog History Methods ==========
+    # Track conversation history for better LLM context understanding
+
+    def _add_to_dialog_history(self, user_id: str, user_text: str, bot_response: str) -> None:
+        """
+        Add a message pair to user's dialog history.
+
+        Args:
+            user_id: Telegram user ID
+            user_text: User's message
+            bot_response: Bot's response
+        """
+        if user_id not in self.dialog_history:
+            self.dialog_history[user_id] = []
+
+        # Add user message and bot response
+        self.dialog_history[user_id].append({
+            "role": "user",
+            "text": user_text[:500]  # Limit to 500 chars
+        })
+        self.dialog_history[user_id].append({
+            "role": "assistant",
+            "text": bot_response[:500]  # Limit to 500 chars
+        })
+
+        # Keep only last MAX_DIALOG_HISTORY pairs (2 messages per pair)
+        max_messages = MAX_DIALOG_HISTORY * 2
+        if len(self.dialog_history[user_id]) > max_messages:
+            self.dialog_history[user_id] = self.dialog_history[user_id][-max_messages:]
+
+        logger.debug("dialog_history_updated", user_id=user_id,
+                    history_len=len(self.dialog_history[user_id]))
+
+    def _get_dialog_history(self, user_id: str) -> list:
+        """
+        Get dialog history for user.
+
+        Args:
+            user_id: Telegram user ID
+
+        Returns:
+            List of message dicts with role and text
+        """
+        return self.dialog_history.get(user_id, [])
+
+    def _clear_dialog_history(self, user_id: str) -> None:
+        """Clear dialog history for user."""
+        if user_id in self.dialog_history:
+            del self.dialog_history[user_id]
+
+    # ========== End Dialog History Methods ==========
+
     async def _handle_settings_time_input(
         self, update: Update, user_id: str, text: str, pending_action: str
     ) -> bool:
@@ -1226,23 +1288,27 @@ Housler.ru сделал подборку сервисов, которые пом
             recent_context_events = [e for e in existing_events if e.id in context_ids_set]
             logger.debug("recent_context_loaded", user_id=user_id, count=len(recent_context_events))
 
-        # Pass conversation history ONLY if last message was a clarify question
-        # Include both user request and assistant clarify question
-        limited_history = []
+        # Get dialog history for better LLM context understanding
+        # This helps LLM understand what user wants based on previous messages
+        dialog_history = self._get_dialog_history(user_id)
+
+        # Also check if last message was a clarify question (for immediate context)
+        clarify_context = []
         if len(self.conversation_history[user_id]) >= 2:
-            # Check if last assistant message was clarify
             last_assistant = self.conversation_history[user_id][-1]
             prev_user = self.conversation_history[user_id][-2]
-
             if (last_assistant.get("role") == "assistant" and
                 prev_user.get("role") == "user"):
-                # Include both user request and clarify question for full context
-                limited_history = [prev_user, last_assistant]
+                clarify_context = [prev_user, last_assistant]
+
+        # Combine dialog history with clarify context
+        # Format: older messages first, then clarify context if any
+        combined_history = dialog_history + clarify_context
 
         event_dto = await llm_agent.extract_event(
             text,
             user_id,
-            conversation_history=limited_history,
+            conversation_history=combined_history,
             timezone=user_tz,
             existing_events=existing_events,
             recent_context=recent_context_events
@@ -1292,61 +1358,61 @@ Housler.ru сделал подборку сервисов, которые пом
                     logger.warning("analytics_log_failed", error=str(analytics_err))
             clarify_msg = event_dto.clarify_question or "Уточните, пожалуйста."
             await update.message.reply_text(clarify_msg)
-            self._log_bot_response(user_id, clarify_msg)
+            self._log_bot_response(user_id, clarify_msg, text)  # Save to dialog history
             return
 
         if event_dto.intent == IntentType.CREATE:
-            await self._handle_create(update, user_id, event_dto)
+            await self._handle_create(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.UPDATE:
-            await self._handle_update(update, user_id, event_dto)
+            await self._handle_update(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.DELETE:
-            await self._handle_delete(update, user_id, event_dto)
+            await self._handle_delete(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.QUERY:
-            await self._handle_query(update, user_id, event_dto)
+            await self._handle_query(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.FIND_FREE_SLOTS:
-            await self._handle_free_slots(update, user_id, event_dto)
+            await self._handle_free_slots(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.BATCH_CONFIRM:
-            await self._handle_batch_confirm(update, user_id, event_dto)
+            await self._handle_batch_confirm(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.CREATE_RECURRING:
-            await self._handle_create_recurring(update, user_id, event_dto)
+            await self._handle_create_recurring(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.DELETE_BY_CRITERIA:
-            await self._handle_delete_by_criteria(update, user_id, event_dto)
+            await self._handle_delete_by_criteria(update, user_id, event_dto, text)
             return
 
         if event_dto.intent == IntentType.DELETE_DUPLICATES:
-            await self._handle_delete_duplicates(update, user_id, event_dto)
+            await self._handle_delete_duplicates(update, user_id, event_dto, text)
             return
 
 
         if event_dto.intent == IntentType.TODO:
-            await self._handle_create_todo(update, user_id, event_dto)
+            await self._handle_create_todo(update, user_id, event_dto, text)
             return
         # Other intents not yet implemented
         await update.message.reply_text(
             "Эта функция пока в разработке. Скоро будет доступна!"
         )
 
-    async def _handle_create(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_create(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle event creation."""
         # Validate required fields with helpful error messages
         if not event_dto.title:
             msg = "Не понял название. Скажите, например: «Встреча в 15:00»"
             await update.message.reply_text(msg)
-            self._log_bot_response(user_id, msg)
+            self._log_bot_response(user_id, msg, user_text)
             return
 
         # start_time should always be set after default time fallback,
@@ -1354,7 +1420,7 @@ Housler.ru сделал подборку сервисов, которые пом
         if not event_dto.start_time:
             msg = "Не понял время. Укажите: «завтра в 10:00» или «в 15:30»"
             await update.message.reply_text(msg)
-            self._log_bot_response(user_id, msg)
+            self._log_bot_response(user_id, msg, user_text)
             return
 
         # Create event
@@ -1385,18 +1451,18 @@ Housler.ru сделал подборку сервисов, которые пом
             if event_dto.location:
                 message += f" ({event_dto.location})"
             await update.message.reply_text(message)
-            self._log_bot_response(user_id, message)
+            self._log_bot_response(user_id, message, user_text)
         else:
             error_msg = "Не получилось. Попробуйте ещё раз одной фразой."
             await update.message.reply_text(error_msg)
-            self._log_bot_response(user_id, error_msg)
+            self._log_bot_response(user_id, error_msg, user_text)
 
-    async def _handle_update(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_update(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle event update."""
         if not event_dto.event_id or event_dto.event_id == "none":
             no_event_msg = "Не понял, какое событие менять. Уточните."
             await update.message.reply_text(no_event_msg)
-            self._log_bot_response(user_id, no_event_msg)
+            self._log_bot_response(user_id, no_event_msg, user_text)
             return
 
         # Get original event to show what changed
@@ -1446,18 +1512,18 @@ Housler.ru сделал подборку сервисов, которые пом
 {f"📍 {event_dto.location}" if event_dto.location else ""}"""
 
             await update.message.reply_text(message)
-            self._log_bot_response(user_id, message)
+            self._log_bot_response(user_id, message, user_text)
         else:
             fail_msg = "Не получилось. Возможно, событие уже удалено."
             await update.message.reply_text(fail_msg)
-            self._log_bot_response(user_id, fail_msg)
+            self._log_bot_response(user_id, fail_msg, user_text)
 
-    async def _handle_delete(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_delete(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle event deletion."""
         if not event_dto.event_id or event_dto.event_id == "none":
             no_delete_msg = "Не понял, что удалить. Уточните."
             await update.message.reply_text(no_delete_msg)
-            self._log_bot_response(user_id, no_delete_msg)
+            self._log_bot_response(user_id, no_delete_msg, user_text)
             return
 
         # Get event details before deleting to show what was deleted
@@ -1497,17 +1563,17 @@ Housler.ru сделал подборку сервисов, которые пом
 🕐 {time_str}
 {f"📍 {event_to_delete.location}" if event_to_delete.location else ""}"""
                 await update.message.reply_text(del_msg)
-                self._log_bot_response(user_id, del_msg)
+                self._log_bot_response(user_id, del_msg, user_text)
             else:
                 del_msg = "✅ Удалено"
                 await update.message.reply_text(del_msg)
-                self._log_bot_response(user_id, del_msg)
+                self._log_bot_response(user_id, del_msg, user_text)
         else:
             fail_del_msg = "Не получилось. Возможно, уже удалено."
             await update.message.reply_text(fail_del_msg)
-            self._log_bot_response(user_id, fail_del_msg)
+            self._log_bot_response(user_id, fail_del_msg, user_text)
 
-    async def _handle_query(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_query(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle events query."""
         from datetime import datetime, timedelta
 
@@ -1572,7 +1638,7 @@ Housler.ru сделал подборку сервисов, которые пом
 • «Перезвонить Иванову»"""
 
             await update.message.reply_text(empty_msg)
-            self._log_bot_response(user_id, empty_msg)
+            self._log_bot_response(user_id, empty_msg, user_text)
             return
 
         # Sort events by start time
@@ -1588,9 +1654,9 @@ Housler.ru сделал подборку сервисов, которые пом
                 message += f"  📍 {event.location}\n"
 
         await update.message.reply_text(message)
-        self._log_bot_response(user_id, message)
+        self._log_bot_response(user_id, message, user_text)
 
-    async def _handle_free_slots(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_free_slots(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle free slots query."""
         from datetime import datetime
 
@@ -1601,7 +1667,7 @@ Housler.ru сделал подборку сервисов, которые пом
         if not free_slots:
             no_slots_msg = "Свободного времени нет."
             await update.message.reply_text(no_slots_msg)
-            self._log_bot_response(user_id, no_slots_msg)
+            self._log_bot_response(user_id, no_slots_msg, user_text)
             return
 
         # Format and show free slots
@@ -1630,14 +1696,14 @@ Housler.ru сделал подборку сервисов, которые пом
             message += f"\n...ещё {len(free_slots) - 10} слотов"
 
         await update.message.reply_text(message)
-        self._log_bot_response(user_id, message)
+        self._log_bot_response(user_id, message, user_text)
 
-    async def _handle_batch_confirm(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_batch_confirm(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle batch event creation."""
         if not event_dto.batch_actions or len(event_dto.batch_actions) == 0:
             no_batch_msg = "Не смог распознать события."
             await update.message.reply_text(no_batch_msg)
-            self._log_bot_response(user_id, no_batch_msg)
+            self._log_bot_response(user_id, no_batch_msg, user_text)
             return
 
         # Create all events and collect results
@@ -1688,13 +1754,13 @@ Housler.ru сделал подборку сервисов, которые пом
                 message += f"\nНе создано: {failed_count}"
 
             await update.message.reply_text(message)
-            self._log_bot_response(user_id, message)
+            self._log_bot_response(user_id, message, user_text)
         else:
             fail_batch_msg = "Не получилось создать. Попробуйте ещё раз."
             await update.message.reply_text(fail_batch_msg)
-            self._log_bot_response(user_id, fail_batch_msg)
+            self._log_bot_response(user_id, fail_batch_msg, user_text)
 
-    async def _handle_create_recurring(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_create_recurring(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle recurring event creation."""
         from datetime import datetime, timedelta
 
@@ -1702,20 +1768,20 @@ Housler.ru сделал подборку сервисов, которые пом
         if not event_dto.title or not event_dto.start_time:
             no_data_msg = "Недостаточно данных. Укажите название и время."
             await update.message.reply_text(no_data_msg)
-            self._log_bot_response(user_id, no_data_msg)
+            self._log_bot_response(user_id, no_data_msg, user_text)
             return
 
         if not event_dto.recurrence_type:
             no_recur_msg = "Не указан тип повторения (ежедневно, еженедельно, ежемесячно)."
             await update.message.reply_text(no_recur_msg)
-            self._log_bot_response(user_id, no_recur_msg)
+            self._log_bot_response(user_id, no_recur_msg, user_text)
             return
 
         # Safety check: start_time required for recurring events
         if not event_dto.start_time:
             msg = "Для повторяющихся событий укажите время: «каждый день в 10:00»"
             await update.message.reply_text(msg)
-            self._log_bot_response(user_id, msg)
+            self._log_bot_response(user_id, msg, user_text)
             return
 
         # Default: create recurring events for 30 days
@@ -1774,13 +1840,13 @@ Housler.ru сделал подборку сервисов, которые пом
             if failed_count > 0:
                 message += f"\nНе создано: {failed_count}"
             await update.message.reply_text(message)
-            self._log_bot_response(user_id, message)
+            self._log_bot_response(user_id, message, user_text)
         else:
             fail_recur_msg = "Не получилось создать повторяющиеся события."
             await update.message.reply_text(fail_recur_msg)
-            self._log_bot_response(user_id, fail_recur_msg)
+            self._log_bot_response(user_id, fail_recur_msg, user_text)
 
-    async def _handle_delete_by_criteria(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_delete_by_criteria(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle mass deletion by criteria (title contains, date range, etc)."""
         from datetime import datetime, timedelta
 
@@ -1809,7 +1875,7 @@ Housler.ru сделал подборку сервисов, которые пом
         if not events:
             empty_msg = "Пусто — ничего не найдено."
             await update.message.reply_text(empty_msg)
-            self._log_bot_response(user_id, empty_msg)
+            self._log_bot_response(user_id, empty_msg, user_text)
             return
 
         # Filter by criteria
@@ -1829,7 +1895,7 @@ Housler.ru сделал подборку сервисов, которые пом
         if not events_to_delete:
             not_found_msg = f"Не найдено: \"{event_dto.delete_criteria_title_contains or event_dto.delete_criteria_title}\""
             await update.message.reply_text(not_found_msg)
-            self._log_bot_response(user_id, not_found_msg)
+            self._log_bot_response(user_id, not_found_msg, user_text)
             return
 
         # Show list of events and ask for confirmation
@@ -1867,9 +1933,9 @@ Housler.ru сделал подборку сервисов, которые пом
         ])
 
         await update.message.reply_text(message, reply_markup=keyboard)
-        self._log_bot_response(user_id, message)
+        self._log_bot_response(user_id, message, user_text)
 
-    async def _handle_delete_duplicates(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_delete_duplicates(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle deletion of duplicate events (same title and time)."""
         from datetime import datetime, timedelta
         from collections import defaultdict
@@ -1897,7 +1963,7 @@ Housler.ru сделал подборку сервисов, которые пом
         if not events:
             empty_dup_msg = "Пусто — ничего не найдено."
             await update.message.reply_text(empty_dup_msg)
-            self._log_bot_response(user_id, empty_dup_msg)
+            self._log_bot_response(user_id, empty_dup_msg, user_text)
             return
 
         # Find duplicates: group by (title, start_time)
@@ -1917,7 +1983,7 @@ Housler.ru сделал подборку сервисов, которые пом
         if not duplicates_to_delete:
             no_dup_msg = "Дубликатов нет."
             await update.message.reply_text(no_dup_msg)
-            self._log_bot_response(user_id, no_dup_msg)
+            self._log_bot_response(user_id, no_dup_msg, user_text)
             return
 
         # Show list of duplicates and ask for confirmation
@@ -1955,9 +2021,9 @@ Housler.ru сделал подборку сервисов, которые пом
         ])
 
         await update.message.reply_text(message, reply_markup=keyboard)
-        self._log_bot_response(user_id, message)
+        self._log_bot_response(user_id, message, user_text)
 
-    async def _handle_create_todo(self, update: Update, user_id: str, event_dto) -> None:
+    async def _handle_create_todo(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
         """Handle todo creation from LLM intent."""
         from app.schemas.todos import TodoDTO
 
@@ -1965,7 +2031,7 @@ Housler.ru сделал подборку сервисов, которые пом
         if not title:
             no_todo_msg = "Не понял, что добавить в задачи."
             await update.message.reply_text(no_todo_msg)
-            self._log_bot_response(user_id, no_todo_msg)
+            self._log_bot_response(user_id, no_todo_msg, user_text)
             return
 
         todo_dto = TodoDTO(title=title)
@@ -1974,11 +2040,11 @@ Housler.ru сделал подборку сервисов, которые пом
         if todo_id:
             todo_msg = f"✅ Добавил в задачи: {title}"
             await update.message.reply_text(todo_msg)
-            self._log_bot_response(user_id, todo_msg)
+            self._log_bot_response(user_id, todo_msg, user_text)
         else:
             fail_todo_msg = "Не получилось создать задачу. Попробуйте ещё раз."
             await update.message.reply_text(fail_todo_msg)
-            self._log_bot_response(user_id, fail_todo_msg)
+            self._log_bot_response(user_id, fail_todo_msg, user_text)
 
 # Global instance (will be initialized in router)
 telegram_handler: Optional[TelegramHandler] = None

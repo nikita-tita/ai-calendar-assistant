@@ -6,6 +6,44 @@
 
 ---
 
+## [2025-12-10] - LLM Cost Optimization & Dialog Context
+
+### Optimized
+- **Переключение на YandexGPT Lite** — экономия ~4-5x на токенах
+- **Сокращение системного промпта на ~60%**
+  - Убраны мультиязычные инструкции (en, es, ar)
+  - Оставлен только русский язык
+  - Компактные правила вместо многословных примеров
+- **Оптимизация date_context** — убраны дублирующие форматы дат
+
+### Added
+- **История диалога для LLM контекста**
+  - Новое хранилище `dialog_history` в TelegramHandler (LRU, max 1000 users)
+  - Последние 5 пар сообщений (user + bot) передаются в LLM
+  - Тег `<dialog_history>` в промпте для понимания намерений пользователя
+  - Методы: `_add_to_dialog_history()`, `_get_dialog_history()`, `_clear_dialog_history()`
+
+### Technical
+- `app/services/llm_agent_yandex.py`:
+  - Модель: `yandexgpt` → `yandexgpt-lite`
+  - base_system_prompt: ~250 строк → ~70 строк
+  - lang_instructions: 4 языка → только русский
+  - json_instructions: 4 языка → только русский
+  - Добавлена интеграция `conversation_history` в `user_message_content`
+
+- `app/services/telegram_handler.py`:
+  - Новая константа `MAX_DIALOG_HISTORY = 5`
+  - Новый LRUDict `dialog_history` для хранения диалогов
+  - `_log_bot_response()` теперь сохраняет историю при наличии `user_text`
+  - Все обработчики обновлены для передачи `user_text`
+
+### Impact
+- **Экономия**: ~60-70% на токенах за запрос
+- **Качество**: Лучшее понимание контекста диалога
+- **Стоимость запроса**: ~4.5₽ → ~1.5₽ (примерная оценка)
+
+---
+
 ## [2025-12-10] - Extended Analytics & Bot Response Logging
 
 ### Added
