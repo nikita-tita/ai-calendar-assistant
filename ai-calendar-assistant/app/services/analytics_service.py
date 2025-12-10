@@ -63,7 +63,13 @@ class AnalyticsService:
                         'is_test': action.is_test,
                         'username': action.username,
                         'first_name': action.first_name,
-                        'last_name': action.last_name
+                        'last_name': action.last_name,
+                        # LLM usage tracking fields
+                        'input_tokens': action.input_tokens,
+                        'output_tokens': action.output_tokens,
+                        'total_tokens': action.total_tokens,
+                        'cost_rub': action.cost_rub,
+                        'llm_model': action.llm_model
                     }
                     for action in self.actions
                 ]
@@ -82,7 +88,13 @@ class AnalyticsService:
         error_message: Optional[str] = None,
         username: Optional[str] = None,
         first_name: Optional[str] = None,
-        last_name: Optional[str] = None
+        last_name: Optional[str] = None,
+        # LLM usage tracking (only for LLM_REQUEST actions)
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
+        total_tokens: Optional[int] = None,
+        cost_rub: Optional[float] = None,
+        llm_model: Optional[str] = None
     ):
         """Log a user action with buffered writes."""
         action = UserAction(
@@ -95,7 +107,12 @@ class AnalyticsService:
             error_message=error_message,
             username=username,
             first_name=first_name,
-            last_name=last_name
+            last_name=last_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            cost_rub=cost_rub,
+            llm_model=llm_model
         )
 
         # Add to buffer instead of main list
@@ -611,6 +628,68 @@ class AnalyticsService:
         return {
             'total': total_errors,
             'by_type': dict(error_counts),
+            'period_hours': hours
+        }
+
+    def get_llm_cost_stats(self, hours: int = 24) -> Dict:
+        """Get LLM usage and cost statistics.
+
+        Args:
+            hours: Number of hours to look back (default 24 for daily report)
+
+        Returns:
+            Dictionary with LLM cost statistics:
+            - total_requests: number of LLM requests
+            - total_tokens: sum of all tokens used
+            - total_cost_rub: total cost in rubles
+            - unique_users: number of unique users who used LLM
+            - avg_cost_per_user: average cost per user
+            - avg_tokens_per_request: average tokens per request
+            - by_model: breakdown by model
+        """
+        now = datetime.now()
+        start_time = now - timedelta(hours=hours)
+
+        # Filter LLM_REQUEST actions in time range
+        llm_actions = [
+            a for a in self._all_actions()
+            if a.action_type == ActionType.LLM_REQUEST and a.timestamp >= start_time
+        ]
+
+        if not llm_actions:
+            return {
+                'total_requests': 0,
+                'total_tokens': 0,
+                'total_cost_rub': 0.0,
+                'unique_users': 0,
+                'avg_cost_per_user': 0.0,
+                'avg_tokens_per_request': 0,
+                'by_model': {},
+                'period_hours': hours
+            }
+
+        # Calculate totals
+        total_requests = len(llm_actions)
+        total_tokens = sum(a.total_tokens or 0 for a in llm_actions)
+        total_cost = sum(a.cost_rub or 0.0 for a in llm_actions)
+        unique_users = set(a.user_id for a in llm_actions)
+
+        # Breakdown by model
+        by_model = defaultdict(lambda: {'requests': 0, 'tokens': 0, 'cost': 0.0})
+        for a in llm_actions:
+            model = a.llm_model or 'unknown'
+            by_model[model]['requests'] += 1
+            by_model[model]['tokens'] += a.total_tokens or 0
+            by_model[model]['cost'] += a.cost_rub or 0.0
+
+        return {
+            'total_requests': total_requests,
+            'total_tokens': total_tokens,
+            'total_cost_rub': round(total_cost, 2),
+            'unique_users': len(unique_users),
+            'avg_cost_per_user': round(total_cost / len(unique_users), 2) if unique_users else 0.0,
+            'avg_tokens_per_request': total_tokens // total_requests if total_requests else 0,
+            'by_model': dict(by_model),
             'period_hours': hours
         }
 

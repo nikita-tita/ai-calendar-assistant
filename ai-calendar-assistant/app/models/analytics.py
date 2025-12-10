@@ -38,6 +38,8 @@ class ActionType(str, Enum):
     CALENDAR_ERROR = "calendar_error"  # Radicale connection/operation errors
     STT_ERROR = "stt_error"           # Speech-to-text errors
     INTENT_UNCLEAR = "intent_unclear"  # LLM returned clarify intent
+    # LLM usage tracking
+    LLM_REQUEST = "llm_request"       # Successful LLM request (for cost tracking)
 
 
 class UserAction(BaseModel):
@@ -55,6 +57,12 @@ class UserAction(BaseModel):
     username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    # LLM usage tracking (only for LLM_REQUEST actions)
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    cost_rub: Optional[float] = None
+    llm_model: Optional[str] = None
 
 
 class UserStats(BaseModel):

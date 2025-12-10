@@ -849,11 +849,41 @@ JSON:"""
                 user_id
             )
 
+            # Extract token usage from response
+            usage = response_data.get("result", {}).get("usage", {})
+            input_tokens = int(usage.get("inputTextTokens", 0))
+            output_tokens = int(usage.get("completionTokens", 0))
+            total_tokens = int(usage.get("totalTokens", 0))
+
+            # Calculate cost (rubles per 1000 tokens)
+            # yandexgpt (full): ~1.2₽/1000 tokens
+            # yandexgpt-lite: ~0.2₽/1000 tokens
+            cost_per_1000 = 0.2 if self.model == "yandexgpt-lite" else 1.2
+            cost_rub = round(total_tokens * cost_per_1000 / 1000, 4)
+
             logger.info(
                 "llm_extract_success_yandex",
                 intent=event_dto.intent,
-                confidence=event_dto.confidence
+                confidence=event_dto.confidence,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                cost_rub=cost_rub
             )
+
+            # Log successful LLM request to analytics for cost tracking
+            if ANALYTICS_ENABLED and analytics_service and user_id:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.LLM_REQUEST,
+                    details=f"intent={event_dto.intent}",
+                    success=True,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    cost_rub=cost_rub,
+                    llm_model=self.model
+                )
 
             return event_dto
 
