@@ -126,7 +126,9 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 10
 
     # Forum Activity Logger (logs user activity to Telegram forum topics)
+    # Uses separate bot to avoid load on main calendar bot
     forum_logger_enabled: bool = False
+    forum_logger_bot_token: Optional[str] = None  # Separate bot token for logging
     forum_logger_chat_id: Optional[int] = None  # Telegram forum group chat ID
 
 

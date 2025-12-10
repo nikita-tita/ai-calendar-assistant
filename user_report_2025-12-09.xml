@@ -1,0 +1,902 @@
+<?xml version="1.0" ?>
+<report generated="2025-12-09T12:09:55.063956" title="Отчёт по задачам и событиям пользователей">
+  <user id="2296243">
+    <todos count="9">
+      <todo id="a7661b7f-060b-4548-93d2-47a8ba6df5be" completed="false" priority="medium">
+        <title>Сделать фин модель</title>
+        <created_at>2025-12-03T17:05:06.579598</created_at>
+      </todo>
+      <todo id="578d2c48-002d-44d2-ad98-68efe1568e82" completed="true" priority="medium">
+        <title>Выложить на hh 3 вакансии</title>
+        <created_at>2025-12-03T17:05:20.233431</created_at>
+      </todo>
+      <todo id="9b2f51ba-86ec-4585-af0b-1c1b6972a5ae" completed="false" priority="medium">
+        <title>Протестировать нагрузку</title>
+        <created_at>2025-12-04T19:41:01.424363</created_at>
+      </todo>
+      <todo id="985d8ace-7d6c-43dc-8e88-2d951eb372fe" completed="false" priority="medium">
+        <title>Пополнить счёт Яндекс ЛЛМ</title>
+        <created_at>2025-12-04T19:41:15.427452</created_at>
+      </todo>
+      <todo id="e1ec3858-d2e0-4d5f-9e0d-5a27a18e85c1" completed="false" priority="medium">
+        <title>Проверить админку</title>
+        <created_at>2025-12-04T19:41:20.791066</created_at>
+      </todo>
+      <todo id="ce5a2c4e-b9bb-4831-a639-fe3f2b6a1129" completed="false" priority="medium">
+        <title>Договориться с мамой о встрече</title>
+        <created_at>2025-12-07T13:16:48.187303</created_at>
+      </todo>
+      <todo id="57ecb8c1-48b6-47c5-97f7-dafef2ae0769" completed="false" priority="medium">
+        <title>Позвонить бабушке</title>
+        <created_at>2025-12-07T13:16:52.230888</created_at>
+      </todo>
+      <todo id="4b492a6f-dbe0-49e6-ab47-32343974a8c2" completed="false" priority="medium">
+        <title>Купить билеты</title>
+        <created_at>2025-12-07T13:17:05.275915</created_at>
+      </todo>
+      <todo id="006040c3-13ca-42e2-82f9-4be4f6a56ace" completed="false" priority="medium">
+        <title>Написать Ване, что умничка, но мог бы и починить бота</title>
+        <created_at>2025-12-08T10:27:57.392932</created_at>
+      </todo>
+    </todos>
+    <events count="63">
+      <event>
+        <date>2025-11-01</date>
+        <time>07:00</time>
+        <title>Напоминание Ване что нам пизда</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>07:00</time>
+        <title>Сделка по Красноармейской 18 у нотариуса Новиковой</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>08:00</time>
+        <title>Завтрак с Андреем</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>10:00</time>
+        <title>Встреча в офисе с Петровым по военной ипотеке</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>11:00</time>
+        <title>Обед в ресторане Пиццерия</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>13:00</time>
+        <title>Показ апартов YES</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>15:00</time>
+        <title>Показ квартиры на Кантемировской</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>18:00</time>
+        <title>Посещение зала</title>
+      </event>
+      <event>
+        <date>2025-11-02</date>
+        <time>15:00</time>
+        <title>МРТ</title>
+      </event>
+      <event>
+        <date>2025-11-02</date>
+        <time>16:00</time>
+        <title>Ортопед</title>
+      </event>
+      <event>
+        <date>2025-11-03</date>
+        <time>07:00</time>
+        <title>Работа: отправить цели по Q4</title>
+      </event>
+      <event>
+        <date>2025-11-03</date>
+        <time>07:00</time>
+        <title>Лечебная физкультура</title>
+      </event>
+      <event>
+        <date>2025-11-03</date>
+        <time>07:00</time>
+        <title>Лечебная физкультура</title>
+      </event>
+      <event>
+        <date>2025-11-03</date>
+        <time>08:00</time>
+        <title>Завтрак в Eggsellent</title>
+      </event>
+      <event>
+        <date>2025-11-03</date>
+        <time>09:30</time>
+        <title>Запись в Мой медицинский центр</title>
+      </event>
+      <event>
+        <date>2025-11-04</date>
+        <time>06:00</time>
+        <title>Написать сообщение по автомагазину</title>
+      </event>
+      <event>
+        <date>2025-11-10</date>
+        <time>07:00</time>
+        <title>Лечебная физкультура</title>
+      </event>
+      <event>
+        <date>2025-11-11</date>
+        <time>07:30</time>
+        <title>Форум Территория: Новый стандарт цифровизации отраслевого рынка</title>
+      </event>
+      <event>
+        <date>2025-11-11</date>
+        <time>11:00</time>
+        <title>Просмотр квартиры на Александра Матросова</title>
+      </event>
+      <event>
+        <date>2025-11-11</date>
+        <time>13:00</time>
+        <title>Сделка по квартире на Ленина у нотариуса Петрова</title>
+      </event>
+      <event>
+        <date>2025-11-11</date>
+        <time>15:00</time>
+        <title>Встреча с клиентом Саньком по военной ипотеке</title>
+      </event>
+      <event>
+        <date>2025-11-11</date>
+        <time>16:00</time>
+        <title>Показ квартиры на мужества 19</title>
+      </event>
+      <event>
+        <date>2025-11-12</date>
+        <time>09:00</time>
+        <title>Нотариус Петров</title>
+      </event>
+      <event>
+        <date>2025-11-12</date>
+        <time>11:00</time>
+        <title>Встреча с Костиным по покупке комнаты</title>
+      </event>
+      <event>
+        <date>2025-11-12</date>
+        <time>16:00</time>
+        <title>Сделка в ВТБ по Кантемировской 11</title>
+      </event>
+      <event>
+        <date>2025-11-17</date>
+        <time>07:00</time>
+        <title>Нетворкинг на главной сцене (Молекула)</title>
+      </event>
+      <event>
+        <date>2025-11-17</date>
+        <time>07:30</time>
+        <title>Пленарный доклад Дмитрия Крутова (Skillbox)</title>
+      </event>
+      <event>
+        <date>2025-11-17</date>
+        <time>08:05</time>
+        <title>Интервью: «Антропология будущего —</title>
+      </event>
+      <event>
+        <date>2025-11-17</date>
+        <time>08:55</time>
+        <title>Доклад Бориса Агатова 'Потребительс</title>
+      </event>
+      <event>
+        <date>2025-11-24</date>
+        <time>15:00</time>
+        <title>Забрать лонгслив в Sela</title>
+      </event>
+      <event>
+        <date>2025-11-24</date>
+        <time>15:00</time>
+        <title>Забрать лонгслив из магазина</title>
+      </event>
+      <event>
+        <date>2025-11-24</date>
+        <time>16:00</time>
+        <title>Сходить в Папапринт напечатать принты</title>
+      </event>
+      <event>
+        <date>2025-11-25</date>
+        <time>16:00</time>
+        <title>Показ квартиры на Матросова</title>
+      </event>
+      <event>
+        <date>2025-11-27</date>
+        <time>02:00</time>
+        <title>Подъём</title>
+      </event>
+      <event>
+        <date>2025-11-27</date>
+        <time>02:50</time>
+        <title>Дорога до вокзала</title>
+      </event>
+      <event>
+        <date>2025-11-27</date>
+        <time>03:50</time>
+        <title>Сапсан</title>
+      </event>
+      <event>
+        <date>2025-11-27</date>
+        <time>16:00</time>
+        <title>T-Meetup: RecSys</title>
+      </event>
+      <event>
+        <date>2025-11-27</date>
+        <time>17:00</time>
+        <title>Встреча с Криллом на Маяковской</title>
+      </event>
+      <event>
+        <date>2025-11-28</date>
+        <time>07:00</time>
+        <title>Встреча с Кириллом</title>
+      </event>
+      <event>
+        <date>2025-11-28</date>
+        <time>08:00</time>
+        <title>Звонок с Юлей</title>
+      </event>
+      <event>
+        <date>2025-11-28</date>
+        <time>09:00</time>
+        <title>Обед</title>
+      </event>
+      <event>
+        <date>2025-12-01</date>
+        <time>17:30</time>
+        <title>УЗИ</title>
+      </event>
+      <event>
+        <date>2025-12-04</date>
+        <time>09:00</time>
+        <title>Смотрю отель на Карповке</title>
+      </event>
+      <event>
+        <date>2025-12-04</date>
+        <time>17:00</time>
+        <title>Поездка в Золотое Яблоко</title>
+      </event>
+      <event>
+        <date>2025-12-04</date>
+        <time>18:30</time>
+        <title>Тренировка в зале</title>
+      </event>
+      <event>
+        <date>2025-12-04</date>
+        <time>19:10</time>
+        <title>Тренировка по тайскому боксу</title>
+      </event>
+      <event>
+        <date>2025-12-04</date>
+        <time>20:00</time>
+        <title>Тренировка по муйа тай</title>
+      </event>
+      <event>
+        <date>2025-12-05</date>
+        <time>10:00</time>
+        <title>Звонок с бухами и юристами</title>
+      </event>
+      <event>
+        <date>2025-12-05</date>
+        <time>11:00</time>
+        <title>Звонок с АН Инфинити</title>
+      </event>
+      <event>
+        <date>2025-12-05</date>
+        <time>12:00</time>
+        <title>Звонок с Юлей</title>
+      </event>
+      <event>
+        <date>2025-12-05</date>
+        <time>13:00</time>
+        <title>Я.аренда и Стас</title>
+      </event>
+      <event>
+        <date>2025-12-05</date>
+        <time>15:00</time>
+        <title>Звонок с Озиз</title>
+      </event>
+      <event>
+        <date>2025-12-05</date>
+        <time>17:00</time>
+        <title>С Лизой в ТЦ надо доехать</title>
+      </event>
+      <event>
+        <date>2025-12-06</date>
+        <time>06:00</time>
+        <title>Завтрак</title>
+      </event>
+      <event>
+        <date>2025-12-06</date>
+        <time>07:00</time>
+        <title>Дорога в офис</title>
+      </event>
+      <event>
+        <date>2025-12-08</date>
+        <time>11:00</time>
+        <title>Обед</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>06:00</time>
+        <title>УЗИ</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>15:00</time>
+        <title>МРТ</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>16:00</time>
+        <title>Ортопед</title>
+      </event>
+      <event>
+        <date>2025-12-10</date>
+        <time>08:00</time>
+        <title>Гастроэнтеролог</title>
+      </event>
+      <event>
+        <date>2025-12-10</date>
+        <time>08:00</time>
+        <title>Гастроэнтеролог</title>
+      </event>
+      <event>
+        <date>2025-12-10</date>
+        <time>09:00</time>
+        <title>Дерматолог</title>
+      </event>
+      <event>
+        <date>2025-12-10</date>
+        <time>09:00</time>
+        <title>Дерматолог</title>
+      </event>
+    </events>
+  </user>
+  <user id="79432214">
+    <events count="1">
+      <event>
+        <date>2025-10-31</date>
+        <time>07:00</time>
+        <title>Завтрак с Никитой</title>
+      </event>
+    </events>
+  </user>
+  <user id="116500489">
+    <events count="1">
+      <event>
+        <date>2025-10-31</date>
+        <time>09:00</time>
+        <title>Неизвестно</title>
+      </event>
+    </events>
+  </user>
+  <user id="258850573">
+    <events count="3">
+      <event>
+        <date>2025-10-30</date>
+        <time>09:00</time>
+        <title>Памагите</title>
+      </event>
+      <event>
+        <date>2025-10-30</date>
+        <time>09:00</time>
+        <title>Титов отстань)</title>
+      </event>
+      <event>
+        <date>2025-11-07</date>
+        <time>17:00</time>
+        <title>Выход в окно</title>
+      </event>
+    </events>
+  </user>
+  <user id="366204007">
+    <todos count="2">
+      <todo id="1b25e19f-939f-4bc7-a583-f652f6e1a311" completed="false" priority="medium">
+        <title>Поцеловать мужа</title>
+        <created_at>2025-12-08T12:11:47.816996</created_at>
+      </todo>
+      <todo id="8eafa595-6bf7-48ec-8b81-ace997250ccc" completed="false" priority="medium">
+        <title>Выкинуть мусор</title>
+        <created_at>2025-12-08T12:13:25.966570</created_at>
+      </todo>
+    </todos>
+    <events count="3">
+      <event>
+        <date>2025-10-31</date>
+        <time>07:00</time>
+        <title>Заседание в зале</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>09:00</time>
+        <title>Съесть шаверму</title>
+      </event>
+      <event>
+        <date>2026-09-15</date>
+        <time>21:00</time>
+        <title>Поцеловать жену</title>
+      </event>
+    </events>
+  </user>
+  <user id="680913632" username="@ekaterinanedv">
+    <todos count="2">
+      <todo id="a30756d0-5fd8-4689-872e-1dda66970e66" completed="false" priority="medium">
+        <title>Прозвонить собственников дать отчёт</title>
+        <due_date>2025-12-09T00:00:00+00:00</due_date>
+        <created_at>2025-12-09T04:59:12.026081</created_at>
+      </todo>
+      <todo id="6e2ca24d-f5ca-42e4-9523-5308b06f800b" completed="false" priority="medium">
+        <title>Найти новые объекты взять в работу</title>
+        <due_date>2025-12-09T00:00:00+00:00</due_date>
+        <created_at>2025-12-09T04:59:51.092714</created_at>
+      </todo>
+    </todos>
+    <events count="3">
+      <event>
+        <date>2025-12-09</date>
+        <time>09:00</time>
+        <title>Написать собственнику и жене</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>09:00</time>
+        <title>Позвонить собственнику</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>09:00</time>
+        <title>Позвонить собственнику</title>
+      </event>
+    </events>
+  </user>
+  <user id="710238562">
+    <todos count="2">
+      <todo id="ac9d4705-9fcd-4234-8eea-9d8053cac497" completed="false" priority="medium">
+        <title>Скинуть договоренности в чат с автомагазином по проблемам</title>
+        <created_at>2025-12-08T10:10:26.822774</created_at>
+      </todo>
+      <todo id="fa704b84-4226-4875-9e4d-f70cd56f89fd" completed="false" priority="medium">
+        <title>Скинуть договоренности в чат с автомагазином по проблемам</title>
+        <created_at>2025-12-08T10:26:22.063121</created_at>
+      </todo>
+    </todos>
+  </user>
+  <user id="1149219528">
+    <events count="1">
+      <event>
+        <date>2025-12-09</date>
+        <time>08:00</time>
+        <title>Передача квартиры на Ленина 489а</title>
+      </event>
+    </events>
+  </user>
+  <user id="1219631830">
+    <todos count="1">
+      <todo id="5b460c1d-2eab-45bb-991a-af2cd8e5b5f4" completed="false" priority="medium">
+        <title>Работаю</title>
+        <created_at>2025-12-08T11:40:43.432675</created_at>
+      </todo>
+    </todos>
+  </user>
+  <user id="1913152445">
+    <todos count="1">
+      <todo id="645fc9b6-6c40-4b04-ab5d-d54494682a87" completed="false" priority="medium">
+        <title>Подать заявку на убей конь в сбер</title>
+        <created_at>2025-12-08T14:54:19.056714</created_at>
+      </todo>
+    </todos>
+    <events count="3">
+      <event>
+        <date>2025-12-09</date>
+        <time>04:00</time>
+        <title>Разбудить</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>06:00</time>
+        <title>Напоминание: у Анжелики сегодня день рождения</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>07:00</time>
+        <title>Напоминание про заявку</title>
+      </event>
+    </events>
+  </user>
+  <user id="5389226854" username="@Inga_Golencova">
+    <events count="1">
+      <event>
+        <date>2025-12-09</date>
+        <time>08:00</time>
+        <title>Обзвон записной книжки</title>
+      </event>
+    </events>
+  </user>
+  <user id="5602113922">
+    <todos count="1">
+      <todo id="4c035639-ef5a-4aa3-ab86-bb7f8dc01b1b" completed="false" priority="medium">
+        <title>Ваня гей</title>
+        <created_at>2025-12-08T10:28:57.837488</created_at>
+      </todo>
+    </todos>
+    <events count="64">
+      <event>
+        <date>2025-10-30</date>
+        <time>06:00</time>
+        <title>Встреча с Петей</title>
+      </event>
+      <event>
+        <date>2025-10-30</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-10-31</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-01</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-02</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-03</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-04</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-05</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-06</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-07</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-08</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-09</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-10</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-11</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-12</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-13</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-14</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-15</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-16</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-17</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-18</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-19</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-20</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-21</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-22</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-23</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-24</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-25</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-26</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-27</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-28</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-29</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-11-30</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-01</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-02</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-03</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-04</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-05</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-06</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-07</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-08</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-08</date>
+        <time>11:00</time>
+        <title>Обед</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-10</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-11</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-12</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-13</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-14</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-15</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-16</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-17</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-18</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-19</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-20</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-21</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-22</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-23</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-24</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-25</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-26</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-27</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-28</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-29</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+      <event>
+        <date>2025-12-30</date>
+        <time>06:00</time>
+        <title>бег</title>
+      </event>
+    </events>
+  </user>
+  <user id="6801480360">
+    <todos count="3">
+      <todo id="fd246558-4e0e-467c-b84a-add1ce80a8a7" completed="false" priority="medium">
+        <title>Оставить скрипты для прозвона базы</title>
+        <created_at>2025-12-08T11:13:47.556243</created_at>
+      </todo>
+      <todo id="b3e19eca-0270-4ae6-97fe-b3cbc783e663" completed="false" priority="medium">
+        <title>Разобрать заявки по продаже</title>
+        <created_at>2025-12-08T11:14:01.561027</created_at>
+      </todo>
+      <todo id="d9433914-e065-4813-9e17-5ccf37128e9f" completed="false" priority="medium">
+        <title>Позвонить Николаю по Одинцово</title>
+        <created_at>2025-12-08T17:03:16.975044</created_at>
+      </todo>
+    </todos>
+    <events count="2">
+      <event>
+        <date>2025-12-08</date>
+        <time>21:00</time>
+        <title>Отсмотреть объекты по коммерческой земле</title>
+      </event>
+      <event>
+        <date>2025-12-09</date>
+        <time>15:00</time>
+        <title>Созвон по терра прорыв</title>
+      </event>
+    </events>
+  </user>
+  <user id="7137357637">
+    <todos count="2">
+      <todo id="0414f18b-609c-4901-bf41-163d140b1a3c" completed="true" priority="medium">
+        <title>Написать Ване</title>
+        <created_at>2025-12-08T12:37:33.688636</created_at>
+      </todo>
+      <todo id="9bf44cfa-dc27-46bf-9071-f0401c5f9778" completed="false" priority="medium">
+        <title>Написать в Озиз</title>
+        <created_at>2025-12-08T12:38:04.654396</created_at>
+      </todo>
+    </todos>
+    <events count="2">
+      <event>
+        <date>2025-12-08</date>
+        <time>11:00</time>
+        <title>Обед</title>
+      </event>
+      <event>
+        <date>2025-12-08</date>
+        <time>13:40</time>
+        <title>Написать Ване ТЗ</title>
+      </event>
+    </events>
+  </user>
+</report>

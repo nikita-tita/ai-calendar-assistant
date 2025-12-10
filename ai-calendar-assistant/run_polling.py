@@ -43,8 +43,8 @@ async def main():
     import app.services.daily_reminders as dr_module
     dr_module.daily_reminders_service = reminders
 
-    # Initialize forum activity logger
-    forum_logger = ForumActivityLogger(app.bot)
+    # Initialize forum activity logger (uses separate bot)
+    forum_logger = ForumActivityLogger()
     forum_logger_module.forum_logger = forum_logger
     forum_logger.start()
 
