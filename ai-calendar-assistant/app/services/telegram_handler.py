@@ -46,6 +46,14 @@ except ImportError:
 
 from app.services.rate_limiter import rate_limiter
 
+# Forum activity logger (optional)
+try:
+    from app.services.forum_logger import forum_logger
+    FORUM_LOGGER_AVAILABLE = True
+except ImportError:
+    forum_logger = None
+    FORUM_LOGGER_AVAILABLE = False
+
 # ARCHIVED - Property Bot moved to independent microservice (_archived/property_bot_microservice)
 # Property Bot imports removed - calendar bot only
 PROPERTY_BOT_ENABLED = False
@@ -76,7 +84,8 @@ class TelegramHandler:
         self.event_context: LRUDict[str, dict] = LRUDict(max_size=1000)
 
     def _log_bot_response(self, user_id: str, response_text: str):
-        """Log bot response to analytics for dialog history."""
+        """Log bot response to analytics and forum logger."""
+        # Log to analytics
         if ANALYTICS_ENABLED and analytics_service:
             try:
                 from app.models.analytics import ActionType
@@ -88,6 +97,10 @@ class TelegramHandler:
                 )
             except Exception as e:
                 logger.warning("analytics_bot_response_log_failed", error=str(e))
+
+        # Log to forum
+        if FORUM_LOGGER_AVAILABLE and forum_logger:
+            forum_logger.log_bot_response(user_id, response_text)
 
     async def handle_update(self, update: Update) -> None:
         """
@@ -126,6 +139,21 @@ class TelegramHandler:
         except Exception as e:
             # Fail open - allow request if rate limiter fails
             logger.warning("rate_limit_check_error", user_id=user_id, error=str(e))
+
+        # Get user display name for forum logger
+        user_name = update.effective_user.first_name or ""
+        if update.effective_user.username:
+            user_name += f" (@{update.effective_user.username})"
+
+        # Log incoming message to forum
+        if FORUM_LOGGER_AVAILABLE and forum_logger:
+            msg_text = message.text if message.text else "[Медиа/Голос]"
+            forum_logger.log_user_message(
+                user_id=user_id,
+                user_name=user_name,
+                message_text=msg_text,
+                is_voice=bool(message.voice)
+            )
 
         try:
             # Handle /start command

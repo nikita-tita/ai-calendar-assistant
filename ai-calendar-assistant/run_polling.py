@@ -9,6 +9,8 @@ from app.config import settings
 from app.services.telegram_handler import TelegramHandler
 from app.services.daily_reminders import DailyRemindersService
 from app.services.event_reminders_idempotent import EventRemindersServiceIdempotent
+from app.services.forum_logger import ForumActivityLogger
+import app.services.forum_logger as forum_logger_module
 
 # Setup logging
 logging.basicConfig(
@@ -40,6 +42,11 @@ async def main():
     # Set global reference for legacy compatibility
     import app.services.daily_reminders as dr_module
     dr_module.daily_reminders_service = reminders
+
+    # Initialize forum activity logger
+    forum_logger = ForumActivityLogger(app.bot)
+    forum_logger_module.forum_logger = forum_logger
+    forum_logger.start()
 
     # Create wrapper for handle_update that accepts context
     async def handle_with_context(update: Update, context):
@@ -93,6 +100,7 @@ async def main():
         reminders_task.cancel()
         event_reminders.stop()
         event_reminders_task.cancel()
+        forum_logger.stop()
         await app.updater.stop()
         await app.stop()
         await app.shutdown()
