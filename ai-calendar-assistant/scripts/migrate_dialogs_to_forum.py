@@ -63,25 +63,31 @@ async def get_or_create_topic(bot: Bot, chat_id: int, user_id: str, user_name: s
     if user_id in topics:
         return topics[user_id]
 
-    try:
-        color_index = hash(user_id) % len(ICON_COLORS)
-        topic = await bot.create_forum_topic(
-            chat_id=chat_id,
-            name=f"👤 {user_name[:20]} ({user_id})",
-            icon_color=ICON_COLORS[color_index]
-        )
-        thread_id = topic.message_thread_id
-        topics[user_id] = thread_id
+    for attempt in range(5):
+        try:
+            color_index = hash(user_id) % len(ICON_COLORS)
+            topic = await bot.create_forum_topic(
+                chat_id=chat_id,
+                name=f"👤 {user_name[:20]} ({user_id})",
+                icon_color=ICON_COLORS[color_index]
+            )
+            thread_id = topic.message_thread_id
+            topics[user_id] = thread_id
 
-        # Save updated topics
-        storage.save({'topics': topics}, "forum_topics.json", encrypt=True)
+            # Save updated topics
+            storage.save({'topics': topics}, "forum_topics.json", encrypt=True)
 
-        logger.info("topic_created", user_id=user_id, thread_id=thread_id)
-        return thread_id
+            logger.info("topic_created", user_id=user_id, thread_id=thread_id)
+            return thread_id
 
-    except TelegramError as e:
-        logger.error("topic_create_error", user_id=user_id, error=str(e))
-        return None
+        except RetryAfter as e:
+            logger.warning("topic_create_rate_limit", user_id=user_id, retry_after=e.retry_after)
+            await asyncio.sleep(e.retry_after + 1)
+        except TelegramError as e:
+            logger.error("topic_create_error", user_id=user_id, error=str(e))
+            return None
+
+    return None
 
 
 async def send_message_safe(bot: Bot, chat_id: int, thread_id: int, text: str, retries: int = 3):
@@ -221,8 +227,8 @@ async def main():
         except Exception as e:
             print(f"  -> ERROR: {e}")
 
-        # Delay between users
-        await asyncio.sleep(1)
+        # Delay between users to avoid rate limits
+        await asyncio.sleep(3)
 
     print(f"\nDone! Migrated {total_messages} messages for {len(users)} users")
 
