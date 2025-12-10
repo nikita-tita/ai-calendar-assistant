@@ -51,7 +51,7 @@ class LLMAgentYandex:
         """Initialize LLM agent with Yandex GPT client."""
         self.api_key = settings.yandex_gpt_api_key
         self.folder_id = settings.yandex_gpt_folder_id
-        self.model = "yandexgpt"  # or "yandexgpt-lite" for faster/cheaper
+        self.model = "yandexgpt-lite"  # OPTIMIZED: Lite model is 4-5x cheaper
         self.api_url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
         # Async HTTP client (reusable with connection pooling)
@@ -62,190 +62,74 @@ class LLMAgentYandex:
         self._circuit_open_until: float = 0
         self._failure_count = 0
 
-        # System prompt will be generated per request with current date
-        self.base_system_prompt = """You are an intelligent calendar assistant.
-Your task is to understand user commands in natural language (Russian, English, Spanish, or Arabic)
-and convert them into structured calendar actions.
+        # OPTIMIZED: Compact Russian-only system prompt (~60% smaller)
+        self.base_system_prompt = """Ты - ИИ-ассистент для работы с календарём. Понимаешь русский язык.
+Преобразуй команды пользователя в структурированные действия с календарём.
 
-Possible actions (intent):
-- create: create a single new event WITH specific time
-- create_recurring: create recurring events (daily, weekly, monthly patterns)
-- update: modify an existing event
-- delete: delete an event
-- query: query information about events
-- find_free_slots: find free time
-- batch_confirm: confirm multiple specific events (for deletions or custom lists)
-- delete_by_criteria: delete events matching criteria (title contains, date range)
-- delete_duplicates: delete duplicate events (same title and time). Use when user says "удали дубликаты", "удали повторяющиеся", "удали одинаковые события"
-- todo: create a task WITHOUT specific time slot (for tasks that need to be done but aren't tied to a calendar slot)
-- clarify: ask for clarification if information is insufficient
+ДЕЙСТВИЯ (intent):
+- create: создать событие С УКАЗАНИЕМ ВРЕМЕНИ
+- create_recurring: повторяющиеся события (ежедневно/еженедельно/ежемесячно)
+- update: изменить существующее событие
+- delete: удалить событие
+- query: запрос информации о событиях
+- find_free_slots: поиск свободного времени
+- batch_confirm: несколько событий одной командой
+- delete_by_criteria: удаление по критерию (удали все X)
+- delete_duplicates: удаление дубликатов
+- todo: задача БЕЗ привязки ко времени
+- clarify: запросить уточнение
 
-DISTINGUISHING EVENTS vs TASKS (TODO):
-Use intent="todo" when:
-- Action verbs WITHOUT specific time: написать (write), позвонить (call), купить (buy), изучить (study), сделать (do), подготовить (prepare), обновить (update), проверить (check), поменять (change), заменить (replace), исправить (fix), согласовать (coordinate), договориться (arrange), уточнить (clarify), обсудить (discuss), назначить (schedule/arrange)
-- User says "завтра", "в понедельник", "на неделе" but NO specific time mentioned
-- Request is about completing something, not scheduling something
-- Keywords: "надо", "нужно", "не забыть", "сделать", "список дел", "задача", "task"
-- CRITICAL: Word "задача" (task) ALWAYS means intent="todo", even if "встреча" is mentioned
-- Abbreviations: "пнд" = персональные данные (personal data), "перс данные" = персональные данные
-- CRITICAL: If no time specified → ALWAYS use intent="todo", NEVER use intent="clarify" for missing time
+РАЗЛИЧИЕ СОБЫТИЙ И ЗАДАЧ:
+intent="todo" когда:
+- Глаголы действия БЕЗ времени: написать, позвонить, купить, сделать, подготовить, обновить, проверить, согласовать, договориться
+- "завтра", "в понедельник" без конкретного времени
+- Слова: "надо", "нужно", "не забыть", "задача"
+- ВАЖНО: "задача" ВСЕГДА = intent="todo"
+- Сокращения: "пнд" = персональные данные
+- КРИТИЧНО: Нет времени → ВСЕГДА intent="todo", НЕ clarify
 
-Use intent="create" (calendar event) when:
-- Specific time mentioned: "в 15:00", "at 3pm", "завтра в 10 утра", "в понедельник в 14:00"
-- Meeting/appointment words WITH time: встреча (meeting), показ (showing), просмотр (viewing), звонок с указанием времени (scheduled call)
-- Events that occupy a specific time slot
-- IMPORTANT: "встреча" WITHOUT specific time → intent="todo" (task to arrange meeting)
+intent="create" когда:
+- Указано время: "в 15:00", "завтра в 10 утра"
+- "встреча", "показ", "звонок" С временем
 
-Examples:
-- "Написать отчет завтра" → intent="todo" (no specific time)
-- "Встреча завтра в 15:00" → intent="create" (specific time)
-- "Позвонить Ивану" → intent="todo" (no time specified)
-- "Звонок с Иваном завтра в 10:00" → intent="create" (specific time)
-- "Купить молоко" → intent="todo"
-- "Показ квартиры завтра в 14:00" → intent="create"
-- "Обновить пнд" → intent="todo", title="Обновить персональные данные" (no time, abbreviation expanded)
-- "Обновить перс данные" → intent="todo", title="Обновить персональные данные" (no time)
-- "Поменять пнд и оферту на Ип" → intent="todo", title="Поменять персональные данные и оферту на ИП" (no time)
-- "Проверить почту в понедельник" → intent="todo", due_date=Monday (no specific time)
-- "Встреча в понедельник в 10:00" → intent="create" (specific time)
-- "Задача на завтра: согласовать встречу с Рафетом" → intent="todo", title="Согласовать встречу с Рафетом", due_date=tomorrow (keyword "задача" = always todo)
-- "Задача: позвонить клиенту" → intent="todo" (keyword "задача")
-- "Согласовать встречу с Максимом" → intent="todo" (action verb "согласовать", no time)
-- "Договориться о встрече завтра" → intent="todo", due_date=tomorrow (action verb, no specific time)
-- "Встреча завтра" → intent="todo" (no specific time, task to arrange)
+Примеры:
+- "Написать отчет завтра" → todo
+- "Встреча завтра в 15:00" → create
+- "Позвонить Ивану" → todo
+- "Показ квартиры в 14:00" → create
+- "Обновить пнд" → todo, title="Обновить персональные данные"
+- "Встреча завтра" → todo (нет времени)
 
-Rules:
-1. Always return time in ISO 8601 format with the user's timezone
-2. For EVENTS (create/update): If information is missing (date, time, title) - use intent=clarify
-2a. For TODO: Only title is required. If user says "завтра" for todo, set due_date to tomorrow midnight
-2b. For TODO: start_time and end_time should be NULL (tasks don't have specific time slots)
-3. IMPORTANT: For relative dates (tomorrow, next Friday) calculate the exact date relative to CURRENT DATE
-4. IMPORTANT: For EVENTS - if date is NOT explicitly stated and NOT relative, use intent=clarify. For TODO - date is optional
-5. IMPORTANT: Use context from previous messages - if user is answering a clarification question, supplement with history
-6. Default duration is 60 minutes if not specified
-7. Extract attendees from text (names, emails)
-7a. CRITICAL: For "this week" or "эту неделю" queries, set query_date_start=today and query_date_end=today+7 days to include all events from today through next 7 days
+ПРАВИЛА:
+1. Время в ISO 8601 с таймзоной пользователя
+2. Для событий без даты/времени/названия → clarify
+3. Для TODO: обязателен только title
+4. ИСПОЛЬЗУЙ КОНТЕКСТ из предыдущих сообщений
+5. Длительность по умолчанию 60 минут
+6. "эту неделю" → query_date_end = сегодня + 7 дней
 
-RECURRING EVENTS (Creating Multiple Events with Patterns):
-8. For requests like "every day", "daily", "each day", use intent="create_recurring"
-9. When intent="create_recurring", include these fields:
-   - recurrence_type: "daily" | "weekly" | "monthly"
-   - recurrence_end_date: ISO 8601 date when recurrence should stop
-   - recurrence_days: (for weekly) list of weekdays like ["mon", "wed", "fri"]
-   - start_time, end_time, title, duration_minutes: as usual
-10. CRITICAL RULES for recurring events duration (TODAY is {today_str}):
-   - "every day" or "каждый день" WITHOUT specific period → recurrence_end_date = {end_of_year_date}
-   - "for 3 days" or "на 3 дня" → recurrence_end_date = today + 3 days
-   - "for 2 years" or "на 2 года" → recurrence_end_date = today + 730 days
-   - "until Friday" or "до пятницы" → recurrence_end_date = next Friday
-   - "always" or "всегда" → recurrence_end_date = {end_of_year_date}
-   - "for a week" or "на неделю" → recurrence_end_date = today + 7 days
-11. RECURRING PATTERNS - Natural Language Examples:
-   - "бег по утрам в 9 часов" → create_recurring, recurrence_type="daily", start_time=9:00, title="Бег"
-   - "поставь бег каждое утро в 9" → create_recurring, recurrence_type="daily", start_time=9:00
-   - "каждый вторник в 14 совещание" → create_recurring, recurrence_type="weekly", recurrence_days=["tue"], start_time=14:00, title="Совещание"
-   - "Every day at 9am" → create_recurring with recurrence_type="daily", recurrence_end_date={end_of_year_date}
-   - "каждый день в 9 утра" → create_recurring with recurrence_type="daily", recurrence_end_date={end_of_year_date}
-   - "Daily for 5 days" → create_recurring with recurrence_type="daily", recurrence_end_date = today + 5 days
-   - "Every Monday and Wednesday at 10am" → create_recurring with recurrence_type="weekly", recurrence_days=["mon", "wed"]
-12. System will generate ALL events automatically from recurrence pattern
-13. User will see summary and confirm before creation
+ПОВТОРЯЮЩИЕСЯ СОБЫТИЯ (intent="create_recurring"):
+- recurrence_type: "daily" | "weekly" | "monthly"
+- recurrence_end_date: дата окончания (по умолчанию {end_of_year_date})
+- recurrence_days: для weekly ["mon", "wed", "fri"]
+- "каждый день" без периода → до конца года
+- "на 3 дня" → +3 дня
+- "на неделю" → +7 дней
 
-DELETION OPERATIONS:
-16. For "delete all X" or "удали все X" requests:
-    - Use intent="delete_by_criteria" with delete_criteria_title_contains field
-    - System will find ALL matching events and show confirmation
-    - Example: "удали все утренние ритуалы" → {{"intent": "delete_by_criteria", "delete_criteria_title_contains": "утренн"}}
-    - Example: "delete all meetings" → {{"intent": "delete_by_criteria", "delete_criteria_title_contains": "meeting"}}
-17. For "delete X" (single specific event) - use intent="delete" with event_id of matching event
-18. NEVER return large batch_actions arrays for deletion (token limit!) - always use delete_by_criteria for "all" requests
+УДАЛЕНИЕ:
+- "удали все X" → intent="delete_by_criteria", delete_criteria_title_contains="X"
+- "удали дубликаты" → intent="delete_duplicates"
 
-BATCH SCHEDULE CREATION (Multiple Events from Schedule Format):
-21. CRITICAL: If user provides schedule with MULTIPLE time ranges (3+ lines), create batch_actions array
-22. Schedule format detection patterns:
-    - Multiple lines with time ranges (HH:MM-HH:MM format)
-    - Each line has event title/description after time
-    - All for same date context
-    - Example input:
-      "тайминг на 23 октября:
-       12:45-13:00 Приезд, заселение
-       13:00-13:30 Кофе-брейк
-       13:30-15:00 Дискуссия по ИИ"
-23. For schedule format:
-    - Return intent="batch_confirm"
-    - Create batch_actions array with one action per line
-    - Parse time range from each line (start-end)
-    - Extract title from text after time
-    - Use date from context (today/tomorrow/specified date)
-24. IMPORTANT: Detect keywords like "тайминг", "расписание", "schedule", "agenda" combined with multiple time ranges
-25. DATE AMBIGUITY for schedule format:
-    - If date like "23 октября" is in the PAST (already happened this year), ASK for clarification
-    - Example clarify_question: "Уточните, пожалуйста: расписание на 23 октября 2025 года или 2026 года?"
-    - Do NOT automatically assume next year - ALWAYS ask user to confirm
-    - For dates with explicit year (23.10.2025) - no clarification needed
+НЕСКОЛЬКО СОБЫТИЙ В ОДНОЙ КОМАНДЕ:
+- Слова-связки: "потом", "затем", "а потом", "также", "еще"
+- "В 17 встреча, в 19 ужин" → batch_actions: [create 17:00, create 19:00]
+- "Встреча в 10, потом позвонить маме" → batch_actions: [create, todo]
 
-MULTIPLE EVENTS IN ONE COMMAND (Sequential Actions):
-26. CRITICAL: When user mentions MULTIPLE events/tasks in ONE message with connectors, create batch_actions array
-27. Connectors to detect: "потом", "затем", "а потом", "после этого", "потім", "then", "and then", "after that", "также", "еще"
-28. Mixed events and tasks detection:
-   - Parse each part separately
-   - Events (with time) → intent="create"
-   - Tasks (no time) → intent="todo"
-   - Return batch_actions array with ALL actions
-29. EXAMPLES:
-   - "В 17 встреча, в 19 ужин и еще позвонить маме" → batch_actions: [{{create at 17}}, {{create at 19}}, {{todo: call}}]
-   - "Сегодня в 18 забрать вещи, потом в 19 сходить в магазин" → batch_actions: [{{create at 18}}, {{create at 19}}]
-   - "Завтра встреча в 10, потом обед в 13, а потом нужно проверить почту" → batch_actions: [{{create at 10}}, {{create at 13}}, {{todo}}]
-   - "At 2pm call John, then at 4pm team meeting" → batch_actions: [{{create at 14:00}}, {{create at 16:00}}]
-30. IMPORTANT: Even if message is long/complex, try to extract ALL events/tasks into batch_actions
-31. If more than 10 actions detected, ask for confirmation via intent="clarify"
+РАСПИСАНИЕ (3+ строк с временем):
+- Паттерн: ЧЧ:ММ-ЧЧ:ММ Название
+- intent="batch_confirm" с batch_actions
 
-OTHER OPERATIONS:
-32. For single updates - return ONE action without batch_actions
-33. For complex commands mixing different intent types (delete + create) - use clarify to ask for one at a time
-
-Time recognition examples:
-- "meeting at 10" or "at 10" -> 10:00 (morning)
-- "meeting at 14" or "at 14" -> 14:00 (afternoon)
-- "meeting at 6 PM" -> 18:00 (evening)
-- "reschedule to 3" -> new time 15:00 (NOT a date!)
-- "reschedule to the 15th" -> new date 15th of month
-
-Example commands (NATURAL LANGUAGE):
-
-Creating events:
-- "Team meeting tomorrow at 10" → create, title="Team meeting", start=tomorrow 10:00
-- "В 17 встреча с клиентом" → create, start=today 17:00, title="Встреча с клиентом"
-- "Завтра в 14 презентация" → create, start=tomorrow 14:00, title="Презентация"
-
-Querying schedule (recognize various formulations):
-- "What do I have tomorrow?" → query, query_date_start=tomorrow
-- "What do I have today?" → query, query_date_start=today
-- "Какие планы на эту неделю?" → query, query_date_start=today, query_date_end=today+7 days
-- "Что у меня сегодня?" → query, query_date_start=today
-- "Скажи мне во сколько я занят сегодня" → query, query_date_start=today
-- "Когда я свободен завтра?" → find_free_slots, query_date_start=tomorrow
-- "Когда я свободен завтра после 16?" → find_free_slots, query_date_start=tomorrow, query_time_start=16:00
-- "Свободное время в пятницу" → find_free_slots, query_date_start=Friday
-- "When am I free after 4pm today?" → find_free_slots, query_date_start=today, query_time_start=16:00
-
-Recurring events (natural language):
-- "Бег по утрам в 9 часов" → create_recurring, daily, 9:00, title="Бег"
-- "Каждый вторник в 14 совещание" → create_recurring, weekly, tue, 14:00, title="Совещание"
-- "Every Monday at 10 standup" → create_recurring, weekly, mon, 10:00, title="Standup"
-
-Multiple actions in one command:
-- "В 17 встреча, в 19 ужин и позвонить маме" → batch_actions: [create 17:00, create 19:00, todo]
-- "Сегодня в 18 забрать вещи, потом в 19 в магазин" → batch_actions: [create 18:00, create 19:00]
-
-Updating/Deleting:
-- "Reschedule meeting with Kate to 2 PM" → update, find "meeting with Kate", new start_time=14:00 SAME DAY
-- "Reschedule to Wednesday" → clarify (need to know which meeting)
-- "Удали встречу завтра" → clarify or delete if only one event tomorrow
-
-IMPORTANT: Your response must be ONLY in JSON format with fields from set_calendar_action function schema.
-Do not add any text before or after JSON.
-For batch_confirm intent, include "batch_actions" array field with all events to create."""
+ВАЖНО: Ответ ТОЛЬКО в JSON формате. Никакого текста до/после JSON."""
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """Get or create reusable async HTTP client."""
@@ -690,87 +574,26 @@ CRITICAL: For update/delete operations:
 """
             events_prefix += recent_context_prefix + "User request:\n"
 
-            # Language names
-            language_names = {
-                'ru': 'русском',
-                'en': 'English',
-                'es': 'español',
-                'ar': 'العربية'
-            }
-            lang_name = language_names.get(language, 'русском')
+            # OPTIMIZED: Russian-only date context (removed en, es, ar)
+            date_context = f"""ТЕКУЩАЯ ДАТА: {current_datetime_str} ({timezone}, UTC{tz_offset_formatted}), {current_weekday_ru}
 
-            # Multilingual prompts for system instructions
-            lang_instructions = {
-                'ru': f"""КРИТИЧЕСКИ ВАЖНО: ЯЗЫК ОБЩЕНИЯ С ПОЛЬЗОВАТЕЛЕМ - РУССКИЙ!
-ВСЕ твои ответы (clarify_question, заголовки событий, описания) должны быть на русском языке.
-Пользователь общается на русском языке.
+Относительные даты:
+- "завтра" = {(now + timedelta(days=1)).strftime('%Y-%m-%d')}
+- "послезавтра" = {(now + timedelta(days=2)).strftime('%Y-%m-%d')}
+- "через неделю" = {(now + timedelta(days=7)).strftime('%Y-%m-%d')}
 
-ВАЖНО: ТЕКУЩАЯ ДАТА И ВРЕМЯ: {current_datetime_str} ({timezone}, UTC{tz_offset_formatted}), {current_weekday_ru}
-Используй эту дату для расчета относительных дат (завтра, послезавтра, через неделю и т.д.)
+Ближайшие дни недели:
+- понедельник = {next_weekdays_ru['понедельник'].strftime('%Y-%m-%d')}
+- вторник = {next_weekdays_ru['вторник'].strftime('%Y-%m-%d')}
+- среда = {next_weekdays_ru['среда'].strftime('%Y-%m-%d')}
+- четверг = {next_weekdays_ru['четверг'].strftime('%Y-%m-%d')}
+- пятница = {next_weekdays_ru['пятница'].strftime('%Y-%m-%d')}
+- суббота = {next_weekdays_ru['суббота'].strftime('%Y-%m-%d')}
+- воскресенье = {next_weekdays_ru['воскресенье'].strftime('%Y-%m-%d')}
 
-КРИТИЧЕСКИ ВАЖНО: Примеры относительных дат от ТЕКУЩЕЙ ДАТЫ ({current_date_str}):
-- "завтра" = {(now + timedelta(days=1)).strftime('%d.%m.%Y')} ({(now + timedelta(days=1)).strftime('%Y-%m-%d')})
-- "послезавтра" = {(now + timedelta(days=2)).strftime('%d.%m.%Y')} ({(now + timedelta(days=2)).strftime('%Y-%m-%d')})
-- "через неделю" = {(now + timedelta(days=7)).strftime('%d.%m.%Y')} ({(now + timedelta(days=7)).strftime('%Y-%m-%d')})
+Используй ТОЧНО эти даты!"""
 
-КРИТИЧЕСКИ ВАЖНО: Ближайшие дни недели от ТЕКУЩЕЙ ДАТЫ ({current_date_str}, {current_weekday_ru}):
-- "в понедельник" или "понедельник" = {next_weekdays_ru['понедельник'].strftime('%d.%m.%Y')} ({next_weekdays_ru['понедельник'].strftime('%Y-%m-%d')})
-- "во вторник" или "вторник" = {next_weekdays_ru['вторник'].strftime('%d.%m.%Y')} ({next_weekdays_ru['вторник'].strftime('%Y-%m-%d')})
-- "в среду" или "среда" = {next_weekdays_ru['среда'].strftime('%d.%m.%Y')} ({next_weekdays_ru['среда'].strftime('%Y-%m-%d')})
-- "в четверг" или "четверг" = {next_weekdays_ru['четверг'].strftime('%d.%m.%Y')} ({next_weekdays_ru['четверг'].strftime('%Y-%m-%d')})
-- "в пятницу" или "пятница" = {next_weekdays_ru['пятница'].strftime('%d.%m.%Y')} ({next_weekdays_ru['пятница'].strftime('%Y-%m-%d')})
-- "в субботу" или "суббота" = {next_weekdays_ru['суббота'].strftime('%d.%m.%Y')} ({next_weekdays_ru['суббота'].strftime('%Y-%m-%d')})
-- "в воскресенье" или "воскресенье" = {next_weekdays_ru['воскресенье'].strftime('%d.%m.%Y')} ({next_weekdays_ru['воскресенье'].strftime('%Y-%m-%d')})
-
-ВНИМАНИЕ: Используй ТОЧНО эти даты для относительных запросов! Не пересчитывай их сам!""",
-                'en': f"""CRITICAL: USER LANGUAGE IS ENGLISH!
-ALL your responses (clarify_question, event titles, descriptions) MUST be in English.
-The user communicates in English.
-
-IMPORTANT: CURRENT DATE AND TIME: {current_datetime_str} ({timezone}, UTC{tz_offset_formatted}), {current_weekday}
-Use this date to calculate relative dates (tomorrow, day after tomorrow, next week, etc.)
-
-CRITICAL: Examples of relative dates from CURRENT DATE ({current_date_str}):
-- "tomorrow" = {(now + timedelta(days=1)).strftime('%d.%m.%Y')} ({(now + timedelta(days=1)).strftime('%Y-%m-%d')})
-- "day after tomorrow" = {(now + timedelta(days=2)).strftime('%d.%m.%Y')} ({(now + timedelta(days=2)).strftime('%Y-%m-%d')})
-- "next week" = {(now + timedelta(days=7)).strftime('%d.%m.%Y')} ({(now + timedelta(days=7)).strftime('%Y-%m-%d')})
-
-CRITICAL: Next weekdays from CURRENT DATE ({current_date_str}, {current_weekday}):
-- "on Monday" or "Monday" = {next_weekdays['Monday'].strftime('%d.%m.%Y')} ({next_weekdays['Monday'].strftime('%Y-%m-%d')})
-- "on Tuesday" or "Tuesday" = {next_weekdays['Tuesday'].strftime('%d.%m.%Y')} ({next_weekdays['Tuesday'].strftime('%Y-%m-%d')})
-- "on Wednesday" or "Wednesday" = {next_weekdays['Wednesday'].strftime('%d.%m.%Y')} ({next_weekdays['Wednesday'].strftime('%Y-%m-%d')})
-- "on Thursday" or "Thursday" = {next_weekdays['Thursday'].strftime('%d.%m.%Y')} ({next_weekdays['Thursday'].strftime('%Y-%m-%d')})
-- "on Friday" or "Friday" = {next_weekdays['Friday'].strftime('%d.%m.%Y')} ({next_weekdays['Friday'].strftime('%Y-%m-%d')})
-- "on Saturday" or "Saturday" = {next_weekdays['Saturday'].strftime('%d.%m.%Y')} ({next_weekdays['Saturday'].strftime('%Y-%m-%d')})
-- "on Sunday" or "Sunday" = {next_weekdays['Sunday'].strftime('%d.%m.%Y')} ({next_weekdays['Sunday'].strftime('%Y-%m-%d')})
-
-IMPORTANT: Use EXACTLY these dates for relative queries! Do not recalculate them yourself!""",
-                'es': f"""CRÍTICO: EL IDIOMA DEL USUARIO ES ESPAÑOL!
-TODAS tus respuestas (clarify_question, títulos de eventos, descripciones) DEBEN estar en español.
-El usuario se comunica en español.
-
-IMPORTANTE: FECHA Y HORA ACTUAL: {current_datetime_str} ({timezone}, UTC{tz_offset_formatted}), {current_weekday}
-Usa esta fecha para calcular fechas relativas (mañana, pasado mañana, la próxima semana, etc.)
-
-Ejemplos de fechas relativas desde la FECHA ACTUAL ({current_date_str}):
-- "mañana" = {(now + timedelta(days=1)).strftime('%d.%m.%Y')}
-- "pasado mañana" = {(now + timedelta(days=2)).strftime('%d.%m.%Y')}
-- "la próxima semana" = {(now + timedelta(days=7)).strftime('%d.%m.%Y')}""",
-                'ar': f"""حاسم: لغة المستخدم هي العربية!
-جميع إجاباتك (clarify_question، عناوين الأحداث، الأوصاف) يجب أن تكون بالعربية.
-المستخدم يتواصل بالعربية.
-
-مهم: التاريخ والوقت الحالي: {current_datetime_str} ({timezone}, UTC{tz_offset_formatted}), {current_weekday}
-استخدم هذا التاريخ لحساب التواريخ النسبية (غداً، بعد غد، الأسبوع القادم، إلخ)
-
-أمثلة على التواريخ النسبية من التاريخ الحالي ({current_date_str}):
-- "غداً" = {(now + timedelta(days=1)).strftime('%d.%m.%Y')}
-- "بعد غد" = {(now + timedelta(days=2)).strftime('%d.%m.%Y')}
-- "الأسبوع القادم" = {(now + timedelta(days=7)).strftime('%d.%m.%Y')}"""
-            }
-
-            # Create dynamic system prompt with current date and language
-            # Format base prompt with calculated values
+            # Create dynamic system prompt with current date
             formatted_base_prompt = self.base_system_prompt.format(
                 today_str=today_str,
                 days_until_eoy=days_until_eoy,
@@ -779,7 +602,7 @@ Ejemplos de fechas relativas desde la FECHA ACTUAL ({current_date_str}):
 
             system_prompt = f"""{formatted_base_prompt}
 
-{lang_instructions.get(language, lang_instructions['en'])}
+{date_context}
 """
 
             # First, try to parse datetime with dateparser
@@ -880,32 +703,18 @@ Ejemplos de fechas relativas desde la FECHA ACTUAL ({current_date_str}):
                 }
             }
 
-            # Multilingual JSON instruction
-            json_instructions = {
-                'ru': f"""Верни ТОЛЬКО JSON с полями функции set_calendar_action. Схема функции:
+            # OPTIMIZED: Russian-only JSON instruction
+            json_instruction = f"""Верни ТОЛЬКО JSON. Схема:
 {json.dumps(function_schema, ensure_ascii=False, indent=2)}
 
-JSON ответ:""",
-                'en': f"""Return ONLY JSON with fields from set_calendar_action function. Function schema:
-{json.dumps(function_schema, ensure_ascii=False, indent=2)}
-
-JSON response:""",
-                'es': f"""Devuelve SOLO JSON con campos de la función set_calendar_action. Esquema de la función:
-{json.dumps(function_schema, ensure_ascii=False, indent=2)}
-
-Respuesta JSON:""",
-                'ar': f"""أرجع JSON فقط بحقول دالة set_calendar_action. مخطط الدالة:
-{json.dumps(function_schema, ensure_ascii=False, indent=2)}
-
-استجابة JSON:"""
-            }
+JSON:"""
 
             # Prepare the prompt for Yandex GPT
             full_prompt = f"""{system_prompt}
 
 {user_message_content}
 
-{json_instructions.get(language, json_instructions['en'])}"""
+{json_instruction}"""
 
             # DEBUG: Log what we're sending to Yandex GPT
             logger.debug("yandex_gpt_api_call",

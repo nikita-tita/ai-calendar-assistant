@@ -11,6 +11,15 @@ from app.services.encrypted_storage import EncryptedStorage
 
 logger = structlog.get_logger()
 
+# Analytics service - optional, fallback if not available
+try:
+    from app.services.analytics_service import analytics_service
+    from app.models.analytics import ActionType
+    ANALYTICS_ENABLED = True
+except ImportError:
+    analytics_service = None
+    ANALYTICS_ENABLED = False
+
 
 class TodosService:
     """Service for storing and managing user todos with encrypted storage."""
@@ -117,6 +126,18 @@ class TodosService:
 
             if self._save_todos(user_id, todos):
                 logger.info("todo_created", user_id=user_id, todo_id=todo_id, title=todo_dto.title)
+                # Log to analytics
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.TODO_CREATE,
+                            details=f"Todo: {todo_dto.title[:100]}" if todo_dto.title else "Todo created",
+                            event_id=todo_id,
+                            success=True
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_todo_log_failed", error=str(e))
                 return todo_id
             else:
                 return None
@@ -207,6 +228,18 @@ class TodosService:
 
             if self._save_todos(user_id, todos):
                 logger.info("todo_updated", user_id=user_id, todo_id=todo_id)
+                # Log to analytics
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.TODO_UPDATE,
+                            details=f"Todo updated: {todo_data.get('title', '')[:100]}",
+                            event_id=todo_id,
+                            success=True
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_todo_log_failed", error=str(e))
                 return True
             else:
                 return False
@@ -243,6 +276,18 @@ class TodosService:
                     todo_id=todo_id,
                     completed=todos[todo_id]['completed']
                 )
+                # Log to analytics
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.TODO_COMPLETE,
+                            details=f"Todo {'completed' if todos[todo_id]['completed'] else 'uncompleted'}: {todos[todo_id].get('title', '')[:100]}",
+                            event_id=todo_id,
+                            success=True
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_todo_log_failed", error=str(e))
                 return True
             else:
                 return False
@@ -269,10 +314,24 @@ class TodosService:
                 logger.warning("todo_not_found", user_id=user_id, todo_id=todo_id)
                 return False
 
+            # Get title before deletion for analytics
+            todo_title = todos[todo_id].get('title', '')
             del todos[todo_id]
 
             if self._save_todos(user_id, todos):
                 logger.info("todo_deleted", user_id=user_id, todo_id=todo_id)
+                # Log to analytics
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.TODO_DELETE,
+                            details=f"Todo deleted: {todo_title[:100]}",
+                            event_id=todo_id,
+                            success=True
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_todo_log_failed", error=str(e))
                 return True
             else:
                 return False

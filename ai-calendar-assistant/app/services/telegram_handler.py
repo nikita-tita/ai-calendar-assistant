@@ -63,6 +63,10 @@ PROPERTY_BOT_ENABLED = False
 MAX_CONTEXT_EVENTS = 10       # Maximum events to track in context
 MAX_CONTEXT_MESSAGES = 5      # Context expires after N messages without reference
 
+# Dialog history settings - for better LLM understanding
+# Stores last N message pairs (user + bot response) for context
+MAX_DIALOG_HISTORY = 5        # Maximum message pairs to keep per user
+
 logger = structlog.get_logger()
 
 
@@ -82,6 +86,9 @@ class TelegramHandler:
         # Allows follow-up commands like "перепиши эти события на сегодня"
         # Structure: {"event_ids": ["uuid1", "uuid2"], "messages_age": 0}
         self.event_context: LRUDict[str, dict] = LRUDict(max_size=1000)
+        # Dialog history for LLM context - stores last N message pairs
+        # Structure: [{"role": "user", "text": "..."}, {"role": "assistant", "text": "..."}]
+        self.dialog_history: LRUDict[str, list] = LRUDict(max_size=1000)
 
     def _log_bot_response(self, user_id: str, response_text: str):
         """Log bot response to analytics and forum logger."""
@@ -124,14 +131,13 @@ class TelegramHandler:
                 logger.warning("rate_limit_blocked", user_id=user_id, reason=reason)
                 # Send rate limit message based on reason
                 if "blocked" in reason:
-                    await message.reply_text(
-                        "⚠️ Вы временно заблокированы из-за слишком частых запросов. "
-                        "Попробуйте позже."
-                    )
+                    rate_msg = "⚠️ Вы временно заблокированы из-за слишком частых запросов. Попробуйте позже."
+                    await message.reply_text(rate_msg)
+                    self._log_bot_response(user_id, rate_msg)
                 else:
-                    await message.reply_text(
-                        "⏳ Слишком много запросов. Пожалуйста, подождите немного."
-                    )
+                    rate_msg = "⏳ Слишком много запросов. Пожалуйста, подождите немного."
+                    await message.reply_text(rate_msg)
+                    self._log_bot_response(user_id, rate_msg)
                 return
 
             # Record message for rate limiting
@@ -233,9 +239,9 @@ class TelegramHandler:
                 return
 
             # Unknown message type
-            await message.reply_text(
-                "Напишите текстом или голосом, что хотите запланировать."
-            )
+            unknown_msg = "Напишите текстом или голосом, что хотите запланировать."
+            await message.reply_text(unknown_msg)
+            self._log_bot_response(user_id, unknown_msg)
 
         except Exception as e:
             logger.error(
@@ -244,9 +250,9 @@ class TelegramHandler:
                 error=str(e),
                 exc_info=True
             )
-            await message.reply_text(
-                "Что-то сломалось. Попробуйте ещё раз."
-            )
+            error_msg = "Что-то сломалось. Попробуйте ещё раз."
+            await message.reply_text(error_msg)
+            self._log_bot_response(user_id, error_msg)
 
     async def _handle_start(self, update: Update, user_id: str) -> None:
         """Handle /start command."""
@@ -497,14 +503,13 @@ class TelegramHandler:
             todos = await todos_service.list_todos(user_id)
 
             if not todos:
-                await update.message.reply_text(
-                    "📝 Список задач пуст.\n\n"
+                empty_todos_msg = ("📝 Список задач пуст.\n\n"
                     "Чтобы добавить задачу, просто напишите что нужно сделать, например:\n"
                     "• Обновить персональные данные\n"
                     "• Позвонить собственнику\n\n"
-                    "📋 Можно также открыть 🗓 **Кабинет** для управления задачами",
-                    parse_mode="Markdown"
-                )
+                    "📋 Можно также открыть 🗓 **Кабинет** для управления задачами")
+                await update.message.reply_text(empty_todos_msg, parse_mode="Markdown")
+                self._log_bot_response(user_id, empty_todos_msg)
                 return
 
             # Filter only active todos
@@ -521,17 +526,15 @@ class TelegramHandler:
 
             message_parts.append("📝 Отметить выполненные задачи можно в 🗓 Кабинете")
 
-            await update.message.reply_text(
-                "\n".join(message_parts),
-                parse_mode="HTML"
-            )
+            todos_msg = "\n".join(message_parts)
+            await update.message.reply_text(todos_msg, parse_mode="HTML")
+            self._log_bot_response(user_id, todos_msg)
 
         except Exception as e:
             logger.error("todos_list_error", user_id=user_id, error=str(e), exc_info=True)
-            await update.message.reply_text(
-                "⏳ Секунду...\n\n"
-                "Не удалось загрузить список задач. Попробуйте позже."
-            )
+            error_todos_msg = "⏳ Секунду...\n\nНе удалось загрузить список задач. Попробуйте позже."
+            await update.message.reply_text(error_todos_msg)
+            self._log_bot_response(user_id, error_todos_msg)
 
     async def _handle_services_menu(self, update: Update, user_id: str) -> None:
         """Handle services menu button - show Housler and M2 services."""
@@ -1391,9 +1394,9 @@ Housler.ru сделал подборку сервисов, которые пом
     async def _handle_update(self, update: Update, user_id: str, event_dto) -> None:
         """Handle event update."""
         if not event_dto.event_id or event_dto.event_id == "none":
-            await update.message.reply_text(
-                "Не понял, какое событие менять. Уточните."
-            )
+            no_event_msg = "Не понял, какое событие менять. Уточните."
+            await update.message.reply_text(no_event_msg)
+            self._log_bot_response(user_id, no_event_msg)
             return
 
         # Get original event to show what changed
@@ -1443,17 +1446,18 @@ Housler.ru сделал подборку сервисов, которые пом
 {f"📍 {event_dto.location}" if event_dto.location else ""}"""
 
             await update.message.reply_text(message)
+            self._log_bot_response(user_id, message)
         else:
-            await update.message.reply_text(
-                "Не получилось. Возможно, событие уже удалено."
-            )
+            fail_msg = "Не получилось. Возможно, событие уже удалено."
+            await update.message.reply_text(fail_msg)
+            self._log_bot_response(user_id, fail_msg)
 
     async def _handle_delete(self, update: Update, user_id: str, event_dto) -> None:
         """Handle event deletion."""
         if not event_dto.event_id or event_dto.event_id == "none":
-            await update.message.reply_text(
-                "Не понял, что удалить. Уточните."
-            )
+            no_delete_msg = "Не понял, что удалить. Уточните."
+            await update.message.reply_text(no_delete_msg)
+            self._log_bot_response(user_id, no_delete_msg)
             return
 
         # Get event details before deleting to show what was deleted
@@ -1487,18 +1491,21 @@ Housler.ru сделал подборку сервисов, которые пом
 
             if event_to_delete:
                 time_str = format_datetime_human(event_to_delete.start, self._get_user_timezone(update))
-                message = f"""✅ Событие удалено!
+                del_msg = f"""✅ Событие удалено!
 
 📅 {event_to_delete.summary}
 🕐 {time_str}
 {f"📍 {event_to_delete.location}" if event_to_delete.location else ""}"""
-                await update.message.reply_text(message)
+                await update.message.reply_text(del_msg)
+                self._log_bot_response(user_id, del_msg)
             else:
-                await update.message.reply_text("✅ Удалено")
+                del_msg = "✅ Удалено"
+                await update.message.reply_text(del_msg)
+                self._log_bot_response(user_id, del_msg)
         else:
-            await update.message.reply_text(
-                "Не получилось. Возможно, уже удалено."
-            )
+            fail_del_msg = "Не получилось. Возможно, уже удалено."
+            await update.message.reply_text(fail_del_msg)
+            self._log_bot_response(user_id, fail_del_msg)
 
     async def _handle_query(self, update: Update, user_id: str, event_dto) -> None:
         """Handle events query."""
@@ -1592,7 +1599,9 @@ Housler.ru сделал подборку сервисов, которые пом
         free_slots = await calendar_service.find_free_slots(user_id, date)
 
         if not free_slots:
-            await update.message.reply_text("Свободного времени нет.")
+            no_slots_msg = "Свободного времени нет."
+            await update.message.reply_text(no_slots_msg)
+            self._log_bot_response(user_id, no_slots_msg)
             return
 
         # Format and show free slots
@@ -1621,13 +1630,14 @@ Housler.ru сделал подборку сервисов, которые пом
             message += f"\n...ещё {len(free_slots) - 10} слотов"
 
         await update.message.reply_text(message)
+        self._log_bot_response(user_id, message)
 
     async def _handle_batch_confirm(self, update: Update, user_id: str, event_dto) -> None:
         """Handle batch event creation."""
         if not event_dto.batch_actions or len(event_dto.batch_actions) == 0:
-            await update.message.reply_text(
-                "Не смог распознать события."
-            )
+            no_batch_msg = "Не смог распознать события."
+            await update.message.reply_text(no_batch_msg)
+            self._log_bot_response(user_id, no_batch_msg)
             return
 
         # Create all events and collect results
@@ -1678,10 +1688,11 @@ Housler.ru сделал подборку сервисов, которые пом
                 message += f"\nНе создано: {failed_count}"
 
             await update.message.reply_text(message)
+            self._log_bot_response(user_id, message)
         else:
-            await update.message.reply_text(
-                "Не получилось создать. Попробуйте ещё раз."
-            )
+            fail_batch_msg = "Не получилось создать. Попробуйте ещё раз."
+            await update.message.reply_text(fail_batch_msg)
+            self._log_bot_response(user_id, fail_batch_msg)
 
     async def _handle_create_recurring(self, update: Update, user_id: str, event_dto) -> None:
         """Handle recurring event creation."""
@@ -1689,15 +1700,15 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Validate required fields
         if not event_dto.title or not event_dto.start_time:
-            await update.message.reply_text(
-                "Недостаточно данных. Укажите название и время."
-            )
+            no_data_msg = "Недостаточно данных. Укажите название и время."
+            await update.message.reply_text(no_data_msg)
+            self._log_bot_response(user_id, no_data_msg)
             return
 
         if not event_dto.recurrence_type:
-            await update.message.reply_text(
-                "Не указан тип повторения (ежедневно, еженедельно, ежемесячно)."
-            )
+            no_recur_msg = "Не указан тип повторения (ежедневно, еженедельно, ежемесячно)."
+            await update.message.reply_text(no_recur_msg)
+            self._log_bot_response(user_id, no_recur_msg)
             return
 
         # Safety check: start_time required for recurring events
@@ -1763,10 +1774,11 @@ Housler.ru сделал подборку сервисов, которые пом
             if failed_count > 0:
                 message += f"\nНе создано: {failed_count}"
             await update.message.reply_text(message)
+            self._log_bot_response(user_id, message)
         else:
-            await update.message.reply_text(
-                "Не получилось создать повторяющиеся события."
-            )
+            fail_recur_msg = "Не получилось создать повторяющиеся события."
+            await update.message.reply_text(fail_recur_msg)
+            self._log_bot_response(user_id, fail_recur_msg)
 
     async def _handle_delete_by_criteria(self, update: Update, user_id: str, event_dto) -> None:
         """Handle mass deletion by criteria (title contains, date range, etc)."""
@@ -1795,7 +1807,9 @@ Housler.ru сделал подборку сервисов, которые пом
         events = await calendar_service.list_events(user_id, start_date, end_date)
 
         if not events:
-            await update.message.reply_text("Пусто — ничего не найдено.")
+            empty_msg = "Пусто — ничего не найдено."
+            await update.message.reply_text(empty_msg)
+            self._log_bot_response(user_id, empty_msg)
             return
 
         # Filter by criteria
@@ -1813,9 +1827,9 @@ Housler.ru сделал подборку сервисов, которые пом
             events_to_delete = events
 
         if not events_to_delete:
-            await update.message.reply_text(
-                f"Не найдено: \"{event_dto.delete_criteria_title_contains or event_dto.delete_criteria_title}\""
-            )
+            not_found_msg = f"Не найдено: \"{event_dto.delete_criteria_title_contains or event_dto.delete_criteria_title}\""
+            await update.message.reply_text(not_found_msg)
+            self._log_bot_response(user_id, not_found_msg)
             return
 
         # Show list of events and ask for confirmation
@@ -1853,6 +1867,7 @@ Housler.ru сделал подборку сервисов, которые пом
         ])
 
         await update.message.reply_text(message, reply_markup=keyboard)
+        self._log_bot_response(user_id, message)
 
     async def _handle_delete_duplicates(self, update: Update, user_id: str, event_dto) -> None:
         """Handle deletion of duplicate events (same title and time)."""
@@ -1880,7 +1895,9 @@ Housler.ru сделал подборку сервисов, которые пом
         events = await calendar_service.list_events(user_id, start_date, end_date)
 
         if not events:
-            await update.message.reply_text("Пусто — ничего не найдено.")
+            empty_dup_msg = "Пусто — ничего не найдено."
+            await update.message.reply_text(empty_dup_msg)
+            self._log_bot_response(user_id, empty_dup_msg)
             return
 
         # Find duplicates: group by (title, start_time)
@@ -1898,7 +1915,9 @@ Housler.ru сделал подборку сервисов, которые пом
                 duplicates_to_delete.extend(group[1:])
 
         if not duplicates_to_delete:
-            await update.message.reply_text("Дубликатов нет.")
+            no_dup_msg = "Дубликатов нет."
+            await update.message.reply_text(no_dup_msg)
+            self._log_bot_response(user_id, no_dup_msg)
             return
 
         # Show list of duplicates and ask for confirmation
@@ -1936,24 +1955,30 @@ Housler.ru сделал подборку сервисов, которые пом
         ])
 
         await update.message.reply_text(message, reply_markup=keyboard)
-
+        self._log_bot_response(user_id, message)
 
     async def _handle_create_todo(self, update: Update, user_id: str, event_dto) -> None:
         """Handle todo creation from LLM intent."""
         from app.schemas.todos import TodoDTO
-        
+
         title = event_dto.title or event_dto.raw_text
         if not title:
-            await update.message.reply_text("Не понял, что добавить в задачи.")
+            no_todo_msg = "Не понял, что добавить в задачи."
+            await update.message.reply_text(no_todo_msg)
+            self._log_bot_response(user_id, no_todo_msg)
             return
-        
+
         todo_dto = TodoDTO(title=title)
         todo_id = await todos_service.create_todo(user_id, todo_dto)
-        
+
         if todo_id:
-            await update.message.reply_text(f"✅ Добавил в задачи: {title}")
+            todo_msg = f"✅ Добавил в задачи: {title}"
+            await update.message.reply_text(todo_msg)
+            self._log_bot_response(user_id, todo_msg)
         else:
-            await update.message.reply_text("Не получилось создать задачу. Попробуйте ещё раз.")
+            fail_todo_msg = "Не получилось создать задачу. Попробуйте ещё раз."
+            await update.message.reply_text(fail_todo_msg)
+            self._log_bot_response(user_id, fail_todo_msg)
 
 # Global instance (will be initialized in router)
 telegram_handler: Optional[TelegramHandler] = None
