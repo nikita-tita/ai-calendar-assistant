@@ -51,7 +51,7 @@ class LLMAgentYandex:
         """Initialize LLM agent with Yandex GPT client."""
         self.api_key = settings.yandex_gpt_api_key
         self.folder_id = settings.yandex_gpt_folder_id
-        self.model = "yandexgpt-lite"  # OPTIMIZED: Lite model is 4-5x cheaper
+        self.model = "yandexgpt"  # Full model - Lite doesn't handle batch commands well
         self.api_url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
         # Async HTTP client (reusable with connection pooling)
