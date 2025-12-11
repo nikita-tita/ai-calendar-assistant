@@ -13,6 +13,7 @@ from app.models.analytics import (
     AdminDashboardStats, UserDetail, UserDialogEntry
 )
 from app.utils.pii_masking import safe_log_params
+from app.services.encrypted_storage import EncryptedStorage
 
 logger = structlog.get_logger()
 
@@ -33,6 +34,7 @@ class AnalyticsService:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_database()
+        self._migrate_encrypted_actions()
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get database connection with WAL mode for better concurrency."""
@@ -93,6 +95,108 @@ class AnalyticsService:
             raise
         finally:
             conn.close()
+
+    def _migrate_encrypted_actions(self):
+        """
+        One-time migration of historical actions from encrypted JSON to SQLite.
+
+        Checks if analytics_data.json.enc exists and has more actions than SQLite.
+        If so, migrates all actions and renames the file to .migrated.
+        """
+        encrypted_file = self.db_path.parent / "analytics_data.json.enc"
+        if not encrypted_file.exists():
+            return
+
+        try:
+            # Check current SQLite actions count
+            conn = self._get_connection()
+            sqlite_count = conn.execute('SELECT COUNT(*) FROM actions').fetchone()[0]
+            conn.close()
+
+            # Load encrypted data
+            storage = EncryptedStorage(str(self.db_path.parent))
+            json_data = storage.load("analytics_data.json")
+
+            if not json_data or 'actions' not in json_data:
+                logger.info("encrypted_actions_migration_skipped", reason="no_actions_in_json")
+                return
+
+            json_actions = json_data['actions']
+            json_count = len(json_actions)
+
+            # Skip if SQLite already has more or equal actions
+            if sqlite_count >= json_count:
+                logger.info("encrypted_actions_migration_skipped",
+                           reason="sqlite_has_enough",
+                           sqlite=sqlite_count, json=json_count)
+                return
+
+            logger.info("encrypted_actions_migration_starting",
+                       sqlite_count=sqlite_count, json_count=json_count)
+
+            # Migrate actions
+            conn = self._get_connection()
+            migrated = 0
+
+            for action in json_actions:
+                try:
+                    conn.execute('''
+                        INSERT INTO actions
+                        (user_id, action_type, timestamp, details, event_id, success,
+                         error_message, is_test, input_tokens, output_tokens, total_tokens,
+                         cost_rub, llm_model)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        action.get('user_id'),
+                        action.get('action_type'),
+                        action.get('timestamp'),
+                        action.get('details'),
+                        action.get('event_id'),
+                        1 if action.get('success', True) else 0,
+                        action.get('error_message'),
+                        1 if action.get('is_test', False) else 0,
+                        action.get('input_tokens'),
+                        action.get('output_tokens'),
+                        action.get('total_tokens'),
+                        action.get('cost_rub'),
+                        action.get('llm_model')
+                    ))
+
+                    # Also update user info if present
+                    user_id = action.get('user_id')
+                    if user_id and any([action.get('username'), action.get('first_name'), action.get('last_name')]):
+                        conn.execute('''
+                            UPDATE users SET
+                                username = COALESCE(?, username),
+                                first_name = COALESCE(?, first_name),
+                                last_name = COALESCE(?, last_name)
+                            WHERE user_id = ?
+                        ''', (
+                            action.get('username'),
+                            action.get('first_name'),
+                            action.get('last_name'),
+                            user_id
+                        ))
+
+                    migrated += 1
+                except Exception as e:
+                    logger.warning("action_migration_error",
+                                  action_type=action.get('action_type'),
+                                  error=str(e))
+
+            conn.commit()
+            conn.close()
+
+            # Rename encrypted file to .migrated
+            migrated_path = encrypted_file.with_suffix('.enc.migrated')
+            encrypted_file.rename(migrated_path)
+
+            logger.info("encrypted_actions_migration_completed",
+                       migrated=migrated,
+                       backup_path=str(migrated_path))
+
+        except Exception as e:
+            logger.error("encrypted_actions_migration_error", error=str(e), exc_info=True)
 
     def ensure_user(
         self,
@@ -222,8 +326,8 @@ class AnalyticsService:
             today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
             week_start = (datetime.now() - timedelta(days=7)).isoformat()
 
-            # Total users
-            total_users = conn.execute('SELECT COUNT(DISTINCT user_id) FROM actions').fetchone()[0]
+            # Total users (from users table - single source of truth)
+            total_users = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
 
             # Active users today
             active_today = conn.execute(
@@ -328,7 +432,7 @@ class AnalyticsService:
             active_month = len(cursor.fetchall())
 
             # Totals
-            total_users = conn.execute('SELECT COUNT(DISTINCT user_id) FROM actions').fetchone()[0]
+            total_users = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
             total_actions = conn.execute('SELECT COUNT(*) FROM actions').fetchone()[0]
             total_events = conn.execute(
                 "SELECT COUNT(*) FROM actions WHERE action_type = 'event_create'"
