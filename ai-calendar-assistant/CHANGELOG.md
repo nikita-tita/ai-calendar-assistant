@@ -6,6 +6,53 @@
 
 ---
 
+## [2025-12-11] - Analytics SQLite Migration (Multi-Process Fix)
+
+### Problem
+- Расхождение данных: бот показывал 61 пользователя, админка — 41
+- Потеря данных аналитики из-за двух процессов (uvicorn + bot) с общим JSON файлом
+- Docker SIGTERM не обрабатывался → данные не сохранялись при рестарте
+
+### Fixed
+- **КРИТИЧЕСКИЙ БАГ: Потеря данных аналитики при мульти-процессной работе**
+  - Причина: два процесса (FastAPI uvicorn + run_polling.py) имели отдельные экземпляры AnalyticsService
+  - Каждый писал в один JSON файл, перезатирая данные другого
+  - FLUSH_INTERVAL=100 был слишком высоким для низкого трафика
+
+### Changed
+- **Полная миграция `analytics_service.py` на SQLite**
+  - Атомарные записи (без буферизации)
+  - WAL mode для concurrent access
+  - Multi-process safe
+  - Новые таблицы: `users` (single source of truth), `actions`
+
+- **Единый источник пользователей в `daily_reminders.py`**
+  - `active_users` теперь property → live query из analytics SQLite
+  - `register_user()` → `analytics_service.ensure_user()`
+  - `unregister_user()` → `analytics_service.deactivate_user()`
+  - Автоматическая миграция из JSON при первом запуске
+
+- **Graceful shutdown в `run_polling.py`**
+  - Добавлены signal handlers для SIGTERM и SIGINT
+  - Корректная остановка в Docker контейнере
+
+### Technical
+- `app/services/analytics_service.py` — полный rewrite (SQLite)
+- `app/services/daily_reminders.py` — интеграция с analytics SQLite
+- `run_polling.py` — asyncio shutdown_event + signal handlers
+
+### Security Review
+- ✅ Все SQL запросы параметризованные (защита от injection)
+- ✅ PII маскируется через `safe_log_params()`
+- ✅ Нет hardcoded секретов
+- ✅ Токен маскируется в логах
+
+### Migration
+- Автоматическая миграция данных из JSON в SQLite при первом запуске
+- Старый JSON переименовывается в `.migrated`
+
+---
+
 ## [2025-12-11] - Smart Daily Reminders with Todos Integration
 
 ### Added

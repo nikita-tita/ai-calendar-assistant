@@ -1,8 +1,10 @@
-"""Analytics service for tracking user actions with encrypted storage."""
+"""Analytics service with SQLite storage for reliable multi-process access."""
 
+import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from collections import defaultdict
+from pathlib import Path
 import structlog
 
 from app.models.analytics import (
@@ -11,72 +13,143 @@ from app.models.analytics import (
     AdminDashboardStats, UserDetail, UserDialogEntry
 )
 from app.utils.pii_masking import safe_log_params
-from app.services.encrypted_storage import EncryptedStorage
 
 logger = structlog.get_logger()
 
 
 class AnalyticsService:
-    """Service for tracking and analyzing user actions with encrypted storage."""
+    """
+    Analytics service with SQLite storage.
 
-    # Performance and memory limits
-    MAX_ACTIONS_IN_MEMORY = 50000  # Maximum actions to keep in memory
-    ROTATION_THRESHOLD = 40000    # Rotate when reaching this count
-    FLUSH_INTERVAL = 100          # Flush to disk every N new actions
-    FLUSH_TIMEOUT_SECONDS = 30    # Auto-flush after N seconds of inactivity
+    Benefits over JSON storage:
+    - Atomic writes - no data loss on crash
+    - Multi-process safe - both uvicorn and polling bot can write
+    - No flush needed - writes are immediate
+    - Efficient queries - SQL instead of list iteration
+    """
 
-    def __init__(self, data_dir: str = "/var/lib/calendar-bot"):
-        """Initialize analytics service with encrypted storage."""
-        self.storage = EncryptedStorage(data_dir=data_dir)
-        self.data_filename = "analytics_data.json"
-        self.actions: List[UserAction] = []
-        self._pending_actions: List[UserAction] = []  # Buffer for new actions
-        self._action_count_since_flush = 0
-        self._dirty = False  # Flag for unsaved changes
-        self._load_data()
+    def __init__(self, db_path: str = "/var/lib/calendar-bot/analytics.db"):
+        """Initialize analytics service with SQLite database."""
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_database()
 
-    def _load_data(self):
-        """Load analytics data from encrypted storage."""
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get database connection with WAL mode for better concurrency."""
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        return conn
+
+    def _init_database(self):
+        """Initialize SQLite database schema."""
+        conn = self._get_connection()
         try:
-            data = self.storage.load(self.data_filename, default={'actions': []})
-            self.actions = [
-                UserAction(**action) for action in data.get('actions', [])
-            ]
-            logger.info("analytics_data_loaded_encrypted", count=len(self.actions))
-        except Exception as e:
-            logger.error("analytics_load_error", error=str(e), exc_info=True)
-            self.actions = []
+            # Users table - single source of truth
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id TEXT PRIMARY KEY,
+                    chat_id INTEGER NOT NULL,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_seen TIMESTAMP,
+                    is_active INTEGER DEFAULT 1
+                )
+            ''')
 
-    def _save_data(self):
-        """Save analytics data to encrypted storage."""
-        try:
-            data = {
-                'actions': [
-                    {
-                        'user_id': action.user_id,
-                        'action_type': action.action_type,
-                        'timestamp': action.timestamp.isoformat(),
-                        'details': action.details,
-                        'event_id': action.event_id,
-                        'success': action.success,
-                        'error_message': action.error_message,
-                        'is_test': action.is_test,
-                        'username': action.username,
-                        'first_name': action.first_name,
-                        'last_name': action.last_name,
-                        # LLM usage tracking fields
-                        'input_tokens': action.input_tokens,
-                        'output_tokens': action.output_tokens,
-                        'total_tokens': action.total_tokens,
-                        'cost_rub': action.cost_rub,
-                        'llm_model': action.llm_model
-                    }
-                    for action in self.actions
-                ]
-            }
-            self.storage.save(data, self.data_filename, encrypt=True)
+            # Actions table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    details TEXT,
+                    event_id TEXT,
+                    success INTEGER DEFAULT 1,
+                    error_message TEXT,
+                    is_test INTEGER DEFAULT 0,
+                    input_tokens INTEGER,
+                    output_tokens INTEGER,
+                    total_tokens INTEGER,
+                    cost_rub REAL,
+                    llm_model TEXT
+                )
+            ''')
+
+            # Indexes for performance
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_actions_user_timestamp ON actions(user_id, timestamp)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_actions_timestamp ON actions(timestamp)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_actions_type ON actions(action_type)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_actions_success ON actions(success)')
+
+            conn.commit()
+            logger.info("analytics_database_initialized", db_path=str(self.db_path))
         except Exception as e:
-            logger.error("analytics_save_error", error=str(e), exc_info=True)
+            logger.error("analytics_database_init_error", error=str(e), exc_info=True)
+            raise
+        finally:
+            conn.close()
+
+    def ensure_user(
+        self,
+        user_id: str,
+        chat_id: int,
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None
+    ):
+        """
+        Ensure user exists in database (upsert).
+
+        Used by DailyRemindersService for registration.
+        """
+        conn = self._get_connection()
+        try:
+            now = datetime.now().isoformat()
+            conn.execute('''
+                INSERT INTO users (user_id, chat_id, username, first_name, last_name, first_seen, last_seen, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    chat_id = excluded.chat_id,
+                    username = COALESCE(excluded.username, users.username),
+                    first_name = COALESCE(excluded.first_name, users.first_name),
+                    last_name = COALESCE(excluded.last_name, users.last_name),
+                    last_seen = excluded.last_seen,
+                    is_active = 1
+            ''', (user_id, chat_id, username, first_name, last_name, now, now))
+            conn.commit()
+        except Exception as e:
+            logger.error("ensure_user_error", user_id=user_id, error=str(e))
+        finally:
+            conn.close()
+
+    def deactivate_user(self, user_id: str):
+        """Mark user as inactive (e.g., blocked bot)."""
+        conn = self._get_connection()
+        try:
+            conn.execute('UPDATE users SET is_active = 0 WHERE user_id = ?', (user_id,))
+            conn.commit()
+            logger.info("user_deactivated", user_id=user_id)
+        except Exception as e:
+            logger.error("deactivate_user_error", user_id=user_id, error=str(e))
+        finally:
+            conn.close()
+
+    def get_active_users(self) -> Dict[str, int]:
+        """Get active users for reminders. Returns {user_id: chat_id}."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute('SELECT user_id, chat_id FROM users WHERE is_active = 1')
+            return {row['user_id']: row['chat_id'] for row in cursor.fetchall()}
+        except Exception as e:
+            logger.error("get_active_users_error", error=str(e))
+            return {}
+        finally:
+            conn.close()
 
     def log_action(
         self,
@@ -89,609 +162,684 @@ class AnalyticsService:
         username: Optional[str] = None,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
-        # LLM usage tracking (only for LLM_REQUEST actions)
         input_tokens: Optional[int] = None,
         output_tokens: Optional[int] = None,
         total_tokens: Optional[int] = None,
         cost_rub: Optional[float] = None,
         llm_model: Optional[str] = None
     ):
-        """Log a user action with buffered writes."""
-        action = UserAction(
-            user_id=user_id,
-            action_type=action_type,
-            timestamp=datetime.now(),
-            details=details,
-            event_id=event_id,
-            success=success,
-            error_message=error_message,
-            username=username,
-            first_name=first_name,
-            last_name=last_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=total_tokens,
-            cost_rub=cost_rub,
-            llm_model=llm_model
-        )
+        """Log a user action. Writes directly to SQLite (atomic)."""
+        conn = self._get_connection()
+        try:
+            now = datetime.now().isoformat()
 
-        # Add to buffer instead of main list
-        self._pending_actions.append(action)
-        self._action_count_since_flush += 1
-        self._dirty = True
+            # Convert ActionType enum to string
+            action_type_str = action_type.value if isinstance(action_type, ActionType) else str(action_type)
 
-        # Memory rotation - prevent unbounded growth
-        total_count = len(self.actions) + len(self._pending_actions)
-        if total_count > self.MAX_ACTIONS_IN_MEMORY:
-            self._rotate_old_actions()
+            conn.execute('''
+                INSERT INTO actions
+                (user_id, action_type, timestamp, details, event_id, success,
+                 error_message, input_tokens, output_tokens, total_tokens, cost_rub, llm_model)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (user_id, action_type_str, now, details, event_id,
+                  1 if success else 0, error_message,
+                  input_tokens, output_tokens, total_tokens, cost_rub, llm_model))
 
-        # Periodic flush to disk
-        if self._action_count_since_flush >= self.FLUSH_INTERVAL:
-            self._flush_pending()
+            # Update user info if provided
+            if username or first_name or last_name:
+                conn.execute('''
+                    UPDATE users SET
+                        username = COALESCE(?, username),
+                        first_name = COALESCE(?, first_name),
+                        last_name = COALESCE(?, last_name),
+                        last_seen = ?
+                    WHERE user_id = ?
+                ''', (username, first_name, last_name, now, user_id))
+            else:
+                conn.execute('UPDATE users SET last_seen = ? WHERE user_id = ?', (now, user_id))
 
-        logger.info(
-            "action_logged",
-            **safe_log_params(user_id=user_id, details=details),
-            action_type=action_type,
-            success=success
-        )
+            conn.commit()
 
-    def _flush_pending(self):
-        """Merge pending actions and save to disk."""
-        if not self._pending_actions:
-            return
-
-        # Merge pending into main list
-        self.actions.extend(self._pending_actions)
-        self._pending_actions.clear()
-        self._action_count_since_flush = 0
-
-        # Save to disk
-        self._save_data()
-        self._dirty = False
-
-        logger.debug("analytics_flushed", actions_count=len(self.actions))
-
-    def _rotate_old_actions(self):
-        """Remove oldest actions when approaching memory limit."""
-        # Keep only most recent actions
-        total = len(self.actions) + len(self._pending_actions)
-        if total <= self.ROTATION_THRESHOLD:
-            return
-
-        # Merge pending first
-        self.actions.extend(self._pending_actions)
-        self._pending_actions.clear()
-
-        # Keep only last ROTATION_THRESHOLD actions
-        removed_count = len(self.actions) - self.ROTATION_THRESHOLD
-        self.actions = self.actions[-self.ROTATION_THRESHOLD:]
-
-        logger.info("analytics_rotated",
-                   removed=removed_count,
-                   remaining=len(self.actions))
+            logger.info(
+                "action_logged",
+                **safe_log_params(user_id=user_id, details=details),
+                action_type=action_type_str,
+                success=success
+            )
+        except Exception as e:
+            logger.error("log_action_error", user_id=user_id, error=str(e))
+        finally:
+            conn.close()
 
     def flush(self):
-        """Force flush pending actions to disk. Call on shutdown."""
-        if self._dirty or self._pending_actions:
-            self._flush_pending()
-            logger.info("analytics_forced_flush", actions_count=len(self.actions))
-
-    def _all_actions(self) -> List[UserAction]:
-        """Get all actions including pending ones for reads."""
-        return self.actions + self._pending_actions
+        """No-op for SQLite (writes are immediate). Kept for API compatibility."""
+        pass
 
     def get_dashboard_stats(self) -> DashboardStats:
         """Get overall dashboard statistics."""
-        now = datetime.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_start = now - timedelta(days=7)
+        conn = self._get_connection()
+        try:
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            week_start = (datetime.now() - timedelta(days=7)).isoformat()
 
-        all_actions = self._all_actions()
+            # Total users
+            total_users = conn.execute('SELECT COUNT(DISTINCT user_id) FROM actions').fetchone()[0]
 
-        # Count unique users
-        all_users = set(action.user_id for action in all_actions)
-        users_today = set(
-            action.user_id for action in all_actions
-            if action.timestamp >= today_start
-        )
-        users_week = set(
-            action.user_id for action in all_actions
-            if action.timestamp >= week_start
-        )
+            # Active users today
+            active_today = conn.execute(
+                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ?',
+                (today_start,)
+            ).fetchone()[0]
 
-        # Count events
-        event_actions = [
-            a for a in all_actions
-            if a.action_type in [ActionType.EVENT_CREATE, ActionType.EVENT_UPDATE, ActionType.EVENT_DELETE]
-        ]
-        events_today = len([
-            a for a in event_actions
-            if a.timestamp >= today_start
-        ])
-        events_week = len([
-            a for a in event_actions
-            if a.timestamp >= week_start
-        ])
+            # Active users this week
+            active_week = conn.execute(
+                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ?',
+                (week_start,)
+            ).fetchone()[0]
 
-        # Count messages
-        message_actions = [
-            a for a in all_actions
-            if a.action_type in [ActionType.TEXT_MESSAGE, ActionType.VOICE_MESSAGE]
-        ]
-        messages_today = len([
-            a for a in message_actions
-            if a.timestamp >= today_start
-        ])
+            # Events
+            event_types = "('event_create', 'event_update', 'event_delete')"
+            total_events = conn.execute(
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types}'
+            ).fetchone()[0]
+            events_today = conn.execute(
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ?',
+                (today_start,)
+            ).fetchone()[0]
+            events_week = conn.execute(
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ?',
+                (week_start,)
+            ).fetchone()[0]
 
-        # Count errors
-        error_actions = [a for a in all_actions if not a.success or a.action_type == ActionType.ERROR]
-        errors_today = len([
-            a for a in error_actions
-            if a.timestamp >= today_start
-        ])
+            # Messages
+            msg_types = "('text_message', 'voice_message')"
+            total_messages = conn.execute(
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types}'
+            ).fetchone()[0]
+            messages_today = conn.execute(
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types} AND timestamp >= ?',
+                (today_start,)
+            ).fetchone()[0]
 
-        return DashboardStats(
-            total_users=len(all_users),
-            active_users_today=len(users_today),
-            active_users_week=len(users_week),
-            total_events=len(event_actions),
-            events_today=events_today,
-            events_week=events_week,
-            total_messages=len(message_actions),
-            messages_today=messages_today,
-            total_errors=len(error_actions),
-            errors_today=errors_today
-        )
+            # Errors
+            total_errors = conn.execute('SELECT COUNT(*) FROM actions WHERE success = 0').fetchone()[0]
+            errors_today = conn.execute(
+                'SELECT COUNT(*) FROM actions WHERE success = 0 AND timestamp >= ?',
+                (today_start,)
+            ).fetchone()[0]
 
-    def get_user_stats(self, limit: int = 100) -> List[UserStats]:
-        """Get statistics for all users."""
-        user_data: Dict[str, Dict] = defaultdict(lambda: {
-            'first_seen': None,
-            'last_seen': None,
-            'events': 0,
-            'messages': 0,
-            'voice': 0,
-            'webapp': 0,
-            'errors': 0,
-            'username': None,
-            'first_name': None,
-            'last_name': None
-        })
-
-        for action in self._all_actions():
-            data = user_data[action.user_id]
-
-            # Update first/last seen
-            if data['first_seen'] is None or action.timestamp < data['first_seen']:
-                data['first_seen'] = action.timestamp
-            if data['last_seen'] is None or action.timestamp > data['last_seen']:
-                data['last_seen'] = action.timestamp
-
-            # Update user info from most recent action with data
-            if action.username and not data['username']:
-                data['username'] = action.username
-            if action.first_name and not data['first_name']:
-                data['first_name'] = action.first_name
-            if action.last_name and not data['last_name']:
-                data['last_name'] = action.last_name
-
-            # Count by type
-            if action.action_type in [ActionType.EVENT_CREATE, ActionType.EVENT_UPDATE, ActionType.EVENT_DELETE]:
-                data['events'] += 1
-            elif action.action_type == ActionType.TEXT_MESSAGE:
-                data['messages'] += 1
-            elif action.action_type == ActionType.VOICE_MESSAGE:
-                data['voice'] += 1
-            elif action.action_type == ActionType.WEBAPP_OPEN:
-                data['webapp'] += 1
-
-            if not action.success:
-                data['errors'] += 1
-
-        # Convert to UserStats objects
-        stats = [
-            UserStats(
-                user_id=user_id,
-                first_seen=data['first_seen'],
-                last_seen=data['last_seen'],
-                total_events=data['events'],
-                total_messages=data['messages'],
-                total_voice_messages=data['voice'],
-                total_webapp_opens=data['webapp'],
-                total_errors=data['errors'],
-                username=data['username'],
-                first_name=data['first_name'],
-                last_name=data['last_name']
+            return DashboardStats(
+                total_users=total_users,
+                active_users_today=active_today,
+                active_users_week=active_week,
+                total_events=total_events,
+                events_today=events_today,
+                events_week=events_week,
+                total_messages=total_messages,
+                messages_today=messages_today,
+                total_errors=total_errors,
+                errors_today=errors_today
             )
-            for user_id, data in user_data.items()
-        ]
-
-        # Sort by last seen (most recent first)
-        stats.sort(key=lambda x: x.last_seen, reverse=True)
-        return stats[:limit]
-
-    def get_activity_timeline(self, hours: int = 24) -> List[TimeSeriesPoint]:
-        """Get activity timeline for the last N hours."""
-        now = datetime.now()
-        start_time = now - timedelta(hours=hours)
-
-        # Group actions by hour
-        hourly_counts = defaultdict(int)
-        for action in self._all_actions():
-            if action.timestamp >= start_time:
-                hour_key = action.timestamp.replace(minute=0, second=0, microsecond=0)
-                hourly_counts[hour_key] += 1
-
-        # Create time series
-        timeline = []
-        current = start_time.replace(minute=0, second=0, microsecond=0)
-        while current <= now:
-            timeline.append(TimeSeriesPoint(
-                timestamp=current,
-                value=hourly_counts.get(current, 0)
-            ))
-            current += timedelta(hours=1)
-
-        return timeline
-
-    def get_action_distribution(self) -> List[EventTypeDistribution]:
-        """Get distribution of action types."""
-        type_counts = defaultdict(int)
-        all_actions = self._all_actions()
-        total = len(all_actions)
-
-        for action in all_actions:
-            type_counts[action.action_type] += 1
-
-        distribution = [
-            EventTypeDistribution(
-                action_type=action_type,
-                count=count,
-                percentage=round(count / total * 100, 2) if total > 0 else 0
+        except Exception as e:
+            logger.error("get_dashboard_stats_error", error=str(e))
+            return DashboardStats(
+                total_users=0, active_users_today=0, active_users_week=0,
+                total_events=0, events_today=0, events_week=0,
+                total_messages=0, messages_today=0,
+                total_errors=0, errors_today=0
             )
-            for action_type, count in type_counts.items()
-        ]
-
-        distribution.sort(key=lambda x: x.count, reverse=True)
-        return distribution
-
-    def get_recent_actions(self, limit: int = 100, user_id: Optional[str] = None) -> List[UserAction]:
-        """Get recent actions, optionally filtered by user."""
-        filtered = self._all_actions()
-        if user_id:
-            filtered = [a for a in filtered if a.user_id == user_id]
-
-        # Sort by timestamp (most recent first)
-        filtered.sort(key=lambda x: x.timestamp, reverse=True)
-        return filtered[:limit]
-
-    def clear_test_data(self) -> int:
-        """Remove all test/mock data. Returns number of removed actions."""
-        # Flush pending first
-        self._flush_pending()
-
-        original_count = len(self.actions)
-        self.actions = [a for a in self.actions if not a.is_test]
-        removed = original_count - len(self.actions)
-
-        if removed > 0:
-            self._save_data()
-            logger.info("test_data_cleared", removed=removed, remaining=len(self.actions))
-
-        return removed
+        finally:
+            conn.close()
 
     def get_admin_stats(self) -> AdminDashboardStats:
         """Get extended statistics for admin dashboard."""
-        now = datetime.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_start = today_start - timedelta(days=today_start.weekday())  # Monday of current week
+        conn = self._get_connection()
+        try:
+            now = datetime.now()
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            week_start = (now - timedelta(days=7)).isoformat()
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-        # Month start (first day of current month)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # Total logins
+            total_logins = conn.execute(
+                "SELECT COUNT(*) FROM actions WHERE action_type = 'user_login'"
+            ).fetchone()[0]
 
-        all_actions = self._all_actions()
+            # Active users today
+            active_today = conn.execute(
+                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ?',
+                (today_start,)
+            ).fetchone()[0]
 
-        # Total logins
-        total_logins = len([a for a in all_actions if a.action_type == ActionType.USER_LOGIN])
+            # Active users week (3+ days)
+            cursor = conn.execute('''
+                SELECT user_id, COUNT(DISTINCT date(timestamp)) as active_days
+                FROM actions WHERE timestamp >= ?
+                GROUP BY user_id HAVING active_days >= 3
+            ''', (week_start,))
+            active_week = len(cursor.fetchall())
 
-        # Active users today (at least 1 action)
-        users_today = set(
-            a.user_id for a in all_actions
-            if a.timestamp >= today_start
-        )
+            # Active users month (simplified: 3+ days)
+            cursor = conn.execute('''
+                SELECT user_id, COUNT(DISTINCT date(timestamp)) as active_days
+                FROM actions WHERE timestamp >= ?
+                GROUP BY user_id HAVING active_days >= 3
+            ''', (month_start,))
+            active_month = len(cursor.fetchall())
 
-        # Active users week (3+ active days)
-        users_week_active = set()
-        for user_id in set(a.user_id for a in all_actions):
-            active_days = self._count_active_days(user_id, week_start, today_start + timedelta(days=1))
-            if active_days >= 3:
-                users_week_active.add(user_id)
+            # Totals
+            total_users = conn.execute('SELECT COUNT(DISTINCT user_id) FROM actions').fetchone()[0]
+            total_actions = conn.execute('SELECT COUNT(*) FROM actions').fetchone()[0]
+            total_events = conn.execute(
+                "SELECT COUNT(*) FROM actions WHERE action_type = 'event_create'"
+            ).fetchone()[0]
+            total_messages = conn.execute(
+                "SELECT COUNT(*) FROM actions WHERE action_type IN ('text_message', 'voice_message')"
+            ).fetchone()[0]
 
-        # Active users month (3+ days per week throughout month)
-        users_month_active = set()
-        for user_id in set(a.user_id for a in all_actions):
-            # Count weeks in month
-            weeks_in_month = self._count_weeks_in_month(month_start, now)
-            active_weeks = 0
-
-            current_week_start = month_start
-            while current_week_start < now:
-                week_end = min(current_week_start + timedelta(days=7), now)
-                active_days = self._count_active_days(user_id, current_week_start, week_end)
-                if active_days >= 3:
-                    active_weeks += 1
-                current_week_start = week_end
-
-            # User is active if they have 3+ active days in most weeks
-            if active_weeks >= max(1, weeks_in_month // 2):
-                users_month_active.add(user_id)
-
-        # Total stats
-        all_users = set(a.user_id for a in all_actions)
-        total_actions_count = len(all_actions)
-        total_events = len([
-            a for a in all_actions
-            if a.action_type == ActionType.EVENT_CREATE
-        ])
-        total_messages = len([
-            a for a in all_actions
-            if a.action_type in [ActionType.TEXT_MESSAGE, ActionType.VOICE_MESSAGE]
-        ])
-
-        return AdminDashboardStats(
-            total_logins=total_logins,
-            active_users_today=len(users_today),
-            active_users_week=len(users_week_active),
-            active_users_month=len(users_month_active),
-            total_users=len(all_users),
-            total_actions=total_actions_count,
-            total_events_created=total_events,
-            total_messages=total_messages
-        )
+            return AdminDashboardStats(
+                total_logins=total_logins,
+                active_users_today=active_today,
+                active_users_week=active_week,
+                active_users_month=active_month,
+                total_users=total_users,
+                total_actions=total_actions,
+                total_events_created=total_events,
+                total_messages=total_messages
+            )
+        except Exception as e:
+            logger.error("get_admin_stats_error", error=str(e))
+            return AdminDashboardStats(
+                total_logins=0, active_users_today=0, active_users_week=0,
+                active_users_month=0, total_users=0, total_actions=0,
+                total_events_created=0, total_messages=0
+            )
+        finally:
+            conn.close()
 
     def get_all_users_details(self) -> List[UserDetail]:
         """Get detailed information for all users."""
-        now = datetime.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_start = today_start - timedelta(days=today_start.weekday())
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        conn = self._get_connection()
+        try:
+            now = datetime.now()
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            week_start = (now - timedelta(days=7)).isoformat()
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-        all_actions = self._all_actions()
-        all_users = set(a.user_id for a in all_actions)
-        user_details = []
+            # Get all unique users from actions
+            cursor = conn.execute('''
+                SELECT
+                    user_id,
+                    MAX(CASE WHEN username IS NOT NULL THEN username END) as username,
+                    MAX(CASE WHEN first_name IS NOT NULL THEN first_name END) as first_name,
+                    MAX(CASE WHEN last_name IS NOT NULL THEN last_name END) as last_name
+                FROM (
+                    SELECT user_id, NULL as username, NULL as first_name, NULL as last_name FROM actions
+                    UNION ALL
+                    SELECT user_id, username, first_name, last_name FROM users
+                )
+                GROUP BY user_id
+            ''')
 
-        for user_id in all_users:
-            user_actions = [a for a in all_actions if a.user_id == user_id]
+            users_basic = cursor.fetchall()
+            result = []
 
-            # Get user info from most recent action
-            latest_action = max(user_actions, key=lambda x: x.timestamp)
-            username = latest_action.username
-            first_name = latest_action.first_name
-            last_name = latest_action.last_name
+            for user_row in users_basic:
+                user_id = user_row['user_id']
 
-            # Telegram link
-            telegram_link = f"https://t.me/{username}" if username else None
+                # Get user info from users table if available
+                user_info = conn.execute(
+                    'SELECT username, first_name, last_name FROM users WHERE user_id = ?',
+                    (user_id,)
+                ).fetchone()
 
-            # Time metrics
-            first_seen = min(a.timestamp for a in user_actions)
-            last_seen = max(a.timestamp for a in user_actions)
+                username = user_info['username'] if user_info else user_row['username']
+                first_name = user_info['first_name'] if user_info else user_row['first_name']
+                last_name = user_info['last_name'] if user_info else user_row['last_name']
 
-            # Login count
-            total_logins = len([a for a in user_actions if a.action_type == ActionType.USER_LOGIN])
-            total_actions = len(user_actions)
+                # Activity metrics
+                metrics = conn.execute('''
+                    SELECT
+                        MIN(timestamp) as first_seen,
+                        MAX(timestamp) as last_seen,
+                        COUNT(*) as total_actions,
+                        SUM(CASE WHEN action_type = 'user_login' THEN 1 ELSE 0 END) as total_logins,
+                        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as actions_today,
+                        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as actions_week,
+                        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as actions_month
+                    FROM actions WHERE user_id = ?
+                ''', (today_start, week_start, month_start, user_id)).fetchone()
 
-            # Period activity
-            actions_today = len([a for a in user_actions if a.timestamp >= today_start])
-            actions_week = len([a for a in user_actions if a.timestamp >= week_start])
-            actions_month = len([a for a in user_actions if a.timestamp >= month_start])
+                # Active days
+                active_days_week = conn.execute('''
+                    SELECT COUNT(DISTINCT date(timestamp)) FROM actions
+                    WHERE user_id = ? AND timestamp >= ?
+                ''', (user_id, week_start)).fetchone()[0]
 
-            # Active days
-            active_days_week = self._count_active_days(user_id, week_start, today_start + timedelta(days=1))
-            active_days_month = self._count_active_days(user_id, month_start, now)
+                active_days_month = conn.execute('''
+                    SELECT COUNT(DISTINCT date(timestamp)) FROM actions
+                    WHERE user_id = ? AND timestamp >= ?
+                ''', (user_id, month_start)).fetchone()[0]
 
-            # Activity status
-            is_active_today = actions_today > 0
-            is_active_week = active_days_week >= 3
+                first_seen = datetime.fromisoformat(metrics['first_seen']) if metrics['first_seen'] else now
+                last_seen = datetime.fromisoformat(metrics['last_seen']) if metrics['last_seen'] else now
 
-            # For month: check 3+ days per week
-            weeks_in_month = self._count_weeks_in_month(month_start, now)
-            active_weeks_month = 0
-            current_week_start = month_start
-            while current_week_start < now:
-                week_end = min(current_week_start + timedelta(days=7), now)
-                if self._count_active_days(user_id, current_week_start, week_end) >= 3:
-                    active_weeks_month += 1
-                current_week_start = week_end
-            is_active_month = active_weeks_month >= max(1, weeks_in_month // 2)
+                result.append(UserDetail(
+                    user_id=user_id,
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name,
+                    telegram_link=f"https://t.me/{username}" if username else None,
+                    first_seen=first_seen,
+                    last_seen=last_seen,
+                    total_logins=metrics['total_logins'] or 0,
+                    total_actions=metrics['total_actions'] or 0,
+                    actions_today=metrics['actions_today'] or 0,
+                    actions_week=metrics['actions_week'] or 0,
+                    actions_month=metrics['actions_month'] or 0,
+                    active_days_week=active_days_week,
+                    active_days_month=active_days_month,
+                    is_active_today=metrics['actions_today'] > 0,
+                    is_active_week=active_days_week >= 3,
+                    is_active_month=active_days_month >= 3
+                ))
 
-            user_details.append(UserDetail(
-                user_id=user_id,
-                username=username,
-                first_name=first_name,
-                last_name=last_name,
-                telegram_link=telegram_link,
-                first_seen=first_seen,
-                last_seen=last_seen,
-                total_logins=total_logins,
-                total_actions=total_actions,
-                actions_today=actions_today,
-                actions_week=actions_week,
-                actions_month=actions_month,
-                active_days_week=active_days_week,
-                active_days_month=active_days_month,
-                is_active_today=is_active_today,
-                is_active_week=is_active_week,
-                is_active_month=is_active_month
-            ))
-
-        # Sort by last seen (most recent first)
-        user_details.sort(key=lambda x: x.last_seen, reverse=True)
-        return user_details
+            # Sort by last seen
+            result.sort(key=lambda x: x.last_seen, reverse=True)
+            return result
+        except Exception as e:
+            logger.error("get_all_users_details_error", error=str(e), exc_info=True)
+            return []
+        finally:
+            conn.close()
 
     def get_user_dialog(self, user_id: str, limit: int = 1000) -> List[UserDialogEntry]:
-        """Get user's complete dialog history."""
-        user_actions = [a for a in self._all_actions() if a.user_id == user_id]
+        """Get user's dialog history."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute('''
+                SELECT action_type, timestamp, details, success, error_message
+                FROM actions WHERE user_id = ?
+                ORDER BY timestamp ASC
+                LIMIT ?
+            ''', (user_id, limit))
 
-        # Sort by timestamp (oldest first for dialog view)
-        user_actions.sort(key=lambda x: x.timestamp)
+            return [
+                UserDialogEntry(
+                    timestamp=datetime.fromisoformat(row['timestamp']),
+                    action_type=ActionType(row['action_type']) if row['action_type'] in [e.value for e in ActionType] else ActionType.TEXT_MESSAGE,
+                    details=row['details'],
+                    success=bool(row['success']),
+                    error_message=row['error_message']
+                )
+                for row in cursor.fetchall()
+            ]
+        except Exception as e:
+            logger.error("get_user_dialog_error", user_id=user_id, error=str(e))
+            return []
+        finally:
+            conn.close()
 
-        dialog = [
-            UserDialogEntry(
-                timestamp=action.timestamp,
-                action_type=action.action_type,
-                details=action.details,
-                success=action.success,
-                error_message=action.error_message
-            )
-            for action in user_actions[-limit:]
-        ]
+    def get_activity_timeline(self, hours: int = 24) -> List[TimeSeriesPoint]:
+        """Get activity timeline for the last N hours."""
+        conn = self._get_connection()
+        try:
+            start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
 
-        return dialog
+            cursor = conn.execute('''
+                SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour, COUNT(*) as count
+                FROM actions WHERE timestamp >= ?
+                GROUP BY hour ORDER BY hour
+            ''', (start_time,))
 
-    def _count_active_days(self, user_id: str, start: datetime, end: datetime) -> int:
-        """Count how many distinct days user was active in given period."""
-        user_actions = [
-            a for a in self._all_actions()
-            if a.user_id == user_id and start <= a.timestamp < end
-        ]
+            hourly_data = {row['hour']: row['count'] for row in cursor.fetchall()}
 
-        # Get unique dates
-        active_dates = set(
-            a.timestamp.date() for a in user_actions
+            # Fill in missing hours
+            timeline = []
+            current = datetime.now() - timedelta(hours=hours)
+            current = current.replace(minute=0, second=0, microsecond=0)
+
+            while current <= datetime.now():
+                hour_key = current.strftime('%Y-%m-%d %H:00:00')
+                timeline.append(TimeSeriesPoint(
+                    timestamp=current,
+                    value=hourly_data.get(hour_key, 0)
+                ))
+                current += timedelta(hours=1)
+
+            return timeline
+        except Exception as e:
+            logger.error("get_activity_timeline_error", error=str(e))
+            return []
+        finally:
+            conn.close()
+
+    def get_recent_actions(self, limit: int = 100, user_id: Optional[str] = None) -> List[UserAction]:
+        """Get recent actions."""
+        conn = self._get_connection()
+        try:
+            if user_id:
+                cursor = conn.execute('''
+                    SELECT * FROM actions WHERE user_id = ?
+                    ORDER BY timestamp DESC LIMIT ?
+                ''', (user_id, limit))
+            else:
+                cursor = conn.execute('''
+                    SELECT * FROM actions ORDER BY timestamp DESC LIMIT ?
+                ''', (limit,))
+
+            return [self._row_to_action(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error("get_recent_actions_error", error=str(e))
+            return []
+        finally:
+            conn.close()
+
+    def _row_to_action(self, row) -> UserAction:
+        """Convert database row to UserAction."""
+        try:
+            action_type = ActionType(row['action_type']) if row['action_type'] in [e.value for e in ActionType] else ActionType.TEXT_MESSAGE
+        except ValueError:
+            action_type = ActionType.TEXT_MESSAGE
+
+        return UserAction(
+            id=row['id'],
+            user_id=row['user_id'],
+            action_type=action_type,
+            timestamp=datetime.fromisoformat(row['timestamp']),
+            details=row['details'],
+            event_id=row['event_id'],
+            success=bool(row['success']),
+            error_message=row['error_message'],
+            is_test=bool(row['is_test']),
+            input_tokens=row['input_tokens'],
+            output_tokens=row['output_tokens'],
+            total_tokens=row['total_tokens'],
+            cost_rub=row['cost_rub'],
+            llm_model=row['llm_model']
         )
 
-        return len(active_dates)
-
-    def _count_weeks_in_month(self, month_start: datetime, month_end: datetime) -> int:
-        """Count number of weeks in given month period."""
-        days = (month_end - month_start).days
-        return max(1, days // 7)
-
     def get_errors(self, hours: int = 24, limit: int = 100) -> List[UserAction]:
-        """Get recent errors for admin dashboard.
+        """Get recent errors."""
+        conn = self._get_connection()
+        try:
+            start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
 
-        Args:
-            hours: Number of hours to look back (default 24)
-            limit: Maximum number of errors to return
+            error_types = [
+                'error', 'llm_error', 'llm_parse_error', 'llm_timeout',
+                'calendar_error', 'stt_error', 'intent_unclear'
+            ]
+            placeholders = ','.join('?' * len(error_types))
 
-        Returns:
-            List of error actions sorted by timestamp (newest first)
-        """
-        now = datetime.now()
-        start_time = now - timedelta(hours=hours)
+            cursor = conn.execute(f'''
+                SELECT * FROM actions
+                WHERE timestamp >= ? AND (success = 0 OR action_type IN ({placeholders}))
+                ORDER BY timestamp DESC LIMIT ?
+            ''', (start_time, *error_types, limit))
 
-        # Error action types
-        error_types = [
-            ActionType.ERROR,
-            ActionType.LLM_ERROR,
-            ActionType.LLM_PARSE_ERROR,
-            ActionType.LLM_TIMEOUT,
-            ActionType.CALENDAR_ERROR,
-            ActionType.STT_ERROR,
-            ActionType.INTENT_UNCLEAR
-        ]
-
-        # Filter errors
-        errors = [
-            a for a in self._all_actions()
-            if (a.timestamp >= start_time and
-                (a.action_type in error_types or not a.success))
-        ]
-
-        # Sort by timestamp (newest first)
-        errors.sort(key=lambda x: x.timestamp, reverse=True)
-
-        return errors[:limit]
+            return [self._row_to_action(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error("get_errors_error", error=str(e))
+            return []
+        finally:
+            conn.close()
 
     def get_error_stats(self, hours: int = 24) -> Dict:
-        """Get error statistics for dashboard.
+        """Get error statistics."""
+        conn = self._get_connection()
+        try:
+            start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
 
-        Args:
-            hours: Number of hours to look back
+            cursor = conn.execute('''
+                SELECT action_type, COUNT(*) as count
+                FROM actions WHERE timestamp >= ? AND success = 0
+                GROUP BY action_type
+            ''', (start_time,))
 
-        Returns:
-            Dictionary with error counts by type
-        """
-        now = datetime.now()
-        start_time = now - timedelta(hours=hours)
+            by_type = {row['action_type']: row['count'] for row in cursor.fetchall()}
+            total = sum(by_type.values())
 
-        # Count errors by type
-        error_counts = defaultdict(int)
-        total_errors = 0
-
-        for action in self._all_actions():
-            if action.timestamp >= start_time and not action.success:
-                error_counts[action.action_type] += 1
-                total_errors += 1
-
-        return {
-            'total': total_errors,
-            'by_type': dict(error_counts),
-            'period_hours': hours
-        }
-
-    def get_llm_cost_stats(self, hours: int = 24) -> Dict:
-        """Get LLM usage and cost statistics.
-
-        Args:
-            hours: Number of hours to look back (default 24 for daily report)
-
-        Returns:
-            Dictionary with LLM cost statistics:
-            - total_requests: number of LLM requests
-            - total_tokens: sum of all tokens used
-            - total_cost_rub: total cost in rubles
-            - unique_users: number of unique users who used LLM
-            - avg_cost_per_user: average cost per user
-            - avg_tokens_per_request: average tokens per request
-            - by_model: breakdown by model
-        """
-        now = datetime.now()
-        start_time = now - timedelta(hours=hours)
-
-        # Filter LLM_REQUEST actions in time range
-        llm_actions = [
-            a for a in self._all_actions()
-            if a.action_type == ActionType.LLM_REQUEST and a.timestamp >= start_time
-        ]
-
-        if not llm_actions:
             return {
-                'total_requests': 0,
-                'total_tokens': 0,
-                'total_cost_rub': 0.0,
-                'unique_users': 0,
-                'avg_cost_per_user': 0.0,
-                'avg_tokens_per_request': 0,
-                'by_model': {},
+                'total': total,
+                'by_type': by_type,
                 'period_hours': hours
             }
+        except Exception as e:
+            logger.error("get_error_stats_error", error=str(e))
+            return {'total': 0, 'by_type': {}, 'period_hours': hours}
+        finally:
+            conn.close()
 
-        # Calculate totals
-        total_requests = len(llm_actions)
-        total_tokens = sum(a.total_tokens or 0 for a in llm_actions)
-        total_cost = sum(a.cost_rub or 0.0 for a in llm_actions)
-        unique_users = set(a.user_id for a in llm_actions)
+    def get_llm_cost_stats(self, hours: int = 24) -> Dict:
+        """Get LLM usage and cost statistics."""
+        conn = self._get_connection()
+        try:
+            start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
 
-        # Breakdown by model
-        by_model = defaultdict(lambda: {'requests': 0, 'tokens': 0, 'cost': 0.0})
-        for a in llm_actions:
-            model = a.llm_model or 'unknown'
-            by_model[model]['requests'] += 1
-            by_model[model]['tokens'] += a.total_tokens or 0
-            by_model[model]['cost'] += a.cost_rub or 0.0
+            cursor = conn.execute('''
+                SELECT
+                    COUNT(*) as total_requests,
+                    COALESCE(SUM(total_tokens), 0) as total_tokens,
+                    COALESCE(SUM(cost_rub), 0) as total_cost,
+                    COUNT(DISTINCT user_id) as unique_users
+                FROM actions
+                WHERE action_type = 'llm_request' AND timestamp >= ?
+            ''', (start_time,))
 
-        return {
-            'total_requests': total_requests,
-            'total_tokens': total_tokens,
-            'total_cost_rub': round(total_cost, 2),
-            'unique_users': len(unique_users),
-            'avg_cost_per_user': round(total_cost / len(unique_users), 2) if unique_users else 0.0,
-            'avg_tokens_per_request': total_tokens // total_requests if total_requests else 0,
-            'by_model': dict(by_model),
-            'period_hours': hours
-        }
+            row = cursor.fetchone()
+
+            if not row or row['total_requests'] == 0:
+                return {
+                    'total_requests': 0,
+                    'total_tokens': 0,
+                    'total_cost_rub': 0.0,
+                    'unique_users': 0,
+                    'avg_cost_per_user': 0.0,
+                    'avg_tokens_per_request': 0,
+                    'by_model': {},
+                    'period_hours': hours
+                }
+
+            total_requests = row['total_requests']
+            total_tokens = row['total_tokens']
+            total_cost = row['total_cost']
+            unique_users = row['unique_users']
+
+            # By model
+            cursor = conn.execute('''
+                SELECT llm_model,
+                    COUNT(*) as requests,
+                    COALESCE(SUM(total_tokens), 0) as tokens,
+                    COALESCE(SUM(cost_rub), 0) as cost
+                FROM actions
+                WHERE action_type = 'llm_request' AND timestamp >= ?
+                GROUP BY llm_model
+            ''', (start_time,))
+
+            by_model = {
+                row['llm_model'] or 'unknown': {
+                    'requests': row['requests'],
+                    'tokens': row['tokens'],
+                    'cost': row['cost']
+                }
+                for row in cursor.fetchall()
+            }
+
+            return {
+                'total_requests': total_requests,
+                'total_tokens': total_tokens,
+                'total_cost_rub': round(total_cost, 2),
+                'unique_users': unique_users,
+                'avg_cost_per_user': round(total_cost / unique_users, 2) if unique_users else 0.0,
+                'avg_tokens_per_request': total_tokens // total_requests if total_requests else 0,
+                'by_model': by_model,
+                'period_hours': hours
+            }
+        except Exception as e:
+            logger.error("get_llm_cost_stats_error", error=str(e))
+            return {
+                'total_requests': 0, 'total_tokens': 0, 'total_cost_rub': 0.0,
+                'unique_users': 0, 'avg_cost_per_user': 0.0, 'avg_tokens_per_request': 0,
+                'by_model': {}, 'period_hours': hours
+            }
+        finally:
+            conn.close()
+
+    def get_action_distribution(self) -> List[EventTypeDistribution]:
+        """Get distribution of action types."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute('''
+                SELECT action_type, COUNT(*) as count
+                FROM actions GROUP BY action_type
+            ''')
+
+            rows = cursor.fetchall()
+            total = sum(row['count'] for row in rows)
+
+            return [
+                EventTypeDistribution(
+                    action_type=ActionType(row['action_type']) if row['action_type'] in [e.value for e in ActionType] else ActionType.TEXT_MESSAGE,
+                    count=row['count'],
+                    percentage=round(row['count'] / total * 100, 2) if total > 0 else 0
+                )
+                for row in rows
+            ]
+        except Exception as e:
+            logger.error("get_action_distribution_error", error=str(e))
+            return []
+        finally:
+            conn.close()
+
+    def get_user_stats(self, limit: int = 100) -> List[UserStats]:
+        """Get statistics for users."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute('''
+                SELECT
+                    user_id,
+                    MIN(timestamp) as first_seen,
+                    MAX(timestamp) as last_seen,
+                    SUM(CASE WHEN action_type IN ('event_create', 'event_update', 'event_delete') THEN 1 ELSE 0 END) as events,
+                    SUM(CASE WHEN action_type = 'text_message' THEN 1 ELSE 0 END) as messages,
+                    SUM(CASE WHEN action_type = 'voice_message' THEN 1 ELSE 0 END) as voice,
+                    SUM(CASE WHEN action_type = 'webapp_open' THEN 1 ELSE 0 END) as webapp,
+                    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as errors
+                FROM actions GROUP BY user_id
+                ORDER BY last_seen DESC LIMIT ?
+            ''', (limit,))
+
+            result = []
+            for row in cursor.fetchall():
+                # Get user info
+                user_info = conn.execute(
+                    'SELECT username, first_name, last_name FROM users WHERE user_id = ?',
+                    (row['user_id'],)
+                ).fetchone()
+
+                result.append(UserStats(
+                    user_id=row['user_id'],
+                    first_seen=datetime.fromisoformat(row['first_seen']),
+                    last_seen=datetime.fromisoformat(row['last_seen']),
+                    total_events=row['events'],
+                    total_messages=row['messages'],
+                    total_voice_messages=row['voice'],
+                    total_webapp_opens=row['webapp'],
+                    total_errors=row['errors'],
+                    username=user_info['username'] if user_info else None,
+                    first_name=user_info['first_name'] if user_info else None,
+                    last_name=user_info['last_name'] if user_info else None
+                ))
+
+            return result
+        except Exception as e:
+            logger.error("get_user_stats_error", error=str(e))
+            return []
+        finally:
+            conn.close()
+
+    def clear_test_data(self) -> int:
+        """Remove test data. Returns count of removed actions."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute('DELETE FROM actions WHERE is_test = 1')
+            deleted = cursor.rowcount
+            conn.commit()
+            logger.info("test_data_cleared", removed=deleted)
+            return deleted
+        except Exception as e:
+            logger.error("clear_test_data_error", error=str(e))
+            return 0
+        finally:
+            conn.close()
+
+    def migrate_from_json(self, json_data: Dict, daily_reminder_users: Dict[str, int]):
+        """
+        Migrate data from old JSON format to SQLite.
+
+        Args:
+            json_data: Data from analytics_data.json (with 'actions' key)
+            daily_reminder_users: Data from daily_reminder_users.json
+        """
+        conn = self._get_connection()
+        try:
+            # Migrate users from daily_reminder_users.json
+            for user_id, chat_id in daily_reminder_users.items():
+                conn.execute('''
+                    INSERT OR IGNORE INTO users (user_id, chat_id, first_seen, is_active)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, 1)
+                ''', (str(user_id), int(chat_id)))
+
+            # Migrate actions from analytics_data.json
+            actions = json_data.get('actions', [])
+            for action in actions:
+                conn.execute('''
+                    INSERT INTO actions
+                    (user_id, action_type, timestamp, details, event_id, success,
+                     error_message, is_test, input_tokens, output_tokens, total_tokens,
+                     cost_rub, llm_model)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    action.get('user_id'),
+                    action.get('action_type'),
+                    action.get('timestamp'),
+                    action.get('details'),
+                    action.get('event_id'),
+                    1 if action.get('success', True) else 0,
+                    action.get('error_message'),
+                    1 if action.get('is_test', False) else 0,
+                    action.get('input_tokens'),
+                    action.get('output_tokens'),
+                    action.get('total_tokens'),
+                    action.get('cost_rub'),
+                    action.get('llm_model')
+                ))
+
+                # Update user info if available
+                if any([action.get('username'), action.get('first_name'), action.get('last_name')]):
+                    conn.execute('''
+                        UPDATE users SET
+                            username = COALESCE(?, username),
+                            first_name = COALESCE(?, first_name),
+                            last_name = COALESCE(?, last_name)
+                        WHERE user_id = ?
+                    ''', (
+                        action.get('username'),
+                        action.get('first_name'),
+                        action.get('last_name'),
+                        action.get('user_id')
+                    ))
+
+            conn.commit()
+            logger.info("migration_completed",
+                       users=len(daily_reminder_users),
+                       actions=len(actions))
+        except Exception as e:
+            logger.error("migration_error", error=str(e), exc_info=True)
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
 
 # Global instance
