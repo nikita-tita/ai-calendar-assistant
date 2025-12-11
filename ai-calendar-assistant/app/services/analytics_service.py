@@ -528,6 +528,15 @@ class AnalyticsService:
                 first_seen = datetime.fromisoformat(metrics['first_seen']) if metrics['first_seen'] else now
                 last_seen = datetime.fromisoformat(metrics['last_seen']) if metrics['last_seen'] else now
 
+                # Handle None values from SQL aggregates
+                actions_today = metrics['actions_today'] or 0
+                actions_week = metrics['actions_week'] or 0
+                actions_month = metrics['actions_month'] or 0
+                total_logins = metrics['total_logins'] or 0
+                total_actions = metrics['total_actions'] or 0
+                active_days_week = active_days_week or 0
+                active_days_month = active_days_month or 0
+
                 result.append(UserDetail(
                     user_id=user_id,
                     username=username,
@@ -536,14 +545,14 @@ class AnalyticsService:
                     telegram_link=f"https://t.me/{username}" if username else None,
                     first_seen=first_seen,
                     last_seen=last_seen,
-                    total_logins=metrics['total_logins'] or 0,
-                    total_actions=metrics['total_actions'] or 0,
-                    actions_today=metrics['actions_today'] or 0,
-                    actions_week=metrics['actions_week'] or 0,
-                    actions_month=metrics['actions_month'] or 0,
+                    total_logins=total_logins,
+                    total_actions=total_actions,
+                    actions_today=actions_today,
+                    actions_week=actions_week,
+                    actions_month=actions_month,
                     active_days_week=active_days_week,
                     active_days_month=active_days_month,
-                    is_active_today=metrics['actions_today'] > 0,
+                    is_active_today=actions_today > 0,
                     is_active_week=active_days_week >= 3,
                     is_active_month=active_days_month >= 3
                 ))

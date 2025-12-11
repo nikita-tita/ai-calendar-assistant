@@ -15,6 +15,7 @@ from telegram.error import TelegramError
 
 from app.config import settings
 from app.services.encrypted_storage import EncryptedStorage
+from app.services.analytics_service import analytics_service
 
 logger = structlog.get_logger()
 
@@ -304,6 +305,77 @@ class ForumActivityLogger:
             'text': f"{emoji} *{event_type}*\n{details}",
             'is_bot_response': False
         })
+
+    async def send_admin_daily_report(self) -> bool:
+        """Send daily statistics report to admin via this bot.
+
+        Uses the same bot (@dogovorarenda_bot) to send stats to admin's personal chat.
+        This keeps all admin notifications in one place (same as smoke_test.sh).
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self.bot:
+            logger.warning("admin_report_skipped", reason="bot_not_initialized")
+            return False
+
+        if not settings.admin_user_id:
+            logger.warning("admin_report_skipped", reason="admin_user_id_not_set")
+            return False
+
+        try:
+            # Gather statistics from analytics service
+            llm_stats = analytics_service.get_llm_cost_stats(hours=24)
+            dashboard_stats = analytics_service.get_dashboard_stats()
+            error_stats = analytics_service.get_error_stats(hours=24)
+
+            # Format report message
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+            message = f"""📊 <b>Статистика бота</b>
+
+💰 <b>Yandex GPT (24ч):</b>
+├ Запросов: {llm_stats['total_requests']}
+├ Токенов: {llm_stats['total_tokens']:,}
+├ Стоимость: {llm_stats['total_cost_rub']:.2f}₽
+└ Ср./польз.: {llm_stats['avg_cost_per_user']:.2f}₽
+
+👥 <b>Пользователи:</b>
+├ Всего: {dashboard_stats.total_users}
+├ Активных сегодня: {dashboard_stats.active_users_today}
+└ Сообщений сегодня: {dashboard_stats.messages_today}
+
+📅 <b>События:</b>
+├ Всего: {dashboard_stats.total_events}
+└ Сегодня: {dashboard_stats.events_today}
+
+❌ <b>Ошибки (24ч):</b> {error_stats['total']}
+
+🕐 {timestamp}"""
+
+            # Send to admin's personal chat
+            await self.bot.send_message(
+                chat_id=int(settings.admin_user_id),
+                text=message,
+                parse_mode="HTML"
+            )
+
+            logger.info("admin_daily_report_sent",
+                       admin_id=settings.admin_user_id,
+                       llm_requests=llm_stats['total_requests'],
+                       llm_cost=llm_stats['total_cost_rub'])
+            return True
+
+        except TelegramError as e:
+            logger.error("admin_daily_report_failed",
+                        admin_id=settings.admin_user_id,
+                        error=str(e))
+            return False
+        except Exception as e:
+            logger.error("admin_daily_report_error",
+                        error=str(e),
+                        exc_info=True)
+            return False
 
 
 # Global instance (initialized in run_polling.py)
