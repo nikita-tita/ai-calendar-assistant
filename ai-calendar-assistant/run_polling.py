@@ -3,6 +3,8 @@
 import asyncio
 import logging
 import signal
+from datetime import datetime, time
+import pytz
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters
 
@@ -22,6 +24,50 @@ logger = logging.getLogger(__name__)
 
 # Global shutdown event for graceful termination
 shutdown_event = asyncio.Event()
+
+# Admin report schedule (Moscow timezone)
+ADMIN_REPORT_HOUR = 21  # 21:00 MSK
+ADMIN_REPORT_MINUTE = 0
+
+
+async def run_admin_report_schedule(forum_logger: ForumActivityLogger):
+    """Background task to send admin daily report at 21:00 MSK.
+
+    Uses forum_logger bot (@dogovorarenda_bot) to send stats to admin.
+    """
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    last_sent_date = None
+
+    logger.info("admin_report_schedule_started", time=f"{ADMIN_REPORT_HOUR:02d}:{ADMIN_REPORT_MINUTE:02d} MSK")
+
+    while True:
+        try:
+            now_msk = datetime.now(moscow_tz)
+            current_date = now_msk.date()
+            current_time = now_msk.time()
+
+            # Check if it's time to send (21:00 MSK) and not already sent today
+            target_time = time(ADMIN_REPORT_HOUR, ADMIN_REPORT_MINUTE)
+            if (current_time.hour == target_time.hour and
+                current_time.minute == target_time.minute and
+                last_sent_date != current_date):
+
+                logger.info("admin_report_sending", time=now_msk.strftime("%H:%M"))
+                success = await forum_logger.send_admin_daily_report()
+
+                if success:
+                    last_sent_date = current_date
+                    logger.info("admin_report_sent_successfully", date=str(current_date))
+
+            # Check every minute
+            await asyncio.sleep(60)
+
+        except asyncio.CancelledError:
+            logger.info("admin_report_schedule_cancelled")
+            break
+        except Exception as e:
+            logger.error("admin_report_schedule_error", error=str(e))
+            await asyncio.sleep(60)
 
 
 async def main():
@@ -94,6 +140,10 @@ async def main():
     event_reminders_task = asyncio.create_task(event_reminders.run_reminder_loop())
     logger.info("Event reminders started (30 minutes before events, idempotent)")
 
+    # Start admin report schedule (21:00 MSK via @dogovorarenda_bot)
+    admin_report_task = asyncio.create_task(run_admin_report_schedule(forum_logger))
+    logger.info("Admin report schedule started (21:00 MSK via @dogovorarenda_bot)")
+
     # Setup signal handlers for graceful shutdown (handles Docker SIGTERM)
     loop = asyncio.get_event_loop()
 
@@ -113,6 +163,7 @@ async def main():
     reminders_task.cancel()
     event_reminders.stop()
     event_reminders_task.cancel()
+    admin_report_task.cancel()
     forum_logger.stop()
     await app.updater.stop()
     await app.stop()
