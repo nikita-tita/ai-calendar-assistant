@@ -997,6 +997,98 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "es": "😴 ¡Descansa y recarga energías para nuevos logros!",
         "ar": "😴 استرح واستعد طاقتك لإنجازات جديدة!"
     },
+
+    # Morning reminders - adapted for real estate agents
+    "morning_empty_day": {
+        "ru": "📭 На сегодня пока ничего не запланировано.",
+        "en": "📭 Nothing scheduled for today yet."
+    },
+    "morning_empty_suggestions": {
+        "ru": "💡 Свободный день — отличный шанс:\n• Обзвонить клиентов из базы\n• Назначить показы на неделю\n• Обновить объявления\n\nНапиши что планируешь — занесу в календарь.",
+        "en": "💡 A free day — great chance to:\n• Call clients from your database\n• Schedule showings for the week\n• Update listings\n\nTell me your plans — I'll add them to the calendar."
+    },
+    "morning_no_meetings": {
+        "ru": "📅 Встреч сегодня нет — можно сфокусироваться на делах!",
+        "en": "📅 No meetings today — time to focus on tasks!"
+    },
+    "morning_tasks_header": {
+        "ru": "📋 Задачи ({count}):",
+        "en": "📋 Tasks ({count}):"
+    },
+    "morning_meetings_header": {
+        "ru": "📅 Сегодня {count} встреч:",
+        "en": "📅 Today {count} meetings:"
+    },
+    "morning_add_tasks": {
+        "ru": "📝 Есть задачи на сегодня? Напиши — добавлю!",
+        "en": "📝 Any tasks for today? Tell me — I'll add them!"
+    },
+    "morning_good_deals": {
+        "ru": "Удачных сделок! 🏠",
+        "en": "Good luck with your deals! 🏠"
+    },
+    "morning_full_day": {
+        "ru": "День для результатов! 💰",
+        "en": "A day for results! 💰"
+    },
+    "morning_and_tasks": {
+        "ru": "📋 И {count} задач:",
+        "en": "📋 And {count} tasks:"
+    },
+    "morning_tasks_more": {
+        "ru": "...и ещё {count}",
+        "en": "...and {count} more"
+    },
+    "morning_productive": {
+        "ru": "Продуктивного дня! 💪",
+        "en": "Have a productive day! 💪"
+    },
+
+    # Evening reminders - day summary
+    "evening_summary_header": {
+        "ru": "🌙 День заканчивается!",
+        "en": "🌙 Day is ending!"
+    },
+    "evening_stats": {
+        "ru": "📊 Сегодня:\n• {events} встреч проведено ✅\n• {completed} из {total} задач закрыто",
+        "en": "📊 Today:\n• {events} meetings completed ✅\n• {completed} of {total} tasks done"
+    },
+    "evening_stats_events_only": {
+        "ru": "📊 Сегодня проведено {events} встреч ✅",
+        "en": "📊 Today {events} meetings completed ✅"
+    },
+    "evening_stats_tasks_only": {
+        "ru": "📊 Сегодня закрыто {completed} из {total} задач",
+        "en": "📊 Today {completed} of {total} tasks done"
+    },
+    "evening_remaining_header": {
+        "ru": "📋 Осталось:",
+        "en": "📋 Remaining:"
+    },
+    "evening_rest_tomorrow": {
+        "ru": "Отдохни — завтра разберёмся! 🏠",
+        "en": "Rest up — we'll handle it tomorrow! 🏠"
+    },
+    "evening_all_done_header": {
+        "ru": "🏆 Отличный день!",
+        "en": "🏆 Great day!"
+    },
+    "evening_all_done_stats": {
+        "ru": "📊 Всё выполнено:\n• {events} встреч ✅\n• {tasks} задач закрыто ✅",
+        "en": "📊 All done:\n• {events} meetings ✅\n• {tasks} tasks completed ✅"
+    },
+    "evening_keep_going": {
+        "ru": "Так держать! Отдыхай, завтра снова в бой 💪",
+        "en": "Keep it up! Rest now, back at it tomorrow 💪"
+    },
+    "evening_quiet_day": {
+        "ru": "🌙 Спокойный день сегодня.",
+        "en": "🌙 A quiet day today."
+    },
+    "evening_plan_tomorrow": {
+        "ru": "💭 Завтра есть планы?\nНапиши вечером или утром — помогу организовать.\n\nХорошего отдыха!",
+        "en": "💭 Any plans for tomorrow?\nWrite me tonight or in the morning — I'll help organize.\n\nHave a good rest!"
+    },
 }
 
 

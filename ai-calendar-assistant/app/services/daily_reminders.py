@@ -17,6 +17,7 @@ from app.services.user_preferences import user_preferences
 from app.services.translations import get_translation
 from app.utils.datetime_parser import format_datetime_human
 from app.services.analytics_service import analytics_service
+from app.services.todos_service import todos_service
 
 logger = structlog.get_logger()
 
@@ -192,8 +193,45 @@ class DailyRemindersService:
             self._save_users()
             logger.info("user_unregistered_from_reminders", user_id=user_id)
 
+    async def _get_user_todos(self, user_id: str) -> tuple:
+        """
+        Get user's incomplete and today-completed todos.
+
+        Returns:
+            Tuple of (incomplete_todos, completed_today_todos)
+        """
+        try:
+            all_todos = await todos_service.list_todos(user_id)
+            incomplete = [t for t in all_todos if not t.completed]
+            # Get todos completed today
+            today = datetime.now().date()
+            completed_today = [
+                t for t in all_todos
+                if t.completed and t.updated_at.date() == today
+            ]
+            return incomplete, completed_today
+        except Exception as e:
+            logger.error("get_user_todos_error", user_id=user_id, error=str(e))
+            return [], []
+
+    def _format_task_list(self, tasks: list, max_items: int = 5) -> str:
+        """Format task list with truncation."""
+        if not tasks:
+            return ""
+
+        lines = []
+        for i, task in enumerate(tasks[:max_items]):
+            title = task.title[:40] + "..." if len(task.title) > 40 else task.title
+            lines.append(f"• {title}")
+
+        if len(tasks) > max_items:
+            remaining = len(tasks) - max_items
+            lines.append(f"...и ещё {remaining}")
+
+        return "\n".join(lines)
+
     async def send_morning_reminder(self, user_id: str, chat_id: int):
-        """Send morning reminder with today's events."""
+        """Send morning reminder with today's events and tasks."""
         try:
             # Get user's language and timezone
             lang = user_preferences.get_language(user_id)
@@ -202,48 +240,85 @@ class DailyRemindersService:
 
             # Get current date in user's timezone
             now_user_tz = datetime.now(user_tz)
-            today = now_user_tz.date()
 
-            # Get today's events - define time range for today
+            # Get today's events
             start_of_day = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = start_of_day + timedelta(days=1)
-
-            # Get events for today
             events = await calendar_service.list_events(user_id, start_of_day, end_of_day)
+
+            # Format events list
             today_events = []
             for e in events:
-                # Convert event time to user timezone
                 event_start = e.start
                 if event_start.tzinfo is None:
                     event_start = pytz.UTC.localize(event_start)
                 event_start_local = event_start.astimezone(user_tz)
-
                 today_events.append({
                     'start': event_start_local,
-                    'title': e.summary  # CalendarEvent uses 'summary' not 'title'
+                    'title': e.summary
                 })
+            today_events.sort(key=lambda x: x['start'])
 
-            # Build message with translations
+            # Get user's incomplete tasks
+            incomplete_todos, _ = await self._get_user_todos(user_id)
+
+            events_count = len(today_events)
+            tasks_count = len(incomplete_todos)
+
+            # Build greeting
             greeting = get_translation("morning_greeting", lang)
+            parts = [greeting, ""]
 
-            if not today_events:
-                no_events = get_translation("no_events_today", lang)
-                message = f"{greeting}\n\n{no_events}"
-            else:
+            # Determine scenario and build message
+            if events_count == 0 and tasks_count == 0:
+                # Scenario 1: Empty day
+                parts.append(get_translation("morning_empty_day", lang))
+                parts.append("")
+                parts.append(get_translation("morning_empty_suggestions", lang))
+
+            elif events_count == 0 and tasks_count > 0:
+                # Scenario 2: Tasks only
+                parts.append(get_translation("morning_no_meetings", lang))
+                parts.append("")
+                parts.append(get_translation("morning_tasks_header", lang, count=tasks_count))
+                parts.append(self._format_task_list(incomplete_todos))
+                parts.append("")
+                parts.append(get_translation("morning_productive", lang))
+
+            elif events_count > 0 and tasks_count == 0:
+                # Scenario 3: Events only
+                parts.append(get_translation("morning_meetings_header", lang, count=events_count))
                 events_list = "\n".join([
-                    f"• {e['start'].strftime('%H:%M')} - {e['title']}"
-                    for e in sorted(today_events, key=lambda x: x['start'])
+                    f"• {e['start'].strftime('%H:%M')} - {e['title'][:40]}"
+                    for e in today_events[:7]
                 ])
-                events_header = get_translation("your_events_today", lang)
-                successful_day = get_translation("successful_day", lang)
-                message = f"{greeting}\n\n{events_header}\n\n{events_list}\n\n{successful_day}"
+                parts.append(events_list)
+                parts.append("")
+                parts.append(get_translation("morning_add_tasks", lang))
+                parts.append("")
+                parts.append(get_translation("morning_good_deals", lang))
 
+            else:
+                # Scenario 4: Full day (events + tasks)
+                parts.append(get_translation("morning_meetings_header", lang, count=events_count))
+                events_list = "\n".join([
+                    f"• {e['start'].strftime('%H:%M')} - {e['title'][:40]}"
+                    for e in today_events[:7]
+                ])
+                parts.append(events_list)
+                parts.append("")
+                parts.append(get_translation("morning_and_tasks", lang, count=tasks_count))
+                parts.append(self._format_task_list(incomplete_todos))
+                parts.append("")
+                parts.append(get_translation("morning_full_day", lang))
+
+            message = "\n".join(parts)
             await self.bot.send_message(chat_id=chat_id, text=message)
-            logger.info("morning_reminder_sent", user_id=user_id, events_count=len(today_events))
+            logger.info("morning_reminder_sent", user_id=user_id,
+                       events_count=events_count, tasks_count=tasks_count)
 
         except TelegramError as e:
             error_msg = str(e).lower()
-            # Unregister user if chat not found (user blocked bot or deleted account)
             if "chat not found" in error_msg or "bot was blocked" in error_msg:
                 logger.warning("chat_not_found_unregistering", user_id=user_id, error=str(e))
                 self.unregister_user(user_id)
@@ -291,7 +366,7 @@ class DailyRemindersService:
             logger.error("morning_motivation_error", user_id=user_id, error=str(e))
 
     async def send_evening_reminder(self, user_id: str, chat_id: int):
-        """Send evening motivational message with optional admin stats."""
+        """Send evening summary with tasks status and optional admin stats."""
         try:
             # Get user's language and timezone
             lang = user_preferences.get_language(user_id)
@@ -300,35 +375,69 @@ class DailyRemindersService:
 
             # Get current date in user's timezone
             now_user_tz = datetime.now(user_tz)
-            today = now_user_tz.date()
 
-            # Get today's events count - define time range for today
+            # Get today's events count
             start_of_day = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = start_of_day + timedelta(days=1)
-
-            # Get events for today and count them
             events = await calendar_service.list_events(user_id, start_of_day, end_of_day)
-            today_events_count = len(events)
+            events_count = len(events)
 
-            # Rotate message based on day of year (5 different messages)
-            message_keys = [
-                "evening_message_1",
-                "evening_message_2",
-                "evening_message_3",
-                "evening_message_4",
-                "evening_message_5",
-            ]
-            message_index = now_user_tz.timetuple().tm_yday % len(message_keys)
-            base_message = get_translation(message_keys[message_index], lang)
+            # Get tasks: incomplete and completed today
+            incomplete_todos, completed_today = await self._get_user_todos(user_id)
+            incomplete_count = len(incomplete_todos)
+            completed_count = len(completed_today)
+            total_tasks = incomplete_count + completed_count
 
-            if today_events_count > 0:
-                stats = "\n\n" + get_translation("events_count_today", lang, count=today_events_count)
-                message = base_message + stats
+            parts = []
+
+            # Determine scenario
+            has_activity = events_count > 0 or total_tasks > 0
+
+            if not has_activity:
+                # Scenario 3: Quiet day
+                parts.append(get_translation("evening_quiet_day", lang))
+                parts.append("")
+                parts.append(get_translation("evening_plan_tomorrow", lang))
+
+            elif incomplete_count > 0:
+                # Scenario 1: Has remaining tasks
+                parts.append(get_translation("evening_summary_header", lang))
+                parts.append("")
+
+                # Show stats based on what we have
+                if events_count > 0 and total_tasks > 0:
+                    parts.append(get_translation("evening_stats", lang,
+                                                events=events_count,
+                                                completed=completed_count,
+                                                total=total_tasks))
+                elif events_count > 0:
+                    parts.append(get_translation("evening_stats_events_only", lang,
+                                                events=events_count))
+                else:
+                    parts.append(get_translation("evening_stats_tasks_only", lang,
+                                                completed=completed_count,
+                                                total=total_tasks))
+
+                parts.append("")
+                parts.append(get_translation("evening_remaining_header", lang))
+                parts.append(self._format_task_list(incomplete_todos))
+                parts.append("")
+                parts.append(get_translation("evening_rest_tomorrow", lang))
+
             else:
-                message = base_message
+                # Scenario 2: All done
+                parts.append(get_translation("evening_all_done_header", lang))
+                parts.append("")
 
-            rest_message = get_translation("rest_well", lang)
-            message += f"\n\n{rest_message}"
+                if events_count > 0 or completed_count > 0:
+                    parts.append(get_translation("evening_all_done_stats", lang,
+                                                events=events_count,
+                                                tasks=completed_count))
+                    parts.append("")
+
+                parts.append(get_translation("evening_keep_going", lang))
+
+            message = "\n".join(parts)
 
             # Add LLM cost stats for admin user
             if settings.admin_user_id and user_id == settings.admin_user_id:
@@ -356,7 +465,10 @@ class DailyRemindersService:
                 message += admin_section
 
             await self.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
-            logger.info("evening_reminder_sent", user_id=user_id, events_count=today_events_count, is_admin=(user_id == settings.admin_user_id))
+            logger.info("evening_reminder_sent", user_id=user_id,
+                       events_count=events_count, tasks_incomplete=incomplete_count,
+                       tasks_completed=completed_count,
+                       is_admin=(user_id == settings.admin_user_id))
 
         except TelegramError as e:
             error_msg = str(e).lower()
