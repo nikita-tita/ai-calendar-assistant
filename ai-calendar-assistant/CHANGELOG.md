@@ -6,6 +6,19 @@
 
 ---
 
+## [2025-12-12] - Analytics SQLite Migration v2 (Actions + User Count Fix)
+
+### Fixed (v2 hotfix)
+- **"0 пользователей" в админке**
+  - Причина: `get_dashboard_stats()` считал users из `actions`, а не из `users`
+  - Исправлено: теперь `total_users` берётся из таблицы `users`
+- **Миграция исторических actions из зашифрованного JSON**
+  - Добавлен `_migrate_encrypted_actions()` — автоматическая миграция 318 исторических действий
+  - Расшифровка через `EncryptedStorage`, запись в SQLite
+  - Старый файл переименовывается в `.enc.migrated`
+
+---
+
 ## [2025-12-11] - Analytics SQLite Migration (Multi-Process Fix)
 
 ### Problem
