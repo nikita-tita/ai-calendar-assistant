@@ -1,6 +1,7 @@
 """Daily reminders service for morning and evening messages."""
 
 import asyncio
+import sqlite3
 from datetime import datetime, time, timedelta
 from typing import Dict
 import json
@@ -30,18 +31,43 @@ def is_time_match(current: time, target: time) -> bool:
     return current.hour == target.hour and current.minute == target.minute
 
 
+def is_in_quiet_hours(current_time: time, start: time, end: time) -> bool:
+    """
+    Check if current time is within quiet hours.
+
+    Args:
+        current_time: Time to check
+        start: Quiet hours start (e.g., 22:00)
+        end: Quiet hours end (e.g., 08:00)
+
+    Returns:
+        True if in quiet hours, False otherwise
+    """
+    if start < end:
+        # Normal range within same day (e.g., 08:00-22:00)
+        return start <= current_time < end
+    else:
+        # Range crosses midnight (e.g., 22:00-08:00)
+        return current_time >= start or current_time < end
+
+
 class DailyRemindersService:
     """Service for sending daily reminders to users."""
 
-    def __init__(self, bot: Bot, users_file: str = "/var/lib/calendar-bot/daily_reminder_users.json"):
+    def __init__(self, bot: Bot, users_file: str = "/var/lib/calendar-bot/daily_reminder_users.json",
+                 db_path: str = "/var/lib/calendar-bot/reminders.db"):
         """Initialize reminders service."""
         self.bot = bot
         self.users_file = Path(users_file)
+        self.db_path = Path(db_path)
         self.active_users: Dict[str, int] = {}  # user_id -> chat_id mapping
         self.running = False
 
         # Load active users from file
         self._load_users()
+
+        # Initialize SQLite for idempotency
+        self._init_database()
 
     def _load_users(self):
         """Load active users from file."""
@@ -64,6 +90,94 @@ class DailyRemindersService:
                 json.dump(self.active_users, f)
         except Exception as e:
             logger.error("daily_reminder_users_save_error", error=str(e), exc_info=True)
+
+    def _init_database(self):
+        """Initialize SQLite database for tracking sent daily reminders."""
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(self.db_path))
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS sent_daily_reminders (
+                    user_id TEXT NOT NULL,
+                    reminder_date TEXT NOT NULL,
+                    reminder_type TEXT NOT NULL,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, reminder_date, reminder_type)
+                )
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_daily_sent_at
+                ON sent_daily_reminders(sent_at)
+            ''')
+            conn.commit()
+            conn.close()
+            logger.info("daily_reminders_database_initialized", path=str(self.db_path))
+        except Exception as e:
+            logger.error("daily_reminders_database_init_error", error=str(e))
+
+    def _is_daily_reminder_sent(self, user_id: str, date_str: str, reminder_type: str) -> bool:
+        """
+        Check if daily reminder was already sent.
+
+        Args:
+            user_id: User ID
+            date_str: Date in YYYY-MM-DD format
+            reminder_type: 'morning', 'motivation', or 'evening'
+
+        Returns:
+            True if already sent, False otherwise
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.execute(
+                'SELECT 1 FROM sent_daily_reminders WHERE user_id = ? AND reminder_date = ? AND reminder_type = ?',
+                (user_id, date_str, reminder_type)
+            )
+            result = cursor.fetchone() is not None
+            conn.close()
+            return result
+        except Exception as e:
+            logger.error("check_daily_reminder_error", error=str(e))
+            return False  # Allow sending if check fails
+
+    def _record_daily_reminder(self, user_id: str, date_str: str, reminder_type: str):
+        """
+        Record that daily reminder was sent.
+
+        Args:
+            user_id: User ID
+            date_str: Date in YYYY-MM-DD format
+            reminder_type: 'morning', 'motivation', or 'evening'
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.execute(
+                '''INSERT OR REPLACE INTO sent_daily_reminders
+                   (user_id, reminder_date, reminder_type, sent_at)
+                   VALUES (?, ?, ?, CURRENT_TIMESTAMP)''',
+                (user_id, date_str, reminder_type)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("record_daily_reminder_error", error=str(e))
+
+    def cleanup_old_daily_reminders(self, days: int = 7):
+        """Remove daily reminder records older than specified days."""
+        try:
+            cutoff = datetime.now() - timedelta(days=days)
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.execute(
+                'DELETE FROM sent_daily_reminders WHERE sent_at < ?',
+                (cutoff.isoformat(),)
+            )
+            deleted_count = cursor.rowcount
+            conn.commit()
+            conn.close()
+            if deleted_count > 0:
+                logger.info("old_daily_reminders_cleaned", count=deleted_count, days=days)
+        except Exception as e:
+            logger.error("cleanup_daily_reminders_error", error=str(e))
 
     def register_user(self, user_id: str, chat_id: int):
         """Register user for daily reminders."""
@@ -261,9 +375,6 @@ class DailyRemindersService:
                    test_mode=TEST_MODE,
                    active_users_count=len(self.active_users))
 
-        # Track which users have received motivation today
-        motivation_sent_today = set()
-
         # Log check counter (every 10 minutes)
         check_counter = 0
 
@@ -279,10 +390,9 @@ class DailyRemindersService:
                                active_users=len(self.active_users),
                                checks_done=check_counter)
 
-                # Check if it's a new day (reset motivation tracking at 00:00 UTC)
-                if utc_now.hour == 0 and utc_now.minute == 0:
-                    motivation_sent_today.clear()
-                    logger.info("motivation_tracking_reset")
+                # Cleanup old reminder records at 3:00 UTC
+                if utc_now.hour == 3 and utc_now.minute == 0:
+                    self.cleanup_old_daily_reminders(days=7)
 
                 # Check each user's local time
                 for user_id, chat_id in list(self.active_users.items()):
@@ -310,16 +420,11 @@ class DailyRemindersService:
                         quiet_end_hour, quiet_end_min = map(int, quiet_end_str.split(':'))
                         quiet_end = time(quiet_end_hour, quiet_end_min)
 
-                        # Check if current time is in quiet hours
-                        def is_in_quiet_hours(current_time, start, end):
-                            if start < end:
-                                # Normal range (e.g., 22:00-08:00 next day)
-                                return start <= current_time < end
-                            else:
-                                # Range crosses midnight (e.g., 22:00-08:00)
-                                return current_time >= start or current_time < end
-
+                        # Check if current time is in quiet hours (using module-level function)
                         in_quiet_hours = is_in_quiet_hours(user_time, quiet_start, quiet_end)
+
+                        # Get date string for idempotency check
+                        user_date_str = user_local_time.strftime('%Y-%m-%d')
 
                         # Determine if this is a test user
                         is_test_user = user_id in TEST_USER_IDS
@@ -330,23 +435,26 @@ class DailyRemindersService:
                             # Morning reminder at 12:37 (normally user's configured time)
                             if time(12, 37) <= user_time < time(12, 38):
                                 if morning_enabled and not in_quiet_hours:
-                                    await self.send_morning_reminder(user_id, chat_id)
-                                    await asyncio.sleep(1)  # Rate limiting
+                                    if not self._is_daily_reminder_sent(user_id, user_date_str, 'morning'):
+                                        await self.send_morning_reminder(user_id, chat_id)
+                                        self._record_daily_reminder(user_id, user_date_str, 'morning')
+                                        await asyncio.sleep(1)  # Rate limiting
 
                             # Morning motivation at 12:39 (normally 10:00)
                             elif time(12, 39) <= user_time < time(12, 40):
                                 if not in_quiet_hours:
-                                    user_date_key = f"{user_id}:{user_local_time.date()}"
-                                    if user_date_key not in motivation_sent_today:
+                                    if not self._is_daily_reminder_sent(user_id, user_date_str, 'motivation'):
                                         await self.send_morning_motivation(user_id, chat_id)
-                                        motivation_sent_today.add(user_date_key)
+                                        self._record_daily_reminder(user_id, user_date_str, 'motivation')
                                         await asyncio.sleep(1)  # Rate limiting
 
                             # Evening reminder at 21:00 (normally user's configured time)
                             elif time(21, 0) <= user_time < time(21, 1):
                                 if evening_enabled and not in_quiet_hours:
-                                    await self.send_evening_reminder(user_id, chat_id)
-                                    await asyncio.sleep(1)  # Rate limiting
+                                    if not self._is_daily_reminder_sent(user_id, user_date_str, 'evening'):
+                                        await self.send_evening_reminder(user_id, chat_id)
+                                        self._record_daily_reminder(user_id, user_date_str, 'evening')
+                                        await asyncio.sleep(1)  # Rate limiting
 
                         else:
                             # PRODUCTION SCHEDULE - uses user's configured times
@@ -355,22 +463,25 @@ class DailyRemindersService:
                             # Morning reminder at user's configured time
                             if morning_enabled and not in_quiet_hours:
                                 if is_time_match(current_minute_time, morning_time):
-                                    await self.send_morning_reminder(user_id, chat_id)
-                                    await asyncio.sleep(1)  # Rate limiting
+                                    if not self._is_daily_reminder_sent(user_id, user_date_str, 'morning'):
+                                        await self.send_morning_reminder(user_id, chat_id)
+                                        self._record_daily_reminder(user_id, user_date_str, 'morning')
+                                        await asyncio.sleep(1)  # Rate limiting
 
                             # Morning motivation at 10:00 (only if morning reminders enabled)
                             if morning_enabled and not in_quiet_hours and is_time_match(current_minute_time, time(10, 0)):
-                                user_date_key = f"{user_id}:{user_local_time.date()}"
-                                if user_date_key not in motivation_sent_today:
+                                if not self._is_daily_reminder_sent(user_id, user_date_str, 'motivation'):
                                     await self.send_morning_motivation(user_id, chat_id)
-                                    motivation_sent_today.add(user_date_key)
+                                    self._record_daily_reminder(user_id, user_date_str, 'motivation')
                                     await asyncio.sleep(1)  # Rate limiting
 
                             # Evening reminder at user's configured time
                             if evening_enabled and not in_quiet_hours:
                                 if is_time_match(current_minute_time, evening_time):
-                                    await self.send_evening_reminder(user_id, chat_id)
-                                    await asyncio.sleep(1)  # Rate limiting
+                                    if not self._is_daily_reminder_sent(user_id, user_date_str, 'evening'):
+                                        await self.send_evening_reminder(user_id, chat_id)
+                                        self._record_daily_reminder(user_id, user_date_str, 'evening')
+                                        await asyncio.sleep(1)  # Rate limiting
 
                     except Exception as e:
                         logger.error("user_schedule_check_error", user_id=user_id, error=str(e))

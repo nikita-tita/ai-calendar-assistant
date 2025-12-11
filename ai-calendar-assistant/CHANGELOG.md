@@ -6,6 +6,47 @@
 
 ---
 
+## [2025-12-11] - Daily Reminders Idempotency Fix
+
+### Fixed
+- **КРИТИЧЕСКИЙ БАГ: Дублирование утренних/вечерних напоминаний при рестарте**
+  - Проблема: утренние и вечерние напоминания могли отправляться повторно после перезапуска бота
+  - Причина: в отличие от `morning_motivation` (которая использовала in-memory set),
+    `morning_reminder` и `evening_reminder` не имели защиты от дублирования
+  - Решение: SQLite-based идемпотентность (таблица `sent_daily_reminders`)
+
+### Added
+- **SQLite идемпотентность для daily reminders**
+  - Новая таблица `sent_daily_reminders` в существующей БД `/var/lib/calendar-bot/reminders.db`
+  - Переиспользует паттерн из `event_reminders_idempotent.py`
+  - Трекинг по `(user_id, date, reminder_type)`
+  - Типы: `'morning'`, `'motivation'`, `'evening'`
+  - Автоматический cleanup записей старше 7 дней (в 3:00 UTC)
+
+- **Вынесение `is_in_quiet_hours()` на уровень модуля**
+  - Была: функция создавалась заново на каждой итерации цикла (61 раз/мин)
+  - Стала: один раз на уровне модуля с правильной документацией
+
+### Changed
+- Убран устаревший `motivation_sent_today = set()` (заменён на SQLite)
+- Исправлен неправильный комментарий в проверке quiet hours
+
+### Technical
+- Файл изменён: `app/services/daily_reminders.py`
+- Добавлено: `import sqlite3`
+- Новые методы:
+  - `_init_database()` — создание таблицы при инициализации
+  - `_is_daily_reminder_sent()` — проверка отправки
+  - `_record_daily_reminder()` — запись об отправке
+  - `cleanup_old_daily_reminders()` — очистка старых записей
+
+### Влияние
+- Напоминания больше не дублируются при рестартах/деплоях
+- Данные сохраняются между рестартами (SQLite)
+- Минимальное влияние на производительность
+
+---
+
 ## [2025-12-10] - LLM Cost Optimization & Dialog Context
 
 ### Optimized
