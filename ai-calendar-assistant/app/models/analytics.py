@@ -143,6 +143,9 @@ class UserDetail(BaseModel):
     is_active_week: bool  # 3+ days in week
     is_active_month: bool  # 3+ days per week throughout month
 
+    # Admin visibility (persistent server-side storage)
+    is_hidden_in_admin: bool = False
+
 
 class UserDialogEntry(BaseModel):
     """Single dialog entry (message or action)."""

@@ -653,9 +653,9 @@ DEFAULT_TIMEZONE=Europe/Moscow
 | SSH команда | `ssh -i ~/.ssh/id_housler root@91.229.8.221` |
 | Production URL | https://calendar.housler.ru |
 | GitHub | https://github.com/nikita-tita/ai-calendar-assistant |
-| Telegram бот | @calendar_housler_bot |
-| Smoke test bot | @dogovorarenda_bot |
-| Chat ID для alerts | 2296243 |
+| Telegram бот (основной) | @aibroker_bot |
+| Telegram бот (админский) | @dogovorarenda_bot |
+| Admin chat ID | 2296243 |
 
 ---
 
