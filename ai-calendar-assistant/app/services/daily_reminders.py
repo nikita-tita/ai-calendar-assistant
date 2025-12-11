@@ -59,38 +59,62 @@ class DailyRemindersService:
                  db_path: str = "/var/lib/calendar-bot/reminders.db"):
         """Initialize reminders service."""
         self.bot = bot
-        self.users_file = Path(users_file)
+        self.users_file = Path(users_file)  # Legacy, kept for migration
         self.db_path = Path(db_path)
-        self.active_users: Dict[str, int] = {}  # user_id -> chat_id mapping
         self.running = False
 
-        # Load active users from file
+        # Load active users from analytics SQLite (single source of truth)
         self._load_users()
 
-        # Initialize SQLite for idempotency
+        # Migrate from JSON if needed (one-time)
+        self._migrate_json_users()
+
+        # Initialize SQLite for idempotency (sent_daily_reminders table)
         self._init_database()
 
-    def _load_users(self):
-        """Load active users from file."""
-        try:
-            if self.users_file.exists():
-                with open(self.users_file, 'r') as f:
-                    data = json.load(f)
-                    self.active_users = {str(k): int(v) for k, v in data.items()}
-                logger.info("daily_reminder_users_loaded", count=len(self.active_users))
-            else:
-                logger.info("daily_reminder_users_file_not_found", creating_new=True)
-        except Exception as e:
-            logger.error("daily_reminder_users_load_error", error=str(e), exc_info=True)
+    @property
+    def active_users(self) -> Dict[str, int]:
+        """Get active users from analytics service (live query)."""
+        return analytics_service.get_active_users()
 
-    def _save_users(self):
-        """Save active users to file."""
+    def _load_users(self):
+        """Load active users from analytics SQLite."""
+        users = analytics_service.get_active_users()
+        logger.info("daily_reminder_users_loaded", count=len(users), source="analytics_sqlite")
+
+    def _migrate_json_users(self):
+        """One-time migration from JSON to SQLite."""
+        if not self.users_file.exists():
+            return
+
         try:
-            self.users_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.users_file, 'w') as f:
-                json.dump(self.active_users, f)
+            with open(self.users_file, 'r') as f:
+                json_users = json.load(f)
+
+            if not json_users:
+                return
+
+            # Check if migration needed (SQLite has fewer users)
+            sqlite_users = analytics_service.get_active_users()
+            if len(sqlite_users) >= len(json_users):
+                logger.info("migration_skipped", reason="sqlite_has_users")
+                return
+
+            # Migrate each user
+            migrated = 0
+            for user_id, chat_id in json_users.items():
+                analytics_service.ensure_user(str(user_id), int(chat_id))
+                migrated += 1
+
+            logger.info("json_users_migrated_to_sqlite", count=migrated)
+
+            # Rename old file to backup
+            backup_path = self.users_file.with_suffix('.json.migrated')
+            self.users_file.rename(backup_path)
+            logger.info("json_file_backed_up", path=str(backup_path))
+
         except Exception as e:
-            logger.error("daily_reminder_users_save_error", error=str(e), exc_info=True)
+            logger.error("json_migration_error", error=str(e), exc_info=True)
 
     def _init_database(self):
         """Initialize SQLite database for tracking sent daily reminders."""
@@ -181,17 +205,14 @@ class DailyRemindersService:
             logger.error("cleanup_daily_reminders_error", error=str(e))
 
     def register_user(self, user_id: str, chat_id: int):
-        """Register user for daily reminders."""
-        self.active_users[user_id] = chat_id
-        self._save_users()
+        """Register user for daily reminders (writes to analytics SQLite)."""
+        analytics_service.ensure_user(str(user_id), int(chat_id))
         logger.info("user_registered_for_reminders", user_id=user_id)
 
     def unregister_user(self, user_id: str):
         """Unregister user from daily reminders (e.g., when chat is not found)."""
-        if user_id in self.active_users:
-            del self.active_users[user_id]
-            self._save_users()
-            logger.info("user_unregistered_from_reminders", user_id=user_id)
+        analytics_service.deactivate_user(str(user_id))
+        logger.info("user_unregistered_from_reminders", user_id=user_id)
 
     async def _get_user_todos(self, user_id: str) -> tuple:
         """

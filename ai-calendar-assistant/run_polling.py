@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import signal
 from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters
 
@@ -18,6 +19,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Global shutdown event for graceful termination
+shutdown_event = asyncio.Event()
 
 
 async def main():
@@ -90,20 +94,30 @@ async def main():
     event_reminders_task = asyncio.create_task(event_reminders.run_reminder_loop())
     logger.info("Event reminders started (30 minutes before events, idempotent)")
 
-    # Keep running
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Stopping bot...")
-        reminders.stop()
-        reminders_task.cancel()
-        event_reminders.stop()
-        event_reminders_task.cancel()
-        forum_logger.stop()
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
+    # Setup signal handlers for graceful shutdown (handles Docker SIGTERM)
+    loop = asyncio.get_event_loop()
+
+    def signal_handler(sig):
+        logger.info(f"Received signal {sig}, initiating graceful shutdown...")
+        shutdown_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))
+
+    # Wait for shutdown signal
+    await shutdown_event.wait()
+
+    # Graceful shutdown
+    logger.info("Stopping bot...")
+    reminders.stop()
+    reminders_task.cancel()
+    event_reminders.stop()
+    event_reminders_task.cancel()
+    forum_logger.stop()
+    await app.updater.stop()
+    await app.stop()
+    await app.shutdown()
+    logger.info("Bot stopped gracefully")
 
 
 if __name__ == "__main__":
