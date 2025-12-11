@@ -524,14 +524,12 @@
 <script>
 const API_BASE = '/api/admin';
 const STORAGE_KEY = 'admin_session_token';
-const HIDDEN_USERS_KEY = 'admin_hidden_users';
 const CACHE_KEY = 'admin_report_cache';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 let sessionToken = null;
 let reportData = null;
-let hiddenUsers = new Set();
-let showHiddenUsers = false;
+let showHiddenUsers = false;  // UI toggle to show/hide hidden users
 
 // Cache functions
 function saveToCache() {

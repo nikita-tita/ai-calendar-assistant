@@ -58,9 +58,17 @@ class AnalyticsService:
                     last_name TEXT,
                     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_seen TIMESTAMP,
-                    is_active INTEGER DEFAULT 1
+                    is_active INTEGER DEFAULT 1,
+                    is_hidden_in_admin INTEGER DEFAULT 0
                 )
             ''')
+
+            # Migration: add is_hidden_in_admin column if missing
+            cursor = conn.execute("PRAGMA table_info(users)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if 'is_hidden_in_admin' not in columns:
+                conn.execute('ALTER TABLE users ADD COLUMN is_hidden_in_admin INTEGER DEFAULT 0')
+                logger.info("migration_added_is_hidden_in_admin_column")
 
             # Actions table
             conn.execute('''
@@ -252,6 +260,39 @@ class AnalyticsService:
         except Exception as e:
             logger.error("get_active_users_error", error=str(e))
             return {}
+        finally:
+            conn.close()
+
+    def toggle_user_hidden(self, user_id: str) -> bool:
+        """
+        Toggle user's hidden status in admin dashboard.
+
+        Returns new is_hidden value (True if now hidden, False if now visible).
+        """
+        conn = self._get_connection()
+        try:
+            # Get current value
+            cursor = conn.execute(
+                'SELECT is_hidden_in_admin FROM users WHERE user_id = ?',
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                logger.warning("toggle_user_hidden_not_found", user_id=user_id)
+                return False
+
+            # Toggle value
+            new_value = 0 if row['is_hidden_in_admin'] else 1
+            conn.execute(
+                'UPDATE users SET is_hidden_in_admin = ? WHERE user_id = ?',
+                (new_value, user_id)
+            )
+            conn.commit()
+            logger.info("user_hidden_toggled", user_id=user_id, is_hidden=bool(new_value))
+            return bool(new_value)
+        except Exception as e:
+            logger.error("toggle_user_hidden_error", user_id=user_id, error=str(e))
+            return False
         finally:
             conn.close()
 
@@ -493,13 +534,14 @@ class AnalyticsService:
 
                 # Get user info from users table if available
                 user_info = conn.execute(
-                    'SELECT username, first_name, last_name FROM users WHERE user_id = ?',
+                    'SELECT username, first_name, last_name, is_hidden_in_admin FROM users WHERE user_id = ?',
                     (user_id,)
                 ).fetchone()
 
                 username = user_info['username'] if user_info else user_row['username']
                 first_name = user_info['first_name'] if user_info else user_row['first_name']
                 last_name = user_info['last_name'] if user_info else user_row['last_name']
+                is_hidden_in_admin = bool(user_info['is_hidden_in_admin']) if user_info else False
 
                 # Activity metrics
                 metrics = conn.execute('''
@@ -554,11 +596,12 @@ class AnalyticsService:
                     active_days_month=active_days_month,
                     is_active_today=actions_today > 0,
                     is_active_week=active_days_week >= 3,
-                    is_active_month=active_days_month >= 3
+                    is_active_month=active_days_month >= 3,
+                    is_hidden_in_admin=is_hidden_in_admin
                 ))
 
-            # Sort by last seen
-            result.sort(key=lambda x: x.last_seen, reverse=True)
+            # Sort by activity: total_actions DESC, actions_week DESC, last_seen DESC
+            result.sort(key=lambda x: (x.total_actions, x.actions_week, x.last_seen), reverse=True)
             return result
         except Exception as e:
             logger.error("get_all_users_details_error", error=str(e), exc_info=True)

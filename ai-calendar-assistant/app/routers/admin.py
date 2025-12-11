@@ -411,6 +411,46 @@ async def get_user_todos(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/users/{user_id}/toggle-hidden")
+async def toggle_user_hidden(
+    user_id: str,
+    authorization: str = Header(..., alias="Authorization")
+):
+    """
+    Toggle user's hidden status in admin dashboard.
+
+    Requires Authorization header with admin token (real mode only).
+    Returns new hidden state.
+    """
+    try:
+        # Extract token
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+
+        auth_type = verify_token(token)
+
+        if not auth_type:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if auth_type == "fake":
+            logger.info("admin_toggle_hidden_fake_mode", user_id=user_id)
+            return {"user_id": user_id, "is_hidden": False}
+
+        # Toggle hidden status
+        new_hidden = analytics_service.toggle_user_hidden(user_id)
+        logger.info("admin_user_hidden_toggled", user_id=user_id, is_hidden=new_hidden)
+
+        return {"user_id": user_id, "is_hidden": new_hidden}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_toggle_hidden_error", user_id=user_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/timeline")
 async def get_activity_timeline(
     authorization: str = Header(..., alias="Authorization"),
