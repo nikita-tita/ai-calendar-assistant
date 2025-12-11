@@ -11,7 +11,6 @@ import pytz
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 
-from app.config import settings
 from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
 from app.services.translations import get_translation
@@ -460,36 +459,10 @@ class DailyRemindersService:
 
             message = "\n".join(parts)
 
-            # Add LLM cost stats for admin user
-            if settings.admin_user_id and user_id == settings.admin_user_id:
-                llm_stats = analytics_service.get_llm_cost_stats(hours=24)
-                dashboard_stats = analytics_service.get_dashboard_stats()
-                error_stats = analytics_service.get_error_stats(hours=24)
-
-                admin_section = f"""
-
-━━━━━━━━━━━━━━━━━━
-📊 *Статистика бота*
-
-💰 *Yandex GPT (24ч):*
-├ Запросов: {llm_stats['total_requests']}
-├ Токенов: {llm_stats['total_tokens']:,}
-├ Стоимость: {llm_stats['total_cost_rub']:.2f}₽
-└ Ср./польз.: {llm_stats['avg_cost_per_user']:.2f}₽
-
-👥 *Пользователи:*
-├ Всего: {dashboard_stats.total_users}
-├ Активных: {dashboard_stats.active_users_today}
-└ Сообщений: {dashboard_stats.messages_today}
-
-❌ Ошибок: {error_stats['total']}"""
-                message += admin_section
-
             await self.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
             logger.info("evening_reminder_sent", user_id=user_id,
                        events_count=events_count, tasks_incomplete=incomplete_count,
-                       tasks_completed=completed_count,
-                       is_admin=(user_id == settings.admin_user_id))
+                       tasks_completed=completed_count)
 
         except TelegramError as e:
             error_msg = str(e).lower()
