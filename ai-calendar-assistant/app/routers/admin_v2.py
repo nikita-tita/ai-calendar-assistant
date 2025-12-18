@@ -105,7 +105,7 @@ async def verify_admin_token(request: Request) -> dict:
 
 
 @router.post("/login")
-@limiter.limit("20/minute")  # Temporarily increased for testing
+@limiter.limit("5/minute")  # Reasonable limit: allows retries but prevents brute force
 async def login(
     request: Request,
     login_request: AdminLoginRequest
