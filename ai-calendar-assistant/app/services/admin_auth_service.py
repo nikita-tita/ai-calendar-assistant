@@ -37,7 +37,7 @@ class AdminAuthService:
     - Audit logging
     """
     
-    def __init__(self, db_path: str = "analytics.db"):
+    def __init__(self, db_path: str = "/var/lib/calendar-bot/admin_auth.db"):
         """Initialize admin auth service."""
         self.db_path = db_path
         self._init_database()
@@ -599,12 +599,15 @@ class AdminAuthService:
 admin_auth_service: Optional[AdminAuthService] = None
 
 
-def init_admin_auth_service(db_path: str = "analytics.db"):
-    """Initialize global admin auth service instance."""
+def init_admin_auth_service(db_path: str = "/var/lib/calendar-bot/admin_auth.db"):
+    """Initialize global admin auth service instance.
+
+    Uses persistent volume path by default to survive container rebuilds.
+    """
     global admin_auth_service
     try:
         admin_auth_service = AdminAuthService(db_path)
-        logger.info("admin_auth_service_global_initialized")
+        logger.info("admin_auth_service_global_initialized", db_path=db_path)
     except Exception as e:
         logger.error("admin_auth_service_init_failed", error=str(e))
         admin_auth_service = None

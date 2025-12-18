@@ -201,8 +201,8 @@ def main():
     )
     parser.add_argument(
         '--db-path',
-        default='analytics.db',
-        help='Path to database file (default: analytics.db)'
+        default='/var/lib/calendar-bot/admin_auth.db',
+        help='Path to database file (default: /var/lib/calendar-bot/admin_auth.db)'
     )
     
     args = parser.parse_args()
