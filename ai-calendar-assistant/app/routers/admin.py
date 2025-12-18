@@ -17,6 +17,7 @@ from slowapi.util import get_remote_address
 from app.services.analytics_service import analytics_service
 from app.services.calendar_radicale import calendar_service
 from app.services.todos_service import todos_service
+from app.services.admin_auth_service import get_admin_auth
 from app.models.analytics import (
     AdminDashboardStats, UserDetail, UserDialogEntry
 )
@@ -141,25 +142,28 @@ def verify_token(token: str) -> Optional[str]:
         return None
 
 
-def verify_v2_cookie(token: str) -> Optional[str]:
+def verify_v2_cookie(token: str, request: Request) -> Optional[str]:
     """
-    Verify JWT token from V2 admin cookie.
-    V2 uses RS256 but falls back to HS256 with same secret.
+    Verify JWT token from V2 admin cookie using admin_auth_service.
 
     Returns:
-        - "real" if valid token (V2 doesn't have fake mode concept, treat as real)
+        - "real" if valid token
+        - "fake" if panic mode
         - None if invalid
     """
     try:
-        # Try HS256 first (same secret as v1)
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        # V2 tokens have 'sub' with username
-        if payload.get("sub"):
-            return "real"
-        return payload.get("mode")
-    except jwt.ExpiredSignatureError:
+        admin_auth = get_admin_auth()
+        # Get IP and User-Agent for validation
+        ip = request.client.host if request.client else "unknown"
+        ua = request.headers.get("user-agent", "")
+
+        payload = admin_auth.verify_token(token, ip, ua, token_type="access")
+        if payload:
+            # Return mode from token (real or fake)
+            return payload.get("mode", "real")
         return None
-    except jwt.InvalidTokenError:
+    except Exception as e:
+        logger.debug("v2_cookie_verify_error", error=str(e))
         return None
 
 
@@ -182,9 +186,9 @@ def get_auth_mode(request: Request, authorization: Optional[str] = None) -> Opti
             return mode
 
     # Try V2 cookie
-    v2_token = request.cookies.get("admin_token")
+    v2_token = request.cookies.get("admin_access_token")
     if v2_token:
-        mode = verify_v2_cookie(v2_token)
+        mode = verify_v2_cookie(v2_token, request)
         if mode:
             return mode
 
