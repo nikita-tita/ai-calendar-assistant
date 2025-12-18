@@ -62,35 +62,41 @@ def get_user_agent(request: Request) -> str:
     return request.headers.get("User-Agent", "unknown")
 
 
-async def verify_admin_token(
-    request: Request,
-    authorization: str = Header(..., alias="Authorization")
-) -> dict:
+async def verify_admin_token(request: Request) -> dict:
     """
-    Verify admin JWT token and return payload.
-    
+    Verify admin JWT token from cookie and return payload.
+
     Raises HTTPException if invalid.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-        
+        # Get token from cookie
+        token = request.cookies.get("admin_access_token")
+
+        if not token:
+            # Also check Authorization header for API clients
+            auth_header = request.headers.get("Authorization")
+            if auth_header:
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[7:]
+                else:
+                    token = auth_header
+
+        if not token:
+            raise HTTPException(status_code=401, detail="No authentication token provided")
+
         # Get IP and UA
         ip_address = get_client_ip(request)
         user_agent = get_user_agent(request)
-        
+
         # Verify token
         auth_service = get_admin_auth()
         payload = auth_service.verify_token(token, ip_address, user_agent, "access")
-        
+
         if not payload:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
-        
+
         return payload
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -98,11 +104,10 @@ async def verify_admin_token(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-@router.post("/login", response_model=AdminLoginResponse)
+@router.post("/login")
 @limiter.limit("3/5minutes")  # SECURITY: Strict rate limit to prevent brute-force
 async def login(
     request: Request,
-    response: Response,
     login_request: AdminLoginRequest
 ):
     """
@@ -128,8 +133,19 @@ async def login(
         if not login_response.success:
             return login_response
         
+        # Create JSONResponse and set cookies directly on it
+        # NOTE: Cannot use response param + return Pydantic model - FastAPI ignores cookies!
+        json_response = JSONResponse(
+            content={
+                "success": True,
+                "mode": login_response.mode,
+                "message": "Login successful",
+                "totp_required": False
+            }
+        )
+
         # Set httpOnly cookies (more secure than localStorage)
-        response.set_cookie(
+        json_response.set_cookie(
             key="admin_access_token",
             value=access_token,
             httponly=True,
@@ -139,7 +155,7 @@ async def login(
             path="/"
         )
 
-        response.set_cookie(
+        json_response.set_cookie(
             key="admin_refresh_token",
             value=refresh_token,
             httponly=True,
@@ -148,14 +164,8 @@ async def login(
             max_age=604800,  # 7 days
             path="/"
         )
-        
-        # Also return tokens in response for backward compatibility
-        return AdminLoginResponse(
-            success=True,
-            mode=login_response.mode,
-            message="Login successful",
-            totp_required=False
-        )
+
+        return json_response
     
     except Exception as e:
         logger.error("admin_login_error", error=str(e), exc_info=True)
@@ -167,11 +177,12 @@ async def login(
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout():
     """Logout and clear cookies."""
-    response.delete_cookie("admin_access_token")
-    response.delete_cookie("admin_refresh_token")
-    return {"success": True, "message": "Logged out successfully"}
+    json_response = JSONResponse(content={"success": True, "message": "Logged out successfully"})
+    json_response.delete_cookie("admin_access_token", path="/")
+    json_response.delete_cookie("admin_refresh_token", path="/")
+    return json_response
 
 
 @router.get("/me", response_model=AdminSessionInfo)
