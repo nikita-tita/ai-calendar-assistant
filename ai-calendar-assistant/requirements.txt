@@ -48,6 +48,8 @@ cryptography==42.0.8
 bcrypt==4.1.2
 redis==5.0.1
 slowapi==0.1.9  # IP-based rate limiting
+pyotp==2.9.0  # TOTP for 2FA
+qrcode[pil]==7.4.2  # QR code generation for 2FA setup
 
 # Database (for property service)
 sqlalchemy==2.0.23
