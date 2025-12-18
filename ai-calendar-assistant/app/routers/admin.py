@@ -142,6 +142,22 @@ def verify_token(token: str) -> Optional[str]:
         return None
 
 
+def get_client_ip(request: Request) -> str:
+    """Get real client IP from request, checking proxy headers."""
+    # Check X-Forwarded-For header (for proxies/load balancers)
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+
+    # Check X-Real-IP header
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+
+    # Fall back to request.client
+    return request.client.host if request.client else "unknown"
+
+
 def verify_v2_cookie(token: str, request: Request) -> Optional[str]:
     """
     Verify JWT token from V2 admin cookie using admin_auth_service.
@@ -153,8 +169,8 @@ def verify_v2_cookie(token: str, request: Request) -> Optional[str]:
     """
     try:
         admin_auth = get_admin_auth()
-        # Get IP and User-Agent for validation
-        ip = request.client.host if request.client else "unknown"
+        # Get IP and User-Agent for validation (use real client IP, not proxy IP)
+        ip = get_client_ip(request)
         ua = request.headers.get("user-agent", "")
 
         payload = admin_auth.verify_token(token, ip, ua, token_type="access")
