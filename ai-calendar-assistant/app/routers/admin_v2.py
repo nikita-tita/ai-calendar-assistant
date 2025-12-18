@@ -571,6 +571,155 @@ async def get_errors(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== EXTENDED ANALYTICS ENDPOINTS ====================
+
+@router.get("/timeline/daily")
+async def get_daily_timeline(
+    request: Request,
+    days: int = Query(30, ge=1, le=90)
+):
+    """
+    Get daily statistics for the last N days.
+
+    Returns: list of {date, actions, users, events, messages, errors}
+    """
+    try:
+        payload = await verify_admin_token(request)
+
+        if payload.get("mode") == "fake":
+            return {"data": [], "period_days": days}
+
+        data = analytics_service.get_daily_timeline(days)
+
+        logger.info("admin_daily_timeline_accessed",
+                   admin_id=payload["user_id"],
+                   days=days,
+                   data_points=len(data))
+
+        return {"data": data, "period_days": days}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_daily_timeline_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/llm/costs")
+async def get_llm_costs(
+    request: Request,
+    days: int = Query(30, ge=1, le=90)
+):
+    """
+    Get LLM cost breakdown by day, model, and user.
+
+    Returns: {daily_costs, by_model, by_user, totals, period_days}
+    """
+    try:
+        payload = await verify_admin_token(request)
+
+        if payload.get("mode") == "fake":
+            return {
+                "daily_costs": [],
+                "by_model": {},
+                "by_user": [],
+                "totals": {"cost_rub": 0, "tokens": 0, "requests": 0,
+                          "unique_users": 0, "avg_cost_per_user": 0, "avg_cost_per_request": 0},
+                "period_days": days
+            }
+
+        data = analytics_service.get_llm_cost_breakdown(days)
+
+        logger.info("admin_llm_costs_accessed",
+                   admin_id=payload["user_id"],
+                   days=days,
+                   total_cost=data["totals"]["cost_rub"])
+
+        return data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_llm_costs_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/users/metrics")
+async def get_user_metrics(
+    request: Request,
+    days: int = Query(30, ge=1, le=90)
+):
+    """
+    Get user engagement metrics: DAU/MAU, retention, segments.
+
+    Returns: {dau, mau, avg_dau, dau_mau_ratio, segments, retention, new_users, period_days}
+    """
+    try:
+        payload = await verify_admin_token(request)
+
+        if payload.get("mode") == "fake":
+            return {
+                "dau": [],
+                "mau": 0,
+                "avg_dau": 0,
+                "dau_mau_ratio": 0,
+                "segments": {"power_users": 0, "regular_users": 0, "casual_users": 0, "dormant_users": 0},
+                "retention": {"day_1": 0, "day_7": 0},
+                "new_users": {"today": 0, "this_week": 0, "this_month": 0},
+                "period_days": days
+            }
+
+        data = analytics_service.get_user_engagement_metrics(days)
+
+        logger.info("admin_user_metrics_accessed",
+                   admin_id=payload["user_id"],
+                   days=days,
+                   mau=data["mau"],
+                   avg_dau=data["avg_dau"])
+
+        return data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_user_metrics_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/users/top")
+async def get_top_users(
+    request: Request,
+    limit: int = Query(10, ge=1, le=50),
+    days: int = Query(30, ge=1, le=90)
+):
+    """
+    Get top active users for the period.
+
+    Returns: list of {user_id, username, first_name, total_actions, events, messages, llm_cost, last_seen}
+    """
+    try:
+        payload = await verify_admin_token(request)
+
+        if payload.get("mode") == "fake":
+            return {"users": [], "limit": limit, "period_days": days}
+
+        users = analytics_service.get_top_users(limit, days)
+
+        logger.info("admin_top_users_accessed",
+                   admin_id=payload["user_id"],
+                   limit=limit,
+                   days=days,
+                   returned=len(users))
+
+        return {"users": users, "limit": limit, "period_days": days}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_top_users_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/health")
 async def admin_health():
     """Health check for admin API (no auth required)."""
