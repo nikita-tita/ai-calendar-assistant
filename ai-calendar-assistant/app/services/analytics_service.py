@@ -14,6 +14,7 @@ from app.models.analytics import (
 )
 from app.utils.pii_masking import safe_log_params
 from app.services.encrypted_storage import EncryptedStorage
+from app.utils.test_detection import is_test_user
 
 logger = structlog.get_logger()
 
@@ -311,9 +312,29 @@ class AnalyticsService:
         output_tokens: Optional[int] = None,
         total_tokens: Optional[int] = None,
         cost_rub: Optional[float] = None,
-        llm_model: Optional[str] = None
+        llm_model: Optional[str] = None,
+        is_test: Optional[bool] = None
     ):
-        """Log a user action. Writes directly to SQLite (atomic)."""
+        """
+        Log a user action. Writes directly to SQLite (atomic).
+        
+        Args:
+            user_id: User ID
+            action_type: Type of action
+            details: Action details
+            event_id: Related event ID (if applicable)
+            success: Whether action was successful
+            error_message: Error message (if applicable)
+            username: Telegram username
+            first_name: User first name
+            last_name: User last name
+            input_tokens: LLM input tokens (for cost tracking)
+            output_tokens: LLM output tokens (for cost tracking)
+            total_tokens: LLM total tokens (for cost tracking)
+            cost_rub: LLM cost in rubles (for cost tracking)
+            llm_model: LLM model used
+            is_test: Whether this is test data. If None, auto-detected via is_test_user()
+        """
         conn = self._get_connection()
         try:
             now = datetime.now().isoformat()
@@ -321,13 +342,18 @@ class AnalyticsService:
             # Convert ActionType enum to string
             action_type_str = action_type.value if isinstance(action_type, ActionType) else str(action_type)
 
+            # Auto-detect test users if not explicitly specified
+            if is_test is None:
+                is_test = is_test_user(user_id, username)
+
             conn.execute('''
                 INSERT INTO actions
                 (user_id, action_type, timestamp, details, event_id, success,
-                 error_message, input_tokens, output_tokens, total_tokens, cost_rub, llm_model)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 error_message, is_test, input_tokens, output_tokens, total_tokens, cost_rub, llm_model)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (user_id, action_type_str, now, details, event_id,
                   1 if success else 0, error_message,
+                  1 if is_test else 0,
                   input_tokens, output_tokens, total_tokens, cost_rub, llm_model))
 
             # Update user info if provided
@@ -361,55 +387,58 @@ class AnalyticsService:
         pass
 
     def get_dashboard_stats(self) -> DashboardStats:
-        """Get overall dashboard statistics."""
+        """Get overall dashboard statistics (excluding test data)."""
         conn = self._get_connection()
         try:
             today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
             week_start = (datetime.now() - timedelta(days=7)).isoformat()
 
-            # Total users (from users table - single source of truth)
-            total_users = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+            # Total users (from users table - single source of truth, excluding test users)
+            # We count distinct user_ids from actions that are not test data
+            total_users = conn.execute(
+                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE is_test = 0'
+            ).fetchone()[0]
 
             # Active users today
             active_today = conn.execute(
-                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ?',
+                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ? AND is_test = 0',
                 (today_start,)
             ).fetchone()[0]
 
             # Active users this week
             active_week = conn.execute(
-                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ?',
+                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ? AND is_test = 0',
                 (week_start,)
             ).fetchone()[0]
 
             # Events
             event_types = "('event_create', 'event_update', 'event_delete')"
             total_events = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types}'
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND is_test = 0'
             ).fetchone()[0]
             events_today = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ?',
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ? AND is_test = 0',
                 (today_start,)
             ).fetchone()[0]
             events_week = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ?',
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ? AND is_test = 0',
                 (week_start,)
             ).fetchone()[0]
 
             # Messages
             msg_types = "('text_message', 'voice_message')"
             total_messages = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types}'
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types} AND is_test = 0'
             ).fetchone()[0]
             messages_today = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types} AND timestamp >= ?',
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types} AND timestamp >= ? AND is_test = 0',
                 (today_start,)
             ).fetchone()[0]
 
             # Errors
-            total_errors = conn.execute('SELECT COUNT(*) FROM actions WHERE success = 0').fetchone()[0]
+            total_errors = conn.execute('SELECT COUNT(*) FROM actions WHERE success = 0 AND is_test = 0').fetchone()[0]
             errors_today = conn.execute(
-                'SELECT COUNT(*) FROM actions WHERE success = 0 AND timestamp >= ?',
+                'SELECT COUNT(*) FROM actions WHERE success = 0 AND timestamp >= ? AND is_test = 0',
                 (today_start,)
             ).fetchone()[0]
 
@@ -437,7 +466,7 @@ class AnalyticsService:
             conn.close()
 
     def get_admin_stats(self) -> AdminDashboardStats:
-        """Get extended statistics for admin dashboard."""
+        """Get extended statistics for admin dashboard (excluding test data)."""
         conn = self._get_connection()
         try:
             now = datetime.now()
@@ -447,19 +476,19 @@ class AnalyticsService:
 
             # Total logins
             total_logins = conn.execute(
-                "SELECT COUNT(*) FROM actions WHERE action_type = 'user_login'"
+                "SELECT COUNT(*) FROM actions WHERE action_type = 'user_login' AND is_test = 0"
             ).fetchone()[0]
 
             # Active users today
             active_today = conn.execute(
-                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ?',
+                'SELECT COUNT(DISTINCT user_id) FROM actions WHERE timestamp >= ? AND is_test = 0',
                 (today_start,)
             ).fetchone()[0]
 
             # Active users week (3+ days)
             cursor = conn.execute('''
                 SELECT user_id, COUNT(DISTINCT date(timestamp)) as active_days
-                FROM actions WHERE timestamp >= ?
+                FROM actions WHERE timestamp >= ? AND is_test = 0
                 GROUP BY user_id HAVING active_days >= 3
             ''', (week_start,))
             active_week = len(cursor.fetchall())
@@ -467,19 +496,19 @@ class AnalyticsService:
             # Active users month (simplified: 3+ days)
             cursor = conn.execute('''
                 SELECT user_id, COUNT(DISTINCT date(timestamp)) as active_days
-                FROM actions WHERE timestamp >= ?
+                FROM actions WHERE timestamp >= ? AND is_test = 0
                 GROUP BY user_id HAVING active_days >= 3
             ''', (month_start,))
             active_month = len(cursor.fetchall())
 
             # Totals
-            total_users = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-            total_actions = conn.execute('SELECT COUNT(*) FROM actions').fetchone()[0]
+            total_users = conn.execute('SELECT COUNT(DISTINCT user_id) FROM actions WHERE is_test = 0').fetchone()[0]
+            total_actions = conn.execute('SELECT COUNT(*) FROM actions WHERE is_test = 0').fetchone()[0]
             total_events = conn.execute(
-                "SELECT COUNT(*) FROM actions WHERE action_type = 'event_create'"
+                "SELECT COUNT(*) FROM actions WHERE action_type = 'event_create' AND is_test = 0"
             ).fetchone()[0]
             total_messages = conn.execute(
-                "SELECT COUNT(*) FROM actions WHERE action_type IN ('text_message', 'voice_message')"
+                "SELECT COUNT(*) FROM actions WHERE action_type IN ('text_message', 'voice_message') AND is_test = 0"
             ).fetchone()[0]
 
             return AdminDashboardStats(
@@ -503,7 +532,7 @@ class AnalyticsService:
             conn.close()
 
     def get_all_users_details(self) -> List[UserDetail]:
-        """Get detailed information for all users."""
+        """Get detailed information for all users (excluding test data)."""
         conn = self._get_connection()
         try:
             now = datetime.now()
@@ -511,7 +540,7 @@ class AnalyticsService:
             week_start = (now - timedelta(days=7)).isoformat()
             month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-            # Get all unique users from actions
+            # Get all unique users from actions (excluding test users)
             cursor = conn.execute('''
                 SELECT
                     user_id,
@@ -519,7 +548,8 @@ class AnalyticsService:
                     MAX(CASE WHEN first_name IS NOT NULL THEN first_name END) as first_name,
                     MAX(CASE WHEN last_name IS NOT NULL THEN last_name END) as last_name
                 FROM (
-                    SELECT user_id, NULL as username, NULL as first_name, NULL as last_name FROM actions
+                    SELECT user_id, NULL as username, NULL as first_name, NULL as last_name 
+                    FROM actions WHERE is_test = 0
                     UNION ALL
                     SELECT user_id, username, first_name, last_name FROM users
                 )
@@ -543,7 +573,7 @@ class AnalyticsService:
                 last_name = user_info['last_name'] if user_info else user_row['last_name']
                 is_hidden_in_admin = bool(user_info['is_hidden_in_admin']) if user_info else False
 
-                # Activity metrics
+                # Activity metrics (excluding test data)
                 metrics = conn.execute('''
                     SELECT
                         MIN(timestamp) as first_seen,
@@ -553,18 +583,18 @@ class AnalyticsService:
                         SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as actions_today,
                         SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as actions_week,
                         SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as actions_month
-                    FROM actions WHERE user_id = ?
+                    FROM actions WHERE user_id = ? AND is_test = 0
                 ''', (today_start, week_start, month_start, user_id)).fetchone()
 
-                # Active days
+                # Active days (excluding test data)
                 active_days_week = conn.execute('''
                     SELECT COUNT(DISTINCT date(timestamp)) FROM actions
-                    WHERE user_id = ? AND timestamp >= ?
+                    WHERE user_id = ? AND timestamp >= ? AND is_test = 0
                 ''', (user_id, week_start)).fetchone()[0]
 
                 active_days_month = conn.execute('''
                     SELECT COUNT(DISTINCT date(timestamp)) FROM actions
-                    WHERE user_id = ? AND timestamp >= ?
+                    WHERE user_id = ? AND timestamp >= ? AND is_test = 0
                 ''', (user_id, month_start)).fetchone()[0]
 
                 first_seen = datetime.fromisoformat(metrics['first_seen']) if metrics['first_seen'] else now
@@ -610,12 +640,12 @@ class AnalyticsService:
             conn.close()
 
     def get_user_dialog(self, user_id: str, limit: int = 1000) -> List[UserDialogEntry]:
-        """Get user's dialog history."""
+        """Get user's dialog history (excluding test data by default)."""
         conn = self._get_connection()
         try:
             cursor = conn.execute('''
                 SELECT action_type, timestamp, details, success, error_message
-                FROM actions WHERE user_id = ?
+                FROM actions WHERE user_id = ? AND is_test = 0
                 ORDER BY timestamp ASC
                 LIMIT ?
             ''', (user_id, limit))
@@ -637,14 +667,14 @@ class AnalyticsService:
             conn.close()
 
     def get_activity_timeline(self, hours: int = 24) -> List[TimeSeriesPoint]:
-        """Get activity timeline for the last N hours."""
+        """Get activity timeline for the last N hours (excluding test data)."""
         conn = self._get_connection()
         try:
             start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
 
             cursor = conn.execute('''
                 SELECT strftime('%Y-%m-%d %H:00:00', timestamp) as hour, COUNT(*) as count
-                FROM actions WHERE timestamp >= ?
+                FROM actions WHERE timestamp >= ? AND is_test = 0
                 GROUP BY hour ORDER BY hour
             ''', (start_time,))
 
@@ -671,17 +701,18 @@ class AnalyticsService:
             conn.close()
 
     def get_recent_actions(self, limit: int = 100, user_id: Optional[str] = None) -> List[UserAction]:
-        """Get recent actions."""
+        """Get recent actions (excluding test data)."""
         conn = self._get_connection()
         try:
             if user_id:
                 cursor = conn.execute('''
-                    SELECT * FROM actions WHERE user_id = ?
+                    SELECT * FROM actions WHERE user_id = ? AND is_test = 0
                     ORDER BY timestamp DESC LIMIT ?
                 ''', (user_id, limit))
             else:
                 cursor = conn.execute('''
-                    SELECT * FROM actions ORDER BY timestamp DESC LIMIT ?
+                    SELECT * FROM actions WHERE is_test = 0 
+                    ORDER BY timestamp DESC LIMIT ?
                 ''', (limit,))
 
             return [self._row_to_action(row) for row in cursor.fetchall()]
@@ -716,7 +747,7 @@ class AnalyticsService:
         )
 
     def get_errors(self, hours: int = 24, limit: int = 100) -> List[UserAction]:
-        """Get recent errors."""
+        """Get recent errors (excluding test data)."""
         conn = self._get_connection()
         try:
             start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
@@ -729,7 +760,7 @@ class AnalyticsService:
 
             cursor = conn.execute(f'''
                 SELECT * FROM actions
-                WHERE timestamp >= ? AND (success = 0 OR action_type IN ({placeholders}))
+                WHERE timestamp >= ? AND (success = 0 OR action_type IN ({placeholders})) AND is_test = 0
                 ORDER BY timestamp DESC LIMIT ?
             ''', (start_time, *error_types, limit))
 
@@ -741,14 +772,14 @@ class AnalyticsService:
             conn.close()
 
     def get_error_stats(self, hours: int = 24) -> Dict:
-        """Get error statistics."""
+        """Get error statistics (excluding test data)."""
         conn = self._get_connection()
         try:
             start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
 
             cursor = conn.execute('''
                 SELECT action_type, COUNT(*) as count
-                FROM actions WHERE timestamp >= ? AND success = 0
+                FROM actions WHERE timestamp >= ? AND success = 0 AND is_test = 0
                 GROUP BY action_type
             ''', (start_time,))
 
@@ -767,7 +798,7 @@ class AnalyticsService:
             conn.close()
 
     def get_llm_cost_stats(self, hours: int = 24) -> Dict:
-        """Get LLM usage and cost statistics."""
+        """Get LLM usage and cost statistics (excluding test data)."""
         conn = self._get_connection()
         try:
             start_time = (datetime.now() - timedelta(hours=hours)).isoformat()
@@ -779,7 +810,7 @@ class AnalyticsService:
                     COALESCE(SUM(cost_rub), 0) as total_cost,
                     COUNT(DISTINCT user_id) as unique_users
                 FROM actions
-                WHERE action_type = 'llm_request' AND timestamp >= ?
+                WHERE action_type = 'llm_request' AND timestamp >= ? AND is_test = 0
             ''', (start_time,))
 
             row = cursor.fetchone()
@@ -808,7 +839,7 @@ class AnalyticsService:
                     COALESCE(SUM(total_tokens), 0) as tokens,
                     COALESCE(SUM(cost_rub), 0) as cost
                 FROM actions
-                WHERE action_type = 'llm_request' AND timestamp >= ?
+                WHERE action_type = 'llm_request' AND timestamp >= ? AND is_test = 0
                 GROUP BY llm_model
             ''', (start_time,))
 
@@ -842,12 +873,13 @@ class AnalyticsService:
             conn.close()
 
     def get_action_distribution(self) -> List[EventTypeDistribution]:
-        """Get distribution of action types."""
+        """Get distribution of action types (excluding test data)."""
         conn = self._get_connection()
         try:
             cursor = conn.execute('''
                 SELECT action_type, COUNT(*) as count
-                FROM actions GROUP BY action_type
+                FROM actions WHERE is_test = 0
+                GROUP BY action_type
             ''')
 
             rows = cursor.fetchall()
@@ -868,7 +900,7 @@ class AnalyticsService:
             conn.close()
 
     def get_user_stats(self, limit: int = 100) -> List[UserStats]:
-        """Get statistics for users."""
+        """Get statistics for users (excluding test data)."""
         conn = self._get_connection()
         try:
             cursor = conn.execute('''
@@ -881,7 +913,8 @@ class AnalyticsService:
                     SUM(CASE WHEN action_type = 'voice_message' THEN 1 ELSE 0 END) as voice,
                     SUM(CASE WHEN action_type = 'webapp_open' THEN 1 ELSE 0 END) as webapp,
                     SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as errors
-                FROM actions GROUP BY user_id
+                FROM actions WHERE is_test = 0
+                GROUP BY user_id
                 ORDER BY last_seen DESC LIMIT ?
             ''', (limit,))
 
