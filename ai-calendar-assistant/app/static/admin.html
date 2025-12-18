@@ -1156,7 +1156,8 @@ async function loadUsersTab() {
         }
 
         const metrics = await metricsRes.json();
-        const topUsers = await topUsersRes.json();
+        const topUsersData = await topUsersRes.json();
+        const topUsers = topUsersData.users || [];
 
         console.log('Users tab loaded:', { metrics, topUsers });
 
