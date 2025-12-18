@@ -689,7 +689,7 @@ class BroadcastRequest(BaseModel):
 async def broadcast_message(
     request: Request,
     broadcast_req: BroadcastRequest,
-    request: Request, authorization: Optional[str] = Header(None, alias="Authorization")
+    authorization: Optional[str] = Header(None, alias="Authorization")
 ):
     """
     Send broadcast message to all users.
