@@ -25,16 +25,16 @@
         <h1 class="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Admin Panel</h1>
         <form id="loginForm" class="space-y-4">
             <div>
-                <label class="block text-sm font-medium mb-2">Первый пароль</label>
-                <input type="password" id="password1" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
+                <label class="block text-sm font-medium mb-2">Логин</label>
+                <input type="text" id="username" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="admin" required>
             </div>
             <div>
-                <label class="block text-sm font-medium mb-2">Второй пароль</label>
-                <input type="password" id="password2" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
+                <label class="block text-sm font-medium mb-2">Пароль</label>
+                <input type="password" id="password" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
             </div>
-            <div>
-                <label class="block text-sm font-medium mb-2">Третий пароль</label>
-                <input type="password" id="password3" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
+            <div id="totpField" class="hidden">
+                <label class="block text-sm font-medium mb-2">2FA код (Google Authenticator)</label>
+                <input type="text" id="totpCode" class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="123456" maxlength="6" pattern="[0-9]{6}">
             </div>
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors">Войти</button>
         </form>
@@ -245,61 +245,38 @@
 
 <script>
 const API_BASE = '/api/admin';
-const STORAGE_KEY = 'admin_session_token';
-let sessionToken = null;
+const API_V2 = '/api/admin/v2';
 let activityChart = null;
 let distributionChart = null;
 let refreshInterval = null;
 let currentView = 'main';
 let allActions = [];
 let errorsData = { errors: [], stats: { total: 0, by_type: {} } };
+let requires2FA = false;
 
-// Restore session from localStorage on page load
+// Restore session - check if already authenticated via httpOnly cookie
 async function restoreSession() {
     console.log('[Admin] restoreSession() called');
-    const savedToken = localStorage.getItem(STORAGE_KEY);
-    console.log('[Admin] Saved token exists:', !!savedToken);
+    try {
+        // Check auth status via /me endpoint (uses httpOnly cookie)
+        const response = await fetch(`${API_V2}/me`, {
+            credentials: 'include'
+        });
+        console.log('[Admin] /me response status:', response.status);
 
-    if (savedToken) {
-        try {
-            console.log('[Admin] Validating token with /api/admin/stats...');
-            const statsResponse = await fetch(`${API_BASE}/stats`, {
-                headers: {'Authorization': `Bearer ${savedToken}`}
-            });
-            console.log('[Admin] Stats response status:', statsResponse.status);
-
-            if (statsResponse.ok) {
-                console.log('[Admin] Token valid! Restoring session...');
-                sessionToken = savedToken;
-                document.getElementById('loginScreen').classList.add('hidden');
-                document.getElementById('dashboard').classList.remove('hidden');
-                loadDashboard();
-                refreshInterval = setInterval(() => { if (currentView === 'main') loadDashboard(); }, 30000);
-            } else {
-                console.log('[Admin] Token invalid (status ' + statsResponse.status + '), clearing...');
-                localStorage.removeItem(STORAGE_KEY);
-            }
-        } catch (e) {
-            console.error('[Admin] Error validating token:', e);
-            localStorage.removeItem(STORAGE_KEY);
+        if (response.ok) {
+            const user = await response.json();
+            console.log('[Admin] Session valid! User:', user.username);
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            loadDashboard();
+            refreshInterval = setInterval(() => { if (currentView === 'main') loadDashboard(); }, 30000);
+        } else {
+            console.log('[Admin] No valid session, showing login form');
         }
-    } else {
-        console.log('[Admin] No saved token, showing login form');
+    } catch (e) {
+        console.error('[Admin] Error checking session:', e);
     }
-}
-
-// Save session to localStorage
-function saveSession(token) {
-    console.log('[Admin] saveSession() - saving token');
-    sessionToken = token;
-    localStorage.setItem(STORAGE_KEY, token);
-}
-
-// Clear session from localStorage
-function clearSession() {
-    console.log('[Admin] clearSession() - removing token');
-    sessionToken = null;
-    localStorage.removeItem(STORAGE_KEY);
 }
 
 // Get language from URL parameter
@@ -457,24 +434,34 @@ const actionLabels = {
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const password1 = document.getElementById('password1').value;
-    const password2 = document.getElementById('password2').value;
-    const password3 = document.getElementById('password3')?.value || '';
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const totpCode = document.getElementById('totpCode')?.value || '';
 
     try {
-        const response = await fetch(`${API_BASE}/verify`, {
+        const response = await fetch(`${API_V2}/login`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({password1: password1, password2: password2, password3: password3})
+            credentials: 'include',
+            body: JSON.stringify({
+                username: username,
+                password: password,
+                totp_code: totpCode || null
+            })
         });
 
         const data = await response.json();
-        if (response.ok && data.valid) {
-            saveSession(data.token);
+
+        if (response.ok) {
+            // Login successful
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
             loadDashboard();
             refreshInterval = setInterval(() => { if (currentView === 'main') loadDashboard(); }, 30000);
+        } else if (response.status === 400 && data.detail?.includes('2FA')) {
+            // 2FA required - show TOTP field
+            document.getElementById('totpField').classList.remove('hidden');
+            showError('Введите код из Google Authenticator');
         } else {
             showError(data.detail || t('invalidPassword'));
         }
@@ -489,25 +476,33 @@ function showError(message) {
     errorEl.classList.remove('hidden');
 }
 
-function logout() {
-    clearSession();
+async function logout() {
+    try {
+        await fetch(`${API_V2}/logout`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+    } catch (e) {
+        console.error('[Admin] Logout error:', e);
+    }
     if (refreshInterval) clearInterval(refreshInterval);
     document.getElementById('dashboard').classList.add('hidden');
     document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('password1').value = '';
-    document.getElementById('password2').value = '';
-    document.getElementById('password3').value = '';
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('totpCode').value = '';
+    document.getElementById('totpField').classList.add('hidden');
+    document.getElementById('loginError').classList.add('hidden');
 }
 
 async function fetchAPI(endpoint) {
     try {
         const response = await fetch(`${API_BASE}${endpoint}`, {
-            headers: {'Authorization': `Bearer ${sessionToken}`}
+            credentials: 'include'
         });
         if (!response.ok) {
             if (response.status === 401) {
-                // Token expired or invalid - clear session and redirect to login
-                clearSession();
+                // Session expired - redirect to login
                 document.getElementById('dashboard').classList.add('hidden');
                 document.getElementById('loginScreen').classList.remove('hidden');
                 if (refreshInterval) clearInterval(refreshInterval);
@@ -517,7 +512,6 @@ async function fetchAPI(endpoint) {
         return response.json();
     } catch (e) {
         if (e.name === 'TypeError' && e.message.includes('fetch')) {
-            // Network error - server unreachable
             console.error('[Admin] Network error:', e.message);
             throw new Error(t('connectionError'));
         }
@@ -951,9 +945,9 @@ async function sendBroadcast() {
         const response = await fetch(`${API_BASE}/broadcast`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${sessionToken}`
+                'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify({
                 message: message,
                 button_text: buttonText || null,
