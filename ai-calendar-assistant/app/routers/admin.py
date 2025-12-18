@@ -577,7 +577,7 @@ async def get_recent_actions(
 @router.get("/errors")
 async def get_errors(
     request: Request, authorization: Optional[str] = Header(None, alias="Authorization"),
-    hours: int = Query(24, ge=1, le=168),
+    hours: int = Query(24, ge=1, le=2160),  # up to 90 days
     limit: int = Query(100, ge=1, le=500)
 ):
     """
