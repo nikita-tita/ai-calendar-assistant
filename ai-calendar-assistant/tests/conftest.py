@@ -1,8 +1,13 @@
 """Pytest configuration and fixtures."""
 
+import os
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+
+# Mark that we're running in pytest environment
+# This allows test detection in analytics_service
+os.environ['PYTEST_RUNNING'] = '1'
 
 
 @pytest.fixture
