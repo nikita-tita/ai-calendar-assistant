@@ -133,18 +133,20 @@ async def login(
             key="admin_access_token",
             value=access_token,
             httponly=True,
-            secure=True if settings.app_env == "production" else False,
-            samesite="strict",
-            max_age=3600  # 1 hour
+            secure=True,
+            samesite="lax",
+            max_age=3600,  # 1 hour
+            path="/"
         )
-        
+
         response.set_cookie(
             key="admin_refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=True if settings.app_env == "production" else False,
-            samesite="strict",
-            max_age=604800  # 7 days
+            secure=True,
+            samesite="lax",
+            max_age=604800,  # 7 days
+            path="/"
         )
         
         # Also return tokens in response for backward compatibility
