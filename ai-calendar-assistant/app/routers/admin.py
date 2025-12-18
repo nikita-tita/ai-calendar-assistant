@@ -187,8 +187,10 @@ def get_auth_mode(request: Request, authorization: Optional[str] = None) -> Opti
 
     # Try V2 cookie
     v2_token = request.cookies.get("admin_access_token")
+    logger.info("admin_auth_check", has_cookie=bool(v2_token), cookies=list(request.cookies.keys()))
     if v2_token:
         mode = verify_v2_cookie(v2_token, request)
+        logger.info("admin_v2_cookie_result", mode=mode)
         if mode:
             return mode
 
