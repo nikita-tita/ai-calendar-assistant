@@ -1,7 +1,7 @@
 """Admin API router with 3-password authentication, rate limiting and fake mode."""
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Header, Query, Body, Request
+from fastapi import APIRouter, HTTPException, Header, Query, Body, Request, Cookie
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import structlog
@@ -141,6 +141,56 @@ def verify_token(token: str) -> Optional[str]:
         return None
 
 
+def verify_v2_cookie(token: str) -> Optional[str]:
+    """
+    Verify JWT token from V2 admin cookie.
+    V2 uses RS256 but falls back to HS256 with same secret.
+
+    Returns:
+        - "real" if valid token (V2 doesn't have fake mode concept, treat as real)
+        - None if invalid
+    """
+    try:
+        # Try HS256 first (same secret as v1)
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        # V2 tokens have 'sub' with username
+        if payload.get("sub"):
+            return "real"
+        return payload.get("mode")
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
+def get_auth_mode(request: Request, authorization: Optional[str] = None) -> Optional[str]:
+    """
+    Get auth mode from either Bearer token or V2 cookie.
+
+    Returns:
+        - "real" or "fake" if authenticated
+        - None if not authenticated
+    """
+    # Try Bearer token first
+    if authorization:
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        else:
+            token = authorization
+        mode = verify_token(token)
+        if mode:
+            return mode
+
+    # Try V2 cookie
+    v2_token = request.cookies.get("admin_token")
+    if v2_token:
+        mode = verify_v2_cookie(v2_token)
+        if mode:
+            return mode
+
+    return None
+
+
 @router.post("/verify")
 @limiter.limit("5/minute")  # SECURITY: Strict rate limit to prevent brute-force attacks
 async def verify_passwords(request: Request, login_request: LoginRequest):
@@ -182,20 +232,17 @@ async def verify_passwords(request: Request, login_request: LoginRequest):
 
 
 @router.get("/stats", response_model=AdminDashboardStats)
-async def get_admin_stats(authorization: str = Header(..., alias="Authorization")):
+async def get_admin_stats(
+    request: Request,
+    authorization: Optional[str] = Header(None, alias="Authorization")
+):
     """
     Get admin dashboard statistics.
 
-    Requires Authorization header with admin password.
+    Requires Authorization header or V2 cookie.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -227,20 +274,14 @@ async def get_admin_stats(authorization: str = Header(..., alias="Authorization"
 
 
 @router.get("/users", response_model=List[UserDetail])
-async def get_all_users(authorization: str = Header(..., alias="Authorization")):
+async def get_all_users(request: Request, authorization: Optional[str] = Header(None, alias="Authorization")):
     """
     Get detailed information for all users.
 
-    Requires Authorization header with admin password.
+    Requires Authorization header or V2 cookie.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -265,7 +306,7 @@ async def get_all_users(authorization: str = Header(..., alias="Authorization"))
 @router.get("/users/{user_id}/dialog", response_model=List[UserDialogEntry])
 async def get_user_dialog(
     user_id: str,
-    authorization: str = Header(..., alias="Authorization"),
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization"),
     limit: int = Query(1000, ge=1, le=10000)
 ):
     """
@@ -274,13 +315,7 @@ async def get_user_dialog(
     Requires Authorization header with admin password.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -305,7 +340,7 @@ async def get_user_dialog(
 @router.get("/users/{user_id}/events")
 async def get_user_events(
     user_id: str,
-    authorization: str = Header(..., alias="Authorization")
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization")
 ):
     """
     Get all calendar events for a specific user.
@@ -313,13 +348,7 @@ async def get_user_events(
     Requires Authorization header with admin password.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -362,7 +391,7 @@ async def get_user_events(
 @router.get("/users/{user_id}/todos")
 async def get_user_todos(
     user_id: str,
-    authorization: str = Header(..., alias="Authorization")
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization")
 ):
     """
     Get all todos for a specific user.
@@ -370,13 +399,7 @@ async def get_user_todos(
     Requires Authorization header with admin token.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -414,7 +437,7 @@ async def get_user_todos(
 @router.post("/users/{user_id}/toggle-hidden")
 async def toggle_user_hidden(
     user_id: str,
-    authorization: str = Header(..., alias="Authorization")
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization")
 ):
     """
     Toggle user's hidden status in admin dashboard.
@@ -423,13 +446,7 @@ async def toggle_user_hidden(
     Returns new hidden state.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -453,7 +470,7 @@ async def toggle_user_hidden(
 
 @router.get("/timeline")
 async def get_activity_timeline(
-    authorization: str = Header(..., alias="Authorization"),
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization"),
     hours: int = Query(24, ge=1, le=168)
 ):
     """
@@ -462,13 +479,7 @@ async def get_activity_timeline(
     Requires Authorization header with admin token.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -496,7 +507,7 @@ async def get_activity_timeline(
 
 @router.get("/actions")
 async def get_recent_actions(
-    authorization: str = Header(..., alias="Authorization"),
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization"),
     limit: int = Query(100, ge=1, le=1000)
 ):
     """
@@ -505,13 +516,7 @@ async def get_recent_actions(
     Requires Authorization header with admin token.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -549,7 +554,7 @@ async def get_recent_actions(
 
 @router.get("/errors")
 async def get_errors(
-    authorization: str = Header(..., alias="Authorization"),
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization"),
     hours: int = Query(24, ge=1, le=168),
     limit: int = Query(100, ge=1, le=500)
 ):
@@ -565,13 +570,7 @@ async def get_errors(
     - Intent unclear (user requests that required clarification)
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -619,7 +618,7 @@ async def admin_health():
 
 @router.get("/report")
 async def get_full_report(
-    authorization: str = Header(..., alias="Authorization")
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization")
 ):
     """
     Get report with all users (lightweight version).
@@ -630,13 +629,7 @@ async def get_full_report(
     Requires Authorization header with admin token.
     """
     try:
-        # Extract token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -696,7 +689,7 @@ class BroadcastRequest(BaseModel):
 async def broadcast_message(
     request: Request,
     broadcast_req: BroadcastRequest,
-    authorization: str = Header(..., alias="Authorization")
+    request: Request, authorization: Optional[str] = Header(None, alias="Authorization")
 ):
     """
     Send broadcast message to all users.
