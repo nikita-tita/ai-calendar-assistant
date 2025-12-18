@@ -1146,10 +1146,19 @@ async function loadUsersTab() {
             fetch(`${API_V2}/users/top?days=${currentPeriod}&limit=10`, { credentials: 'include' })
         ]);
 
-        if (!metricsRes.ok || !topUsersRes.ok) throw new Error('Failed to load users data');
+        if (!metricsRes.ok) {
+            console.error('metrics failed:', metricsRes.status, await metricsRes.text());
+            throw new Error('Failed to load metrics');
+        }
+        if (!topUsersRes.ok) {
+            console.error('topUsers failed:', topUsersRes.status, await topUsersRes.text());
+            throw new Error('Failed to load top users');
+        }
 
         const metrics = await metricsRes.json();
         const topUsers = await topUsersRes.json();
+
+        console.log('Users tab loaded:', { metrics, topUsers });
 
         // Update cards
         const todayDau = metrics.dau?.length > 0 ? metrics.dau[metrics.dau.length - 1].count : 0;
@@ -1173,6 +1182,9 @@ async function loadUsersTab() {
 
     } catch (err) {
         console.error('Failed to load users tab:', err);
+        // Show error in table
+        document.getElementById('topUsersTable').innerHTML =
+            `<tr><td colspan="6" class="px-4 py-3 text-center text-red-400">Ошибка загрузки: ${err.message}</td></tr>`;
     }
 }
 
@@ -1402,8 +1414,9 @@ function updateLLMUsersTable(users) {
 
 async function loadErrorsTab() {
     try {
-        // Load errors from existing endpoint
-        const response = await fetch(`${API_BASE}/errors?hours=${currentPeriod * 24}&limit=100`, { credentials: 'include' });
+        // Load errors for the selected period
+        const hours = currentPeriod * 24;
+        const response = await fetch(`${API_BASE}/errors?hours=${hours}&limit=100`, { credentials: 'include' });
         if (!response.ok) throw new Error('Failed to load errors');
 
         const data = await response.json();
