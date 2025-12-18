@@ -708,13 +708,7 @@ async def broadcast_message(
     - test_only: Send only to test users (for testing)
     """
     try:
-        # Extract and verify token
-        if authorization.startswith("Bearer "):
-            token = authorization[7:]
-        else:
-            token = authorization
-
-        auth_type = verify_token(token)
+        auth_type = get_auth_mode(request, authorization)
 
         if not auth_type:
             raise HTTPException(status_code=401, detail="Unauthorized")
