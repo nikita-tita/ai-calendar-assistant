@@ -12,6 +12,7 @@ from app.services.llm_agent_yandex import llm_agent_yandex as llm_agent
 from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
 from app.services.todos_service import todos_service
+from app.services.referral_service import referral_service
 
 # Analytics service - optional, fallback if not available
 try:
@@ -195,6 +196,11 @@ class TelegramHandler:
                 await self._handle_timezone(update, user_id, message.text)
                 return
 
+            # Handle /share command
+            if message.text and message.text.startswith('/share'):
+                await self._handle_share_command(update, user_id)
+                return
+
             # Handle quick buttons
             if message.text and message.text in ['📋 Дела на сегодня', 'Дела на сегодня']:
                 await self._handle_text(update, user_id, "Какие планы на сегодня?")
@@ -267,6 +273,35 @@ class TelegramHandler:
 
     async def _handle_start(self, update: Update, user_id: str) -> None:
         """Handle /start command."""
+        message = update.message
+
+        # Extract deep link parameter (e.g., /start ref_abc123)
+        start_param = None
+        if message.text and ' ' in message.text:
+            start_param = message.text.split(' ', 1)[1].strip()
+
+        # Process referral if present
+        if start_param and start_param.startswith('ref_'):
+            try:
+                referrer_id = referral_service.process_referral(user_id, start_param)
+                if referrer_id:
+                    # Log referral to analytics
+                    if ANALYTICS_ENABLED and analytics_service:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.REFERRAL_JOINED,
+                            details=f"Joined via referral from {referrer_id}",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    # Notify referrer
+                    await self._notify_referrer(referrer_id, update.effective_user)
+            except Exception as e:
+                logger.warning("referral_processing_failed", error=str(e))
+
         # Log user registration
         if ANALYTICS_ENABLED and analytics_service:
             try:
@@ -388,6 +423,66 @@ class TelegramHandler:
             await update.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
         elif update.callback_query:
             await update.callback_query.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
+
+    async def _notify_referrer(self, referrer_id: str, new_user) -> None:
+        """Notify referrer when someone joins via their link."""
+        try:
+            name = new_user.first_name or "Кто-то"
+
+            text = f"🎉 По твоей ссылке присоединился новый пользователь: {name}!\n\n" \
+                   f"Спасибо что рассказываешь о нас друзьям"
+
+            await self.bot.send_message(chat_id=int(referrer_id), text=text)
+
+            # Mark as notified
+            referral_service.mark_notified(str(new_user.id))
+
+            logger.info("referrer_notified", referrer_id=referrer_id, new_user_id=new_user.id)
+
+        except Exception as e:
+            logger.warning("referrer_notification_failed",
+                          referrer_id=referrer_id, error=str(e))
+
+    async def _handle_share_command(self, update: Update, user_id: str) -> None:
+        """Handle /share command - show referral link and stats."""
+        try:
+            stats = referral_service.get_referral_stats(user_id)
+            link = stats['referral_link']
+            total = stats['total_referred']
+
+            # Invite text for copying
+            invite_text = (
+                "Попробуй AI-календарь! Веду все дела голосом - "
+                "просто говорю боту что запланировать.\n\n"
+                f"Присоединяйся: {link}"
+            )
+
+            # Message to user
+            message = f"""<b>Поделиться с друзьями</b>
+
+Приглашение (нажми чтобы скопировать):
+
+<code>{invite_text}</code>
+
+<b>Твоя статистика:</b>
+Присоединились по ссылке: {total}"""
+
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Переслать друзьям",
+                                     switch_inline_query=invite_text)]
+            ])
+
+            await update.message.reply_text(
+                message,
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+
+        except Exception as e:
+            logger.error("share_command_failed", user_id=user_id, error=str(e))
+            await update.message.reply_text(
+                "Не удалось получить ссылку. Попробуйте позже."
+            )
 
     async def _handle_voice(self, update: Update, user_id: str) -> None:
         """Handle voice message using OpenAI Whisper."""
@@ -565,6 +660,7 @@ Housler.ru сделал подборку сервисов, которые пом
 Просто выбери свой сервис"""
 
         keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📤 Поделиться с друзьями", callback_data="share:menu")],
             [InlineKeyboardButton("📰 Новости", url="https://housler.ru/blog")],
             [InlineKeyboardButton("🏷 Оценить рыночную стоимость", url="https://housler.ru/calculator")],
             [InlineKeyboardButton("💰 Ипотечный брокер", url="https://m2.ru/ipoteka/calculator/?utm_source=telegram&utm_medium=message&utm_campaign=inhouse_nobrand_rassmotr_ipoteka_b2b_internal_chatbot")],
@@ -595,6 +691,7 @@ Housler.ru сделал подборку сервисов, которые пом
             [InlineKeyboardButton(f"{morning_status} Утренняя сводка ({settings_data['morning_summary_time']})", callback_data="settings:morning_toggle")],
             [InlineKeyboardButton(f"{evening_status} Вечерний дайджест ({settings_data['evening_digest_time']})", callback_data="settings:evening_toggle")],
             [InlineKeyboardButton(f"🌙 Тихие часы: {settings_data['quiet_hours_start']}–{settings_data['quiet_hours_end']}", callback_data="settings:quiet_hours")],
+            [InlineKeyboardButton("📤 Поделиться с друзьями", callback_data="settings:share")],
             [InlineKeyboardButton("❓ Справка и примеры", callback_data="settings:help")],
             [InlineKeyboardButton("💬 Написать нам", url="https://t.me/iay_pm")],
         ])
@@ -810,6 +907,45 @@ Housler.ru сделал подборку сервисов, которые пом
             if user_id not in self.conversation_history:
                 self.conversation_history[user_id] = []
             self.conversation_history[user_id] = [{"role": "system", "content": "awaiting_evening_time"}]
+
+        # Handle share callbacks (from settings or services menu)
+        elif data in ("settings:share", "share:menu"):
+            try:
+                stats = referral_service.get_referral_stats(user_id)
+                link = stats['referral_link']
+                total = stats['total_referred']
+
+                # Invite text for copying
+                invite_text = (
+                    "Попробуй AI-календарь! Веду все дела голосом - "
+                    "просто говорю боту что запланировать.\n\n"
+                    f"Присоединяйся: {link}"
+                )
+
+                # Message to user
+                message = f"""<b>Поделиться с друзьями</b>
+
+Приглашение (нажми чтобы скопировать):
+
+<code>{invite_text}</code>
+
+<b>Твоя статистика:</b>
+Присоединились по ссылке: {total}"""
+
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Переслать друзьям",
+                                         switch_inline_query=invite_text)],
+                    [InlineKeyboardButton("« Назад", callback_data="settings:back")]
+                ])
+
+                await query.edit_message_text(
+                    message,
+                    parse_mode="HTML",
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                logger.error("share_callback_failed", user_id=user_id, error=str(e))
+                await query.edit_message_text("Не удалось получить ссылку. Попробуйте позже.")
 
         elif data == "settings:help":
             help_text = """❓ Справка и примеры команд
