@@ -1112,6 +1112,112 @@ Housler.ru сделал подборку сервисов, которые пом
 
     # ========== End Dialog History Methods ==========
 
+    # ========== DateTime Parsing Helpers ==========
+
+    def _parse_action_datetime(self, dt_value) -> Optional[datetime]:
+        """
+        Parse datetime from batch action value.
+        Handles string ISO format, datetime objects, and None.
+
+        Args:
+            dt_value: Can be ISO string, datetime, or None
+
+        Returns:
+            datetime object or None if parsing fails
+        """
+        from datetime import datetime
+        import pytz
+
+        if dt_value is None:
+            return None
+
+        if isinstance(dt_value, datetime):
+            # Already datetime - ensure timezone
+            if dt_value.tzinfo is None:
+                tz = pytz.timezone(settings.default_timezone)
+                return tz.localize(dt_value)
+            return dt_value
+
+        if isinstance(dt_value, str):
+            try:
+                dt = datetime.fromisoformat(dt_value)
+                # Add timezone if naive
+                if dt.tzinfo is None:
+                    tz = pytz.timezone(settings.default_timezone)
+                    dt = tz.localize(dt)
+                return dt
+            except (ValueError, TypeError):
+                logger.warning("datetime_parse_failed", value=dt_value)
+                return None
+
+        return None
+
+    # ========== End DateTime Parsing Helpers ==========
+
+    # ========== Context Enrichment Helpers ==========
+
+    def _enrich_short_response(self, user_text: str, user_id: str) -> str:
+        """
+        Enrich short user response with previous context.
+
+        When user replies with just a time ("12:00") or short phrase ("завтра")
+        to a clarify question, combine it with the original request.
+
+        Args:
+            user_text: Current user message
+            user_id: User ID for context lookup
+
+        Returns:
+            Enriched text or original text if no enrichment needed
+        """
+        # Only enrich very short messages (1-3 words)
+        words = user_text.strip().split()
+        if len(words) > 3:
+            return user_text
+
+        # Check if we have clarify context
+        history = self.conversation_history.get(user_id, [])
+        if len(history) < 2:
+            return user_text
+
+        last_bot = history[-1]
+        prev_user = history[-2]
+
+        # Must be assistant clarify followed by short user response
+        if last_bot.get("role") != "assistant" or prev_user.get("role") != "user":
+            return user_text
+
+        bot_response = last_bot.get("content", "").lower()
+        prev_request = prev_user.get("content", "")
+
+        # Detect if bot asked for time clarification
+        time_clarify_patterns = ["уточните время", "во сколько", "какое время", "укажите время"]
+        if any(p in bot_response for p in time_clarify_patterns):
+            # Combine: "Брокер тур" + "12:00" → "Брокер тур в 12:00"
+            enriched = f"{prev_request} в {user_text}"
+            logger.info("short_response_enriched",
+                       user_id=user_id,
+                       original=user_text,
+                       enriched=enriched,
+                       reason="time_clarify")
+            return enriched
+
+        # Detect if bot asked for date clarification
+        date_clarify_patterns = ["уточните дату", "какой день", "когда", "укажите день"]
+        if any(p in bot_response for p in date_clarify_patterns):
+            # Combine: "Встреча" + "завтра" → "Встреча завтра"
+            enriched = f"{prev_request} {user_text}"
+            logger.info("short_response_enriched",
+                       user_id=user_id,
+                       original=user_text,
+                       enriched=enriched,
+                       reason="date_clarify")
+            return enriched
+
+        return user_text
+
+    # ========== End Context Enrichment Helpers ==========
+
     async def _handle_settings_time_input(
         self, update: Update, user_id: str, text: str, pending_action: str
     ) -> bool:
@@ -1231,6 +1337,47 @@ Housler.ru сделал подборку сервисов, которые пом
             except Exception as e:
                 logger.warning("analytics_log_failed", error=str(e))
 
+        text_lower = text.lower().strip()
+
+        # ========== Pre-LLM Handlers (avoid expensive LLM calls) ==========
+
+        # Handle greetings
+        greeting_patterns = ["привет", "здравствуй", "добрый день", "добрый вечер",
+                            "доброе утро", "hello", "hi", "хай", "здарова"]
+        if any(text_lower.startswith(g) or text_lower == g for g in greeting_patterns):
+            greeting_response = ("👋 Привет! Чем могу помочь?\n\n"
+                                "📅 Создать событие: «Встреча завтра в 15:00»\n"
+                                "📝 Добавить задачу: «Позвонить клиенту»\n"
+                                "📋 Посмотреть планы: «Что на сегодня?»")
+            await update.message.reply_text(greeting_response)
+            self._log_bot_response(user_id, greeting_response, text)
+            return
+
+        # Handle small talk
+        small_talk_patterns = ["как дела", "как ты", "что нового", "как жизнь"]
+        if any(p in text_lower for p in small_talk_patterns):
+            small_talk_response = ("Отлично, готов работать! 💪\n\nЧто запланируем?")
+            await update.message.reply_text(small_talk_response)
+            self._log_bot_response(user_id, small_talk_response, text)
+            return
+
+        # Handle timezone complaints
+        time_complaint_patterns = ["неправильно время", "сбился календарь", "неверное время",
+                                  "какое сегодня число", "какой сейчас час", "какое время",
+                                  "не то время", "время неправильное"]
+        if any(p in text_lower for p in time_complaint_patterns):
+            import pytz
+            current_tz = user_preferences.get_timezone(user_id)
+            now = datetime.now(pytz.timezone(current_tz))
+            tz_response = (f"🕐 Моё время: {now.strftime('%H:%M')} ({current_tz})\n"
+                          f"📅 Дата: {now.strftime('%d.%m.%Y')}\n\n"
+                          f"Если нужно изменить часовой пояс — /timezone")
+            await update.message.reply_text(tz_response)
+            self._log_bot_response(user_id, tz_response, text)
+            return
+
+        # ========== End Pre-LLM Handlers ==========
+
         # Calendar mode only
         # Check calendar service connection
         if not calendar_service.is_connected():
@@ -1305,8 +1452,12 @@ Housler.ru сделал подборку сервисов, которые пом
         # Format: older messages first, then clarify context if any
         combined_history = dialog_history + clarify_context
 
+        # Enrich short responses with context from previous clarify question
+        # Example: "12:00" after "Уточните время" → "Брокер тур в 12:00"
+        enriched_text = self._enrich_short_response(text, user_id)
+
         event_dto = await llm_agent.extract_event(
-            text,
+            enriched_text,
             user_id,
             conversation_history=combined_history,
             timezone=user_tz,
@@ -1627,15 +1778,34 @@ Housler.ru сделал подборку сервисов, которые пом
             else:
                 day_word = query_date.strftime("%d.%m")
 
-            empty_msg = f"""📭 На {day_word} пусто.
+            # Try to find next upcoming event
+            user_tz = self._get_user_timezone(update)
+            now = datetime.now()
+            future_events = await calendar_service.list_events(
+                user_id, now, now + timedelta(days=30)
+            )
 
-📅 Дела (с временем):
+            if future_events:
+                # Show nearest event as helpful context
+                next_event = sorted(future_events, key=lambda e: e.start)[0]
+                next_time = format_datetime_human(next_event.start, user_tz)
+                empty_msg = f"""📭 На {day_word} пусто.
+
+📌 Ближайшее событие:
+• {next_time} — {next_event.summary}
+
+Добавить событие? Просто напишите:
+«Встреча завтра в 15:00»"""
+            else:
+                # No events at all - show examples
+                empty_msg = f"""📭 На {day_word} пусто.
+
+📅 Добавьте событие:
 • «Показ на Ленина в 14:00»
 • «Встреча с клиентом завтра в 11:00»
 
-📋 Задачи (без времени):
-• «Подготовить документы по сделке»
-• «Перезвонить Иванову»"""
+📋 Или задачу без времени:
+• «Подготовить документы по сделке»"""
 
             await update.message.reply_text(empty_msg)
             self._log_bot_response(user_id, empty_msg, user_text)
@@ -1713,13 +1883,25 @@ Housler.ru сделал подборку сервисов, которые пом
 
         for action in event_dto.batch_actions:
             try:
+                # Parse datetime from string/datetime/None
+                start_time = self._parse_action_datetime(action.get("start_time"))
+                end_time = self._parse_action_datetime(action.get("end_time"))
+
+                # Skip events without start_time - log and count as failed
+                if not start_time:
+                    logger.warning("batch_action_missing_start_time",
+                                  user_id=user_id,
+                                  title=action.get("title"))
+                    failed_count += 1
+                    continue
+
                 # Create EventDTO for each action
                 from app.schemas.events import EventDTO, IntentType
                 single_event = EventDTO(
                     intent=IntentType.CREATE,
                     title=action.get("title"),
-                    start_time=action.get("start_time"),
-                    end_time=action.get("end_time"),
+                    start_time=start_time,
+                    end_time=end_time,
                     location=action.get("location"),
                     description=action.get("description")
                 )
@@ -1728,14 +1910,15 @@ Housler.ru сделал подборку сервисов, которые пом
                 if event_uid:
                     created_events.append({
                         'title': action.get("title"),
-                        'start': action.get("start_time"),
-                        'end': action.get("end_time")
+                        'start': start_time,  # Now datetime, not string
+                        'end': end_time
                     })
                     created_uids.append(event_uid)
                 else:
                     failed_count += 1
             except Exception as e:
-                logger.error("batch_event_creation_error", error=str(e), user_id=user_id)
+                logger.error("batch_event_creation_error", error=str(e), user_id=user_id,
+                            title=action.get("title"))
                 failed_count += 1
 
         # Save to context for follow-up commands ("перепиши эти события")
