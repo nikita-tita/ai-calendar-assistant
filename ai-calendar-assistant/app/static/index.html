@@ -245,6 +245,25 @@
                 return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
             }
 
+            // XSS protection - escape HTML entities
+            function escapeHtml(text) {
+                if (!text) return '';
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            // XSS protection for HTML attributes (escapes quotes)
+            function escapeAttr(text) {
+                if (!text) return '';
+                return String(text)
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+            }
+
             function toDateInputValue(d) {
                 return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
             }
@@ -805,10 +824,10 @@
                                             </div>
                                             ${dayEvents.map(e => `
                                                 <div onclick="viewEvent('${e.id}')" class="event-card secondary-bg p-4 mb-2 rounded-lg cursor-pointer">
-                                                    <div class="font-medium text-base mb-1">${e.title}</div>
+                                                    <div class="font-medium text-base mb-1">${escapeHtml(e.title)}</div>
                                                     <div class="hint-color text-sm">
                                                         ${fmtTime(new Date(e.start))} — ${fmtTime(new Date(e.end))}
-                                                        ${e.location ? ` · ${e.location}` : ''}
+                                                        ${e.location ? ` · ${escapeHtml(e.location)}` : ''}
                                                     </div>
                                                 </div>
                                             `).join('')}
@@ -841,7 +860,7 @@
                                                             <span class="text-xs opacity-0">✓</span>
                                                         </button>
                                                         <div class="flex-1 cursor-pointer" onclick="editTodo('${todo.id}')">
-                                                            <div class="font-medium">${todo.title}</div>
+                                                            <div class="font-medium">${escapeHtml(todo.title)}</div>
                                                             ${todo.due_date ? `<div class="text-xs hint-color mt-1">📅 ${new Date(todo.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
                                                         </div>
                                                     </div>
@@ -858,7 +877,7 @@
                                                             <span class="text-xs">✓</span>
                                                         </button>
                                                         <div class="flex-1 cursor-pointer" onclick="editTodo('${todo.id}')">
-                                                            <div class="font-medium line-through">${todo.title}</div>
+                                                            <div class="font-medium line-through">${escapeHtml(todo.title)}</div>
                                                             ${todo.due_date ? `<div class="text-xs hint-color mt-1">📅 ${new Date(todo.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
                                                         </div>
                                                     </div>
@@ -878,7 +897,7 @@
                                 <span class="text-xl">←</span> ${t.cancel}
                             </button>
                             <div class="secondary-bg p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold mb-6">${e.title}</h2>
+                                <h2 class="text-2xl font-bold mb-6">${escapeHtml(e.title)}</h2>
                                 <div class="space-y-4">
                                     <div class="flex items-start gap-3">
                                         <span class="text-2xl">📅</span>
@@ -899,7 +918,7 @@
                                             <span class="text-2xl">📍</span>
                                             <div class="flex-1">
                                                 <div class="text-sm hint-color mb-1">${t.location}</div>
-                                                <div>${e.location}</div>
+                                                <div>${escapeHtml(e.location)}</div>
                                             </div>
                                         </div>
                                     ` : ''}
@@ -908,7 +927,7 @@
                                             <span class="text-2xl">📝</span>
                                             <div class="flex-1">
                                                 <div class="text-sm hint-color mb-1">${t.note}</div>
-                                                <div>${e.description}</div>
+                                                <div>${escapeHtml(e.description)}</div>
                                             </div>
                                         </div>
                                     ` : ''}
@@ -934,7 +953,7 @@
                             <div class="space-y-4">
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.title}</span>
-                                    <input id="editTitle" value="${state.edit.title||''}"
+                                    <input id="editTitle" value="${escapeAttr(state.edit.title||'')}"
                                         class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="${t.title}"/>
                                 </label>
@@ -957,7 +976,7 @@
                                 </div>
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.location}</span>
-                                    <input id="editLocation" value="${state.edit.location||''}"
+                                    <input id="editLocation" value="${escapeAttr(state.edit.location||'')}"
                                         class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="${t.location}"/>
                                 </label>
@@ -965,7 +984,7 @@
                                     <span class="text-sm hint-color mb-2 block">${t.note}</span>
                                     <textarea id="editNote" rows="4"
                                         class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base resize-none"
-                                        placeholder="${t.note}">${state.edit.description||''}</textarea>
+                                        placeholder="${t.note}">${escapeHtml(state.edit.description||'')}</textarea>
                                 </label>
                                 <div class="flex gap-3 mt-6 pt-4">
                                     <button onclick="closeEdit()" class="tertiary-bg flex-1 py-4 rounded-lg font-medium">
@@ -990,7 +1009,7 @@
                             <div class="space-y-4">
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">Название задачи</span>
-                                    <input id="editTodoTitle" value="${todo.title || ''}"
+                                    <input id="editTodoTitle" value="${escapeAttr(todo.title || '')}"
                                         class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="Что нужно сделать?"/>
                                 </label>
