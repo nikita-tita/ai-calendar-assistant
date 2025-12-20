@@ -502,6 +502,25 @@ let errorsTimelineChart = null;
 let errorsTypesChart = null;
 let tabDataCache = {};
 
+// XSS protection - escape HTML entities
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// XSS protection for HTML attributes (escapes quotes)
+function escapeAttr(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 // Restore session - check if already authenticated via httpOnly cookie
 async function restoreSession() {
     console.log('[Admin] restoreSession() called');
@@ -887,17 +906,17 @@ function updateUsersTable(users) {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
 
-        // Build user display name and Telegram link
-        let userName = u.user_id;
+        // Build user display name and Telegram link (XSS-safe)
+        let userName = escapeHtml(u.user_id);
         let tgLink = '';
         if (u.username) {
-            userName = `@${u.username}`;
-            tgLink = ` <a href="https://t.me/${u.username}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
+            userName = `@${escapeHtml(u.username)}`;
+            tgLink = ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
         } else if (u.first_name || u.last_name) {
-            userName = [u.first_name, u.last_name].filter(Boolean).join(' ');
+            userName = [u.first_name, u.last_name].filter(Boolean).map(escapeHtml).join(' ');
         }
 
-        const userDisplay = `<div class="font-mono text-blue-400">${u.user_id}</div>
+        const userDisplay = `<div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
                              <div class="text-xs text-slate-500">${userName}${tgLink}</div>`;
 
         // Use fields from UserDetail model
@@ -926,13 +945,14 @@ function updateActionsTable(actions) {
         const time = new Date(a.timestamp).toLocaleString('ru-RU', {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         });
-        const details = (a.details || '').substring(0, 50) + (a.details?.length > 50 ? '...' : '');
+        const rawDetails = (a.details || '').substring(0, 50) + (a.details?.length > 50 ? '...' : '');
+        const details = escapeHtml(rawDetails);
         const testBadge = a.is_test ? '<span class="badge-test ml-2">ТЕСТ</span>' : '';
         return `
-            <tr class="clickable-row" onclick="showUserProfile('${a.user_id}')">
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(a.user_id)}')">
                 <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
-                <td class="px-4 py-3 text-sm font-mono text-blue-400">${a.user_id}</td>
-                <td class="px-4 py-3 text-sm">${actionLabels[a.action_type] || a.action_type}${testBadge}</td>
+                <td class="px-4 py-3 text-sm font-mono text-blue-400">${escapeHtml(a.user_id)}</td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[a.action_type] || a.action_type)}${testBadge}</td>
                 <td class="px-4 py-3 text-sm text-slate-400">${details}</td>
             </tr>
         `;
@@ -1016,24 +1036,25 @@ async function filterByType(type) {
                 .join(', ');
             subtitle = `Всего: ${errorsData.stats?.total || 0}` + (typeBreakdown ? ` | ${typeBreakdown}` : '');
 
-            // Show errors table
+            // Show errors table (XSS-safe)
             const tbody = document.getElementById('filteredTable');
             tbody.innerHTML = errorsData.errors.map(e => {
                 const time = new Date(e.timestamp).toLocaleString('ru-RU', {
                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                 });
-                const userName = e.username ? `@${e.username}` : (e.first_name || e.user_id);
-                const errorMsg = e.error_message ? `<div class="text-xs text-red-400 mt-1">${e.error_message.substring(0, 100)}${e.error_message.length > 100 ? '...' : ''}</div>` : '';
+                const userName = e.username ? `@${escapeHtml(e.username)}` : escapeHtml(e.first_name || e.user_id);
+                const rawErrorMsg = e.error_message ? e.error_message.substring(0, 100) + (e.error_message.length > 100 ? '...' : '') : '';
+                const errorMsg = rawErrorMsg ? `<div class="text-xs text-red-400 mt-1">${escapeHtml(rawErrorMsg)}</div>` : '';
                 return `
-                    <tr class="clickable-row text-red-300" onclick="showUserProfile('${e.user_id}')">
+                    <tr class="clickable-row text-red-300" onclick="showUserProfile('${escapeAttr(e.user_id)}')">
                         <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
                         <td class="px-4 py-3 text-sm">
-                            <div class="font-mono text-blue-400">${e.user_id}</div>
+                            <div class="font-mono text-blue-400">${escapeHtml(e.user_id)}</div>
                             <div class="text-xs text-slate-500">${userName}</div>
                         </td>
-                        <td class="px-4 py-3 text-sm">${actionLabels[e.action_type] || e.action_type}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[e.action_type] || e.action_type)}</td>
                         <td class="px-4 py-3 text-sm">
-                            <div class="text-slate-400">${e.details || '-'}</div>
+                            <div class="text-slate-400">${escapeHtml(e.details || '-')}</div>
                             ${errorMsg}
                         </td>
                     </tr>
@@ -1075,11 +1096,11 @@ async function filterByType(type) {
         const testBadge = a.is_test ? ' <span class="badge-test">ТЕСТ</span>' : '';
         const errorClass = (a.action_type === 'error' || !a.success) ? 'text-red-400' : '';
         return `
-            <tr class="clickable-row ${errorClass}" onclick="showUserProfile('${a.user_id}')">
+            <tr class="clickable-row ${errorClass}" onclick="showUserProfile('${escapeAttr(a.user_id)}')">
                 <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
-                <td class="px-4 py-3 text-sm font-mono text-blue-400">${a.user_id}</td>
-                <td class="px-4 py-3 text-sm">${actionLabels[a.action_type] || a.action_type}${testBadge}</td>
-                <td class="px-4 py-3 text-sm text-slate-400">${a.details || '-'}</td>
+                <td class="px-4 py-3 text-sm font-mono text-blue-400">${escapeHtml(a.user_id)}</td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[a.action_type] || a.action_type)}${testBadge}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${escapeHtml(a.details || '-')}</td>
             </tr>
         `;
     }).join('');
@@ -1088,7 +1109,7 @@ async function filterByType(type) {
 function showUsersDetailed(users) {
     document.getElementById('filterTitle').textContent = '👥 Все пользователи';
     document.getElementById('filterSubtitle').textContent = `Всего пользователей: ${users.length}`;
-    
+
     const tbody = document.getElementById('filteredTable');
     tbody.innerHTML = users.map(u => {
         const firstSeen = new Date(u.first_seen).toLocaleString('ru-RU', {
@@ -1097,22 +1118,22 @@ function showUsersDetailed(users) {
         const lastSeen = new Date(u.last_seen).toLocaleString('ru-RU', {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         });
-        
-        // Build user name
-        let userName = u.user_id;
+
+        // Build user name (XSS-safe)
+        let userName = escapeHtml(u.user_id);
         let tgLink = '';
         if (u.username) {
-            userName = `@${u.username}`;
-            tgLink = ` <a href="https://t.me/${u.username}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
+            userName = `@${escapeHtml(u.username)}`;
+            tgLink = ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
         } else if (u.first_name || u.last_name) {
-            userName = [u.first_name, u.last_name].filter(Boolean).join(' ');
+            userName = [u.first_name, u.last_name].filter(Boolean).map(escapeHtml).join(' ');
         }
-        
-        const userDisplay = `<div class="font-mono text-blue-400">${u.user_id}</div>
+
+        const userDisplay = `<div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
                              <div class="text-xs text-slate-500">${userName}${tgLink}</div>`;
-        
+
         return `
-            <tr class="clickable-row" onclick="showUserProfile('${u.user_id}')">
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
                 <td class="px-4 py-3 text-sm">${firstSeen}</td>
                 <td class="px-4 py-3 text-sm">${userDisplay}</td>
                 <td class="px-4 py-3 text-sm">События: ${u.total_events}, Сообщения: ${u.total_messages}, Ошибки: ${u.total_errors}</td>
@@ -1302,15 +1323,15 @@ function updateTopUsersTable(users) {
     }
 
     tbody.innerHTML = users.map((u, i) => {
-        const userName = u.username ? `@${u.username}` : (u.first_name || u.user_id);
-        const tgLink = u.username ? ` <a href="https://t.me/${u.username}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>` : '';
+        const userName = u.username ? `@${escapeHtml(u.username)}` : escapeHtml(u.first_name || u.user_id);
+        const tgLink = u.username ? ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>` : '';
         const cost = u.llm_cost ? u.llm_cost.toFixed(2) + ' ₽' : '0 ₽';
 
         return `
-            <tr class="clickable-row" onclick="showUserProfile('${u.user_id}')">
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
                 <td class="px-4 py-3 text-sm text-slate-400">${i + 1}</td>
                 <td class="px-4 py-3 text-sm">
-                    <div class="font-mono text-blue-400">${u.user_id}</div>
+                    <div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
                     <div class="text-xs text-slate-500">${userName}${tgLink}</div>
                 </td>
                 <td class="px-4 py-3 text-sm font-medium">${u.total_actions || 0}</td>
@@ -1429,11 +1450,11 @@ function updateLLMUsersTable(users) {
     users.sort((a, b) => (b.cost_rub || 0) - (a.cost_rub || 0));
 
     tbody.innerHTML = users.slice(0, 15).map(u => {
-        const userName = u.username ? `@${u.username}` : (u.first_name || u.user_id);
+        const userName = u.username ? `@${escapeHtml(u.username)}` : escapeHtml(u.first_name || u.user_id);
         return `
-            <tr class="clickable-row" onclick="showUserProfile('${u.user_id}')">
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
                 <td class="px-4 py-3 text-sm">
-                    <div class="font-mono text-blue-400">${u.user_id}</div>
+                    <div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
                     <div class="text-xs text-slate-500">${userName}</div>
                 </td>
                 <td class="px-4 py-3 text-sm">${u.requests || 0}</td>
@@ -1555,17 +1576,18 @@ function updateErrorsTable(errors) {
         const time = new Date(e.timestamp).toLocaleString('ru-RU', {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         });
-        const userName = e.username ? `@${e.username}` : (e.first_name || e.user_id);
-        const errorMsg = e.error_message ? e.error_message.substring(0, 80) + (e.error_message.length > 80 ? '...' : '') : e.details || '-';
+        const userName = e.username ? `@${escapeHtml(e.username)}` : escapeHtml(e.first_name || e.user_id);
+        const rawErrorMsg = e.error_message ? e.error_message.substring(0, 80) + (e.error_message.length > 80 ? '...' : '') : e.details || '-';
+        const errorMsg = escapeHtml(rawErrorMsg);
 
         return `
-            <tr class="clickable-row text-red-300" onclick="showUserProfile('${e.user_id}')">
+            <tr class="clickable-row text-red-300" onclick="showUserProfile('${escapeAttr(e.user_id)}')">
                 <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
                 <td class="px-4 py-3 text-sm">
-                    <div class="font-mono text-blue-400">${e.user_id}</div>
+                    <div class="font-mono text-blue-400">${escapeHtml(e.user_id)}</div>
                     <div class="text-xs text-slate-500">${userName}</div>
                 </td>
-                <td class="px-4 py-3 text-sm">${actionLabels[e.action_type] || e.action_type}</td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[e.action_type] || e.action_type)}</td>
                 <td class="px-4 py-3 text-sm text-slate-400">${errorMsg}</td>
             </tr>
         `;
