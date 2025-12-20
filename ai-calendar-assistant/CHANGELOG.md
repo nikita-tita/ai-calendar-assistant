@@ -6,6 +6,61 @@
 
 ---
 
+## [2025-12-20] - Error Scenarios Fix (Based on 10-day Analytics Audit)
+
+### Background
+Проведён аудит логов за 10-20 декабря: 337 действий, 31 пользователь, 25 ошибок.
+Выявлены топ-10 проблемных сценариев, реализованы исправления Фазы 1 и 2.
+
+### Fixed
+
+**Фаза 1 (Critical):**
+- **NoneType + timedelta crash в batch_actions** (7 случаев)
+  - Причина: `start_time` передавался как ISO строка вместо datetime
+  - Решение: добавлен `_parse_action_datetime()` helper с валидацией
+  - Файл: `telegram_handler.py:1117-1153`
+
+- **Yandex GPT content moderation refusal** (11 случаев)
+  - Причина: LLM отвечал "Я не могу обсуждать эту тему" на безобидные запросы
+  - Решение: добавлена детекция отказа + fallback на TODO
+  - Файл: `llm_agent_yandex.py:148-201, 909-927`
+
+**Фаза 2 (UX Improvements):**
+- **Краткие ответы без контекста** ("12:00" после уточнения)
+  - Добавлено обогащение коротких ответов предыдущим контекстом
+  - Пример: "Брокер тур" + "12:00" → "Брокер тур в 12:00"
+  - Файл: `telegram_handler.py:1157-1217`
+
+- **Жалобы на время/таймзону**
+  - Добавлен Pre-LLM handler для запросов о времени
+  - Показывает текущее время бота + ссылку на /timezone
+
+- **Greetings и small talk**
+  - Добавлены Pre-LLM handlers для приветствий ("привет", "как дела")
+  - Экономит LLM токены на trivial запросах
+
+- **Пустые результаты запросов**
+  - Улучшено сообщение: показывает ближайшее событие если есть
+  - Более понятные примеры что можно добавить
+
+### Added
+- `_parse_action_datetime()` - парсинг datetime из batch actions
+- `_enrich_short_response()` - обогащение коротких ответов контекстом
+- `_is_llm_refusal()` - детекция content moderation отказа
+- `_create_todo_fallback()` - fallback на TODO при отказе LLM
+- Pre-LLM handlers для greetings, small talk, timezone complaints
+
+### Technical
+- **Файлы изменены:** 2
+- **Строк добавлено:** +283
+- **Промпт изменён:** Нет (все фиксы через код)
+
+### Docs
+- Создан `docs/ERROR_SCENARIOS_ANALYSIS.md` - полный анализ ошибок
+- Создан `docs/TECHNICAL_AUDIT_AND_FIXES.md` - техническое ТЗ
+
+---
+
 ## [2025-12-12] - Analytics SQLite Migration v2 (Actions + User Count Fix)
 
 ### Fixed (v2 hotfix)

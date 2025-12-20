@@ -47,6 +47,20 @@ class LLMAgentYandex:
     RESET_TIMEOUT = 60        # Seconds before attempting to close circuit
     REQUEST_TIMEOUT = 15.0    # HTTP timeout in seconds
 
+    # Retry settings for content moderation refusals
+    MAX_REFUSAL_RETRIES = 2   # Retry attempts when LLM refuses request
+    REFUSAL_RETRY_DELAY = 0.5 # Seconds between retries
+
+    # Patterns that indicate Yandex GPT content moderation refusal
+    REFUSAL_PATTERNS = [
+        "не могу обсуждать",
+        "не могу помочь с этим",
+        "давайте поговорим о чём-нибудь",
+        "давайте поговорим о чем-нибудь",
+        "не могу ответить на этот",
+        "не в моих возможностях",
+    ]
+
     def __init__(self):
         """Initialize LLM agent with Yandex GPT client."""
         self.api_key = settings.yandex_gpt_api_key
@@ -130,6 +144,61 @@ intent="create" когда:
 - intent="batch_confirm" с batch_actions
 
 ВАЖНО: Ответ ТОЛЬКО в JSON формате. Никакого текста до/после JSON."""
+
+    def _is_llm_refusal(self, text: str) -> bool:
+        """
+        Detect if Yandex GPT refused to process request due to content moderation.
+
+        Args:
+            text: Raw LLM response text
+
+        Returns:
+            True if response appears to be a refusal
+        """
+        if not text:
+            return False
+        text_lower = text.lower()
+        return any(pattern in text_lower for pattern in self.REFUSAL_PATTERNS)
+
+    def _create_todo_fallback(self, user_text: str, user_id: Optional[str] = None) -> EventDTO:
+        """
+        Create TODO fallback when LLM refuses to process request.
+
+        This is used when Yandex GPT content moderation blocks a legitimate request.
+        Instead of failing, we create a simple TODO task from user's text.
+
+        Args:
+            user_text: Original user request
+            user_id: User ID for logging
+
+        Returns:
+            EventDTO with TODO intent
+        """
+        logger.warning("llm_refusal_fallback_to_todo",
+                      user_id=user_id,
+                      text=user_text[:100])
+
+        # Log to analytics
+        if ANALYTICS_ENABLED and analytics_service and user_id:
+            analytics_service.log_action(
+                user_id=user_id,
+                action_type=ActionType.LLM_PARSE_ERROR,
+                details=f"LLM refusal fallback: {user_text[:100]}",
+                success=True,
+                error_message="Yandex GPT refused, created TODO fallback"
+            )
+
+        # Clean up the text for title
+        title = user_text.strip()
+        if len(title) > 100:
+            title = title[:97] + "..."
+
+        return EventDTO(
+            intent=IntentType.TODO,
+            title=title,
+            confidence=0.6,
+            raw_text=user_text
+        )
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """Get or create reusable async HTTP client."""
@@ -836,6 +905,26 @@ JSON:"""
             result_text = response_data.get("result", {}).get("alternatives", [{}])[0].get("message", {}).get("text", "")
 
             logger.info("yandex_gpt_raw_response", result_text=result_text)
+
+            # Check for content moderation refusal
+            if self._is_llm_refusal(result_text):
+                logger.warning("yandex_gpt_content_refusal",
+                              user_id=user_id,
+                              user_text=user_text[:100],
+                              refusal_text=result_text[:200])
+
+                # Log refusal to analytics
+                if ANALYTICS_ENABLED and analytics_service and user_id:
+                    analytics_service.log_action(
+                        user_id=user_id,
+                        action_type=ActionType.LLM_PARSE_ERROR,
+                        details=f"Content refusal: {user_text[:100]}",
+                        success=False,
+                        error_message=f"Yandex GPT refused: {result_text[:100]}"
+                    )
+
+                # Fallback: create TODO from user text
+                return self._create_todo_fallback(user_text, user_id)
 
             # Parse JSON from response
             event_dto = self._parse_yandex_response(
