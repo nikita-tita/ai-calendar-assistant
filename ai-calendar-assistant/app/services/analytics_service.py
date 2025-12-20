@@ -71,6 +71,28 @@ class AnalyticsService:
                 conn.execute('ALTER TABLE users ADD COLUMN is_hidden_in_admin INTEGER DEFAULT 0')
                 logger.info("migration_added_is_hidden_in_admin_column")
 
+            # Migration: add referral columns if missing
+            if 'referred_by' not in columns:
+                conn.execute('ALTER TABLE users ADD COLUMN referred_by TEXT')
+                logger.info("migration_added_referred_by_column")
+            if 'referral_code' not in columns:
+                conn.execute('ALTER TABLE users ADD COLUMN referral_code TEXT')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)')
+                logger.info("migration_added_referral_code_column")
+
+            # Referrals table for detailed tracking
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS referrals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    referrer_id TEXT NOT NULL,
+                    referred_id TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    notified INTEGER DEFAULT 0,
+                    UNIQUE(referred_id)
+                )
+            ''')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)')
+
             # Actions table
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS actions (
