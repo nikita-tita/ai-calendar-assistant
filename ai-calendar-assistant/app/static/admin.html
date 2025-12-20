@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel - AI Calendar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <style>
@@ -17,7 +20,7 @@
             --text-muted: #6b7280;
             --accent: #ffffff;
         }
-        body {font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-primary); color: var(--text-primary);}
+        body {font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-primary); color: var(--text-primary);}
         .stat-card {background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; transition: all 0.2s; cursor: pointer;}
         .stat-card:hover {transform: translateY(-2px); border-color: #444; box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);}
         .chart-wrapper {position: relative; height: 300px; width: 100%;}
@@ -832,8 +835,8 @@ function updateActivityChart(data) {
             datasets: [{
                 label: 'Действия',
                 data: values,
-                borderColor: 'rgb(180, 180, 180)',
-                backgroundColor: 'rgba(180, 180, 180, 0.1)',
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96, 165, 250, 0.1)',
                 tension: 0.4,
                 fill: true
             }]
@@ -860,7 +863,7 @@ function updateDistributionChart(stats) {
             labels: ['События', 'Сообщения', 'Ошибки'],
             datasets: [{
                 data: [stats.total_events, stats.total_messages, stats.total_errors],
-                backgroundColor: ['rgba(255, 255, 255, 0.8)', 'rgba(180, 180, 180, 0.8)', 'rgba(100, 100, 100, 0.8)'],
+                backgroundColor: ['#4ade80', '#a78bfa', '#f87171'],
                 borderWidth: 0
             }]
         },
@@ -1236,8 +1239,8 @@ function updateDauChart(data) {
             datasets: [{
                 label: 'DAU',
                 data: values,
-                borderColor: 'rgb(180, 180, 180)',
-                backgroundColor: 'rgba(180, 180, 180, 0.1)',
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96, 165, 250, 0.1)',
                 tension: 0.4,
                 fill: true
             }]
@@ -1265,7 +1268,7 @@ function updateSegmentsChart(segments) {
         segments.casual_users || 0,
         segments.dormant_users || 0
     ];
-    const colors = ['rgba(255, 255, 255, 0.9)', 'rgba(200, 200, 200, 0.8)', 'rgba(140, 140, 140, 0.8)', 'rgba(80, 80, 80, 0.8)'];
+    const colors = ['#60a5fa', '#4ade80', '#facc15', '#6b7280'];
 
     segmentsChart = new Chart(ctx, {
         type: 'doughnut',
@@ -1283,10 +1286,10 @@ function updateSegmentsChart(segments) {
     // Update legend text
     document.getElementById('segmentsLegend').innerHTML = `
         <div class="grid grid-cols-2 gap-2 text-xs">
-            <div><span style="color:#fff">●</span> Power (50+ действий): ${segments.power_users || 0}</div>
-            <div><span style="color:#ccc">●</span> Regular (10-49): ${segments.regular_users || 0}</div>
-            <div><span style="color:#888">●</span> Casual (1-9): ${segments.casual_users || 0}</div>
-            <div><span style="color:#555">●</span> Dormant (неактивные): ${segments.dormant_users || 0}</div>
+            <div><span style="color:#60a5fa">●</span> Power (50+ действий): ${segments.power_users || 0}</div>
+            <div><span style="color:#4ade80">●</span> Regular (10-49): ${segments.regular_users || 0}</div>
+            <div><span style="color:#facc15">●</span> Casual (1-9): ${segments.casual_users || 0}</div>
+            <div><span style="color:#6b7280">●</span> Dormant (неактивные): ${segments.dormant_users || 0}</div>
         </div>
     `;
 }
@@ -1377,7 +1380,7 @@ function updateLLMCostChart(data) {
             datasets: [{
                 label: 'Стоимость (₽)',
                 data: costs,
-                backgroundColor: 'rgba(200, 200, 200, 0.8)',
+                backgroundColor: '#4ade80',
                 yAxisID: 'y'
             }]
         },
@@ -1399,7 +1402,7 @@ function updateLLMModelsChart(data) {
 
     const labels = data.map(d => d.model || 'unknown');
     const values = data.map(d => d.cost || 0);
-    const colors = ['rgba(255, 255, 255, 0.9)', 'rgba(180, 180, 180, 0.8)', 'rgba(120, 120, 120, 0.8)', 'rgba(60, 60, 60, 0.8)'];
+    const colors = ['#60a5fa', '#a78bfa', '#22d3ee', '#fb923c'];
 
     llmModelsChart = new Chart(ctx, {
         type: 'pie',
@@ -1501,8 +1504,8 @@ function updateErrorsTimelineChart(byDay) {
             datasets: [{
                 label: 'Ошибки',
                 data: values,
-                borderColor: 'rgb(140, 140, 140)',
-                backgroundColor: 'rgba(140, 140, 140, 0.1)',
+                borderColor: '#f87171',
+                backgroundColor: 'rgba(248, 113, 113, 0.1)',
                 tension: 0.4,
                 fill: true
             }]
@@ -1525,7 +1528,7 @@ function updateErrorsTypesChart(byType) {
 
     const labels = Object.keys(byType).map(k => actionLabels[k] || k);
     const values = Object.values(byType);
-    const colors = ['rgba(255, 255, 255, 0.9)', 'rgba(200, 200, 200, 0.8)', 'rgba(150, 150, 150, 0.8)', 'rgba(100, 100, 100, 0.8)', 'rgba(60, 60, 60, 0.8)'];
+    const colors = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#22d3ee'];
 
     errorsTypesChart = new Chart(ctx, {
         type: 'doughnut',
