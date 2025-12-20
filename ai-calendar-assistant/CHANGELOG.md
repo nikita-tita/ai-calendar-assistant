@@ -6,6 +6,29 @@
 
 ---
 
+## [2025-12-20] - Disk Management & Infrastructure
+
+### Problem
+Диск сервера заполнился на 100% (57GB/59GB), что вызвало `507 Insufficient Storage` при создании событий.
+
+### Root Cause
+- Docker container logs росли бесконечно (не было лимита)
+- Docker images/layers накапливались при каждом build
+- Build cache не очищался
+- Journald логи не были ограничены
+
+### Fixed
+- Создан `/etc/docker/daemon.json` с лимитом логов (50MB x 3 файла на контейнер)
+- Настроен journald: max 500MB, хранение 1 неделя
+- Добавлен `/etc/cron.daily/docker-cleanup` для автоочистки Docker
+- Добавлен `/root/check-disk.sh` с проверкой каждые 6 часов
+- При >80% диска - автоматическая очистка Docker
+
+### Added
+- `docs/02-deployment/DISK_MANAGEMENT.md` - документация по управлению диском
+
+---
+
 ## [2025-12-20] - Error Scenarios Fix (Based on 10-day Analytics Audit)
 
 ### Background
