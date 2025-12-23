@@ -97,6 +97,7 @@
             <div class="flex gap-1 -mb-px" id="tabNav">
                 <button onclick="showTab('overview')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-700 text-white" data-tab="overview">📊 Обзор</button>
                 <button onclick="showTab('users')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="users">👥 Пользователи</button>
+                <button onclick="showTab('actions')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="actions">⚡ Действия</button>
                 <button onclick="showTab('llm')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="llm">🤖 LLM</button>
                 <button onclick="showTab('errors')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="errors">❌ Ошибки</button>
             </div>
@@ -220,18 +221,26 @@
 
         <!-- Tab: Users -->
         <div id="usersTab" class="tab-content hidden">
-            <!-- DAU/MAU Cards -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <!-- DAU/WAU/MAU Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                 <div class="stat-card">
                     <div class="text-3xl font-bold text-blue-400" id="dauToday">0</div>
                     <div class="text-sm text-slate-400 mt-1">DAU сегодня</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-cyan-400" id="wauTotal">0</div>
+                    <div class="text-sm text-slate-400 mt-1">WAU (7 дней)</div>
                 </div>
                 <div class="stat-card">
                     <div class="text-3xl font-bold text-green-400" id="mauTotal">0</div>
                     <div class="text-sm text-slate-400 mt-1">MAU за период</div>
                 </div>
                 <div class="stat-card">
-                    <div class="text-3xl font-bold text-purple-400" id="dauMauRatio">0%</div>
+                    <div class="text-3xl font-bold text-purple-400" id="dauWauRatio">0%</div>
+                    <div class="text-sm text-slate-400 mt-1">DAU/WAU</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-orange-400" id="dauMauRatio">0%</div>
                     <div class="text-sm text-slate-400 mt-1">DAU/MAU</div>
                 </div>
                 <div class="stat-card">
@@ -295,6 +304,82 @@
                             <tr><td colspan="6" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Actions -->
+        <div id="actionsTab" class="tab-content hidden">
+            <!-- Breadcrumbs -->
+            <div id="actionsBreadcrumbs" class="mb-4 text-sm text-slate-400">
+                <span class="text-white">Действия</span>
+            </div>
+
+            <!-- Actions Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-blue-400" id="actionsToday">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Сегодня</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-cyan-400" id="actionsWeek">0</div>
+                    <div class="text-sm text-slate-400 mt-1">За 7 дней</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-green-400" id="actionsMonth">0</div>
+                    <div class="text-sm text-slate-400 mt-1">За 30 дней</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-purple-400" id="actionTypesCount">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Типов действий</div>
+                </div>
+            </div>
+
+            <!-- Actions Summary View (Level 1) -->
+            <div id="actionsSummaryView">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">Сводка по типам действий</h3></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-900">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Тип действия</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Сегодня</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">7 дней</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">30 дней</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Тренд</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="actionsSummaryTable" class="divide-y divide-slate-700">
+                                <tr><td colspan="6" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions By Type View (Level 2) -->
+            <div id="actionsByTypeView" class="hidden">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-700">
+                        <h3 class="text-lg font-semibold">Пользователи: <span id="actionTypeTitle" class="text-blue-400"></span></h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-900">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Пользователь</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Действий</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Последнее</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="actionsByTypeTable" class="divide-y divide-slate-700">
+                                <tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1177,6 +1262,8 @@ function showTab(tabName) {
         loadDashboard();
     } else if (tabName === 'users') {
         loadUsersTab();
+    } else if (tabName === 'actions') {
+        loadActionsTab();
     } else if (tabName === 'llm') {
         loadLLMTab();
     } else if (tabName === 'errors') {
@@ -1218,7 +1305,9 @@ async function loadUsersTab() {
         // Update cards
         const todayDau = metrics.dau?.length > 0 ? metrics.dau[metrics.dau.length - 1].count : 0;
         document.getElementById('dauToday').textContent = todayDau;
+        document.getElementById('wauTotal').textContent = metrics.wau || 0;
         document.getElementById('mauTotal').textContent = metrics.mau || 0;
+        document.getElementById('dauWauRatio').textContent = (metrics.dau_wau_ratio * 100).toFixed(1) + '%';
         document.getElementById('dauMauRatio').textContent = (metrics.dau_mau_ratio * 100).toFixed(1) + '%';
         document.getElementById('newUsersCount').textContent = metrics.new_users?.this_month || 0;
         document.getElementById('avgDau').textContent = (metrics.avg_dau || 0).toFixed(1);
@@ -1589,6 +1678,124 @@ function updateErrorsTable(errors) {
                 </td>
                 <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[e.action_type] || e.action_type)}</td>
                 <td class="px-4 py-3 text-sm text-slate-400">${errorMsg}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// ============ ACTIONS TAB ============
+
+let currentActionType = null;
+
+async function loadActionsTab() {
+    try {
+        // Reset to summary view
+        document.getElementById('actionsSummaryView').classList.remove('hidden');
+        document.getElementById('actionsByTypeView').classList.add('hidden');
+        document.getElementById('actionsBreadcrumbs').innerHTML = '<span class="text-white">Действия</span>';
+        currentActionType = null;
+
+        const response = await fetch(`${API_V2}/actions/summary`, { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load actions summary');
+
+        const data = await response.json();
+
+        // Update cards
+        document.getElementById('actionsToday').textContent = data.totals?.today || 0;
+        document.getElementById('actionsWeek').textContent = data.totals?.week || 0;
+        document.getElementById('actionsMonth').textContent = data.totals?.month || 0;
+        document.getElementById('actionTypesCount').textContent = data.summary?.length || 0;
+
+        // Update summary table
+        updateActionsSummaryTable(data.summary || []);
+
+    } catch (err) {
+        console.error('Failed to load actions tab:', err);
+        document.getElementById('actionsSummaryTable').innerHTML =
+            `<tr><td colspan="6" class="px-4 py-3 text-center text-red-400">Ошибка загрузки: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+function updateActionsSummaryTable(summary) {
+    const tbody = document.getElementById('actionsSummaryTable');
+    if (!summary || summary.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = summary.map(s => {
+        const trendIcon = s.trend > 0 ? '↑' : (s.trend < 0 ? '↓' : '→');
+        const trendColor = s.trend > 0 ? 'text-green-400' : (s.trend < 0 ? 'text-red-400' : 'text-slate-400');
+        const trendText = `${trendIcon} ${Math.abs(s.trend).toFixed(1)}%`;
+        const actionLabel = actionLabels[s.action_type] || s.action_type;
+
+        return `
+            <tr class="clickable-row" onclick="showActionsByType('${escapeAttr(s.action_type)}')">
+                <td class="px-4 py-3 text-sm font-medium">${escapeHtml(actionLabel)}</td>
+                <td class="px-4 py-3 text-sm">${s.today}</td>
+                <td class="px-4 py-3 text-sm">${s.week}</td>
+                <td class="px-4 py-3 text-sm">${s.month}</td>
+                <td class="px-4 py-3 text-sm ${trendColor}">${trendText}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">→</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function showActionsByType(actionType) {
+    try {
+        currentActionType = actionType;
+        const actionLabel = actionLabels[actionType] || actionType;
+
+        // Update breadcrumbs
+        document.getElementById('actionsBreadcrumbs').innerHTML = `
+            <span class="cursor-pointer hover:text-white" onclick="loadActionsTab()">Действия</span>
+            <span class="mx-2">›</span>
+            <span class="text-white">${escapeHtml(actionLabel)}</span>
+        `;
+
+        // Show users view
+        document.getElementById('actionsSummaryView').classList.add('hidden');
+        document.getElementById('actionsByTypeView').classList.remove('hidden');
+        document.getElementById('actionTypeTitle').textContent = actionLabel;
+
+        // Load users for this action type
+        const response = await fetch(`${API_V2}/actions/by-type/${encodeURIComponent(actionType)}`, { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load actions by type');
+
+        const data = await response.json();
+        updateActionsByTypeTable(data.users || []);
+
+    } catch (err) {
+        console.error('Failed to load actions by type:', err);
+        document.getElementById('actionsByTypeTable').innerHTML =
+            `<tr><td colspan="4" class="px-4 py-3 text-center text-red-400">Ошибка загрузки: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+function updateActionsByTypeTable(users) {
+    const tbody = document.getElementById('actionsByTypeTable');
+    if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет пользователей</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = users.map(u => {
+        const userName = u.username ? `@${escapeHtml(u.username)}` : escapeHtml(u.first_name || u.user_id);
+        const tgLink = u.username ? ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>` : '';
+        const lastAction = u.last_action ? new Date(u.last_action).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        }) : '-';
+
+        return `
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
+                    <div class="text-xs text-slate-500">${userName}${tgLink}</div>
+                </td>
+                <td class="px-4 py-3 text-sm font-medium">${u.action_count || 0}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${lastAction}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">→</td>
             </tr>
         `;
     }).join('');
