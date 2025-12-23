@@ -1131,9 +1131,9 @@ class AnalyticsService:
 
     def get_user_engagement_metrics(self, days: int = 30) -> Dict:
         """
-        Get user engagement metrics: DAU/MAU, retention, segments.
+        Get user engagement metrics: DAU/WAU/MAU, retention, segments.
 
-        Returns dict with: dau, mau, dau_mau_ratio, segments, retention, new_users
+        Returns dict with: dau, wau, mau, dau_mau_ratio, dau_wau_ratio, segments, retention, new_users
         """
         conn = self._get_connection()
         try:
@@ -1150,6 +1150,13 @@ class AnalyticsService:
                 ORDER BY date(timestamp)
             ''', (start_date,))
             dau = [dict(row) for row in dau_cursor.fetchall()]
+
+            # WAU (unique users in last 7 days)
+            wau = conn.execute('''
+                SELECT COUNT(DISTINCT user_id) as count
+                FROM actions
+                WHERE date(timestamp) >= ? AND is_test = 0
+            ''', (week_start,)).fetchone()['count']
 
             # MAU (unique users in period)
             mau = conn.execute('''
@@ -1222,8 +1229,10 @@ class AnalyticsService:
 
             return {
                 'dau': dau,
+                'wau': wau,
                 'mau': mau,
                 'avg_dau': round(avg_dau, 1),
+                'dau_wau_ratio': round(avg_dau / wau, 2) if wau else 0,
                 'dau_mau_ratio': round(avg_dau / mau, 2) if mau else 0,
                 'segments': {
                     'power_users': segments_row['power_users'] or 0,
@@ -1245,7 +1254,8 @@ class AnalyticsService:
         except Exception as e:
             logger.error("get_user_engagement_metrics_error", error=str(e), exc_info=True)
             return {
-                'dau': [], 'mau': 0, 'avg_dau': 0, 'dau_mau_ratio': 0,
+                'dau': [], 'wau': 0, 'mau': 0, 'avg_dau': 0,
+                'dau_wau_ratio': 0, 'dau_mau_ratio': 0,
                 'segments': {'power_users': 0, 'regular_users': 0, 'casual_users': 0, 'dormant_users': 0},
                 'retention': {'day_1': 0, 'day_7': 0},
                 'new_users': {'today': 0, 'this_week': 0, 'this_month': 0},
@@ -1320,6 +1330,107 @@ class AnalyticsService:
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error("get_top_users_error", error=str(e))
+            return []
+        finally:
+            conn.close()
+
+    def get_action_type_summary(self) -> Dict:
+        """
+        Get summary of actions by type with today/week/month breakdown.
+
+        Returns dict with action types and their counts for different periods.
+        """
+        conn = self._get_connection()
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            week_start = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            month_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+
+            # Get all action types with counts for each period
+            cursor = conn.execute('''
+                SELECT
+                    action_type,
+                    SUM(CASE WHEN date(timestamp) = ? THEN 1 ELSE 0 END) as today,
+                    SUM(CASE WHEN date(timestamp) >= ? THEN 1 ELSE 0 END) as week,
+                    SUM(CASE WHEN date(timestamp) >= ? THEN 1 ELSE 0 END) as month,
+                    COUNT(DISTINCT user_id) as unique_users
+                FROM actions
+                WHERE is_test = 0
+                GROUP BY action_type
+                ORDER BY month DESC
+            ''', (today, week_start, month_start))
+
+            summary = []
+            for row in cursor.fetchall():
+                # Calculate trend (compare this week vs previous week)
+                prev_week_start = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+                prev_week_end = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+
+                prev_week_count = conn.execute('''
+                    SELECT COUNT(*) as count FROM actions
+                    WHERE action_type = ? AND date(timestamp) >= ? AND date(timestamp) < ? AND is_test = 0
+                ''', (row['action_type'], prev_week_start, prev_week_end)).fetchone()['count']
+
+                current_week = row['week']
+                if prev_week_count > 0:
+                    trend = round((current_week - prev_week_count) / prev_week_count * 100, 1)
+                elif current_week > 0:
+                    trend = 100.0
+                else:
+                    trend = 0.0
+
+                summary.append({
+                    'action_type': row['action_type'],
+                    'today': row['today'],
+                    'week': row['week'],
+                    'month': row['month'],
+                    'unique_users': row['unique_users'],
+                    'trend': trend
+                })
+
+            return {
+                'summary': summary,
+                'totals': {
+                    'today': sum(s['today'] for s in summary),
+                    'week': sum(s['week'] for s in summary),
+                    'month': sum(s['month'] for s in summary)
+                }
+            }
+        except Exception as e:
+            logger.error("get_action_type_summary_error", error=str(e), exc_info=True)
+            return {'summary': [], 'totals': {'today': 0, 'week': 0, 'month': 0}}
+        finally:
+            conn.close()
+
+    def get_actions_by_type(self, action_type: str, limit: int = 50) -> List[Dict]:
+        """
+        Get users and their action counts for a specific action type.
+
+        Returns list of users with their activity for this action type.
+        """
+        conn = self._get_connection()
+        try:
+            week_start = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+
+            cursor = conn.execute('''
+                SELECT
+                    a.user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    COUNT(*) as action_count,
+                    MAX(a.timestamp) as last_action
+                FROM actions a
+                LEFT JOIN users u ON a.user_id = u.user_id
+                WHERE a.action_type = ? AND a.is_test = 0 AND date(a.timestamp) >= ?
+                GROUP BY a.user_id
+                ORDER BY action_count DESC
+                LIMIT ?
+            ''', (action_type, week_start, limit))
+
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error("get_actions_by_type_error", action_type=action_type, error=str(e))
             return []
         finally:
             conn.close()

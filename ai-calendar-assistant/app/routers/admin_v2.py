@@ -870,10 +870,71 @@ async def get_audit_logs(
             }
             for log in logs
         ]
-    
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error("admin_audit_logs_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/actions/summary")
+async def get_actions_summary(request: Request):
+    """
+    Get summary of actions by type with today/week/month breakdown.
+
+    Returns: {summary: [{action_type, today, week, month, unique_users, trend}], totals}
+    """
+    try:
+        payload = await verify_admin_token(request)
+
+        if payload.get("mode") == "fake":
+            return {"summary": [], "totals": {"today": 0, "week": 0, "month": 0}}
+
+        data = analytics_service.get_action_type_summary()
+
+        logger.info("admin_actions_summary_accessed",
+                   admin_id=payload["user_id"],
+                   action_types=len(data["summary"]))
+
+        return data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_actions_summary_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/actions/by-type/{action_type}")
+async def get_actions_by_type(
+    request: Request,
+    action_type: str,
+    limit: int = Query(50, ge=1, le=200)
+):
+    """
+    Get users and their activity for a specific action type.
+
+    Returns: {users: [{user_id, username, first_name, action_count, last_action}], action_type}
+    """
+    try:
+        payload = await verify_admin_token(request)
+
+        if payload.get("mode") == "fake":
+            return {"users": [], "action_type": action_type}
+
+        users = analytics_service.get_actions_by_type(action_type, limit)
+
+        logger.info("admin_actions_by_type_accessed",
+                   admin_id=payload["user_id"],
+                   action_type=action_type,
+                   users_count=len(users))
+
+        return {"users": users, "action_type": action_type}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_actions_by_type_error", action_type=action_type, error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
