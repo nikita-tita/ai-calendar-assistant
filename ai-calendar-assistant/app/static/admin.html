@@ -1801,6 +1801,10 @@ function updateActionsByTypeTable(users) {
     }).join('');
 }
 
+// Export actions functions to window for onclick handlers
+window.showActionsByType = showActionsByType;
+window.loadActionsTab = loadActionsTab;
+
 // ============ HELPERS ============
 
 function formatNumber(num) {
