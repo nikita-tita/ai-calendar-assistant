@@ -7,7 +7,9 @@ from fastapi.staticfiles import StaticFiles
 import structlog
 
 from app.config import settings
-from app.routers import telegram, events, admin, admin_v2, logs, todos, sms_auth
+from app.routers import telegram, events, admin, admin_v2, logs, todos
+# sms_auth router - disabled until properly configured
+# from app.routers import sms_auth
 # Temporarily disabled - calendar_sync is independent microservice
 # from app.routers import calendar_sync, health
 # ARCHIVED - property is independent microservice (moved to _archived/property_bot_microservice)
@@ -65,7 +67,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(admin_v2.router, prefix="/api/admin/v2", tags=["admin_v2"])
 # app.include_router(property.router, prefix="/api/property", tags=["property"])  # ARCHIVED - independent microservice
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
-app.include_router(sms_auth.router, tags=["sms_auth"])
+# app.include_router(sms_auth.router, tags=["sms_auth"])  # Disabled until configured
 # app.include_router(calendar_sync.router, tags=["calendar_sync"])  # Disabled - microservice
 
 
