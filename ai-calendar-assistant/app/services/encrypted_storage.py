@@ -2,8 +2,9 @@
 
 import os
 import json
+import base64
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from cryptography.fernet import Fernet
 import structlog
 
@@ -15,42 +16,116 @@ class EncryptedStorage:
     Service for storing and retrieving encrypted JSON data.
 
     Uses Fernet (symmetric encryption) for encrypting data at rest.
-    The encryption key is generated once and stored securely.
+    The encryption key is stored separately from data for security.
+
+    Key sources (in order of priority):
+    1. ENCRYPTION_KEY environment variable (base64-encoded)
+    2. Key file at ENCRYPTION_KEY_FILE path
+    3. Auto-generated key (development only)
     """
 
-    def __init__(self, data_dir: str = "/var/lib/calendar-bot"):
+    def __init__(
+        self,
+        data_dir: Optional[str] = None,
+        key_file: Optional[str] = None,
+        key_from_env: Optional[str] = None
+    ):
         """
         Initialize encrypted storage.
 
         Args:
-            data_dir: Directory to store encrypted files and encryption key
+            data_dir: Directory to store encrypted files
+            key_file: Path to encryption key file (separate from data)
+            key_from_env: Base64-encoded encryption key from environment
         """
-        self.data_dir = Path(data_dir)
+        from app.config import settings
+
+        # Use config values as defaults
+        self.data_dir = Path(data_dir or settings.encryption_data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        self.key_file = self.data_dir / ".encryption_key"
+        # Key is stored SEPARATELY from data for security
+        self.key_file = Path(key_file or settings.encryption_key_file)
+        self.key_from_env = key_from_env or settings.encryption_key
+
         self.cipher = self._init_cipher()
 
-        logger.info("encrypted_storage_initialized", data_dir=str(self.data_dir))
+        logger.info(
+            "encrypted_storage_initialized",
+            data_dir=str(self.data_dir),
+            key_source=self._get_key_source()
+        )
+
+    def _get_key_source(self) -> str:
+        """Return description of key source for logging."""
+        if self.key_from_env:
+            return "environment"
+        elif self.key_file.exists():
+            return f"file:{self.key_file}"
+        else:
+            return "auto-generated"
 
     def _init_cipher(self) -> Fernet:
-        """Initialize encryption cipher with key from file or generate new one."""
+        """
+        Initialize encryption cipher from environment, file, or generate new one.
+
+        Priority:
+        1. ENCRYPTION_KEY environment variable
+        2. Key file at ENCRYPTION_KEY_FILE path
+        3. Auto-generate (development only, with warning)
+        """
+        from app.config import settings
+
+        # 1. Try environment variable first (most secure for production)
+        if self.key_from_env:
+            try:
+                # Key should be base64-encoded Fernet key
+                key = self.key_from_env.encode('utf-8')
+                # Validate it's a valid Fernet key
+                Fernet(key)
+                logger.info("encryption_key_loaded_from_env")
+                return Fernet(key)
+            except Exception as e:
+                logger.error("invalid_encryption_key_in_env", error=str(e))
+                raise ValueError(
+                    "ENCRYPTION_KEY environment variable contains invalid key. "
+                    "Generate a valid key with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+                )
+
+        # 2. Try key file (should be in separate directory from data)
         if self.key_file.exists():
-            # Load existing key
             with open(self.key_file, 'rb') as f:
-                key = f.read()
-            logger.info("encryption_key_loaded")
-        else:
-            # Generate new key
-            key = Fernet.generate_key()
+                key = f.read().strip()
+            logger.info("encryption_key_loaded_from_file", key_file=str(self.key_file))
+            return Fernet(key)
 
-            # Save key with restricted permissions
-            with open(self.key_file, 'wb') as f:
-                f.write(key)
-            os.chmod(self.key_file, 0o600)  # Read/write for owner only
+        # 3. Auto-generate (development only)
+        if settings.app_env == "production":
+            raise ValueError(
+                "Encryption key not found in production. "
+                "Set ENCRYPTION_KEY environment variable or create key file at "
+                f"{self.key_file}. Generate key with: "
+                "python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+            )
 
-            logger.info("encryption_key_generated", key_file=str(self.key_file))
+        # Development mode - auto-generate and warn
+        logger.warning(
+            "encryption_key_auto_generated",
+            message="Auto-generating encryption key. This is only acceptable for development!",
+            key_file=str(self.key_file)
+        )
 
+        key = Fernet.generate_key()
+
+        # Ensure key directory exists
+        self.key_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Save key with restricted permissions
+        with open(self.key_file, 'wb') as f:
+            f.write(key)
+        os.chmod(self.key_file, 0o600)  # Read/write for owner only
+
+        logger.info("encryption_key_generated", key_file=str(self.key_file))
         return Fernet(key)
 
     def save(self, data: Dict[str, Any], filename: str, encrypt: bool = True):

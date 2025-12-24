@@ -71,9 +71,15 @@ backups/
 app_backup_current/
 *.tar.gz
 
+# Duplicate directories (use top-level tests/ instead)
+app/tests/
+
 # Test results
 property_bot_test_*.json
 test_results.log
 
-# Misc
-=21.0
+# Secrets baseline
+.secrets.baseline
+
+# Alembic
+alembic/versions/__pycache__/

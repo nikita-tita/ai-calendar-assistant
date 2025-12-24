@@ -40,13 +40,8 @@ from app.schemas.events import IntentType
 from app.utils.datetime_parser import format_datetime_human
 from app.utils.lru_dict import LRUDict
 
-# Rate limiter - Redis with in-memory fallback
-try:
-    from app.services.rate_limiter_redis import rate_limiter_redis
-except ImportError:
-    rate_limiter_redis = None
-
-from app.services.rate_limiter import rate_limiter
+# Rate limiter - Redis primary with in-memory fallback
+from app.services.rate_limiter_redis import get_rate_limiter
 
 # Forum activity logger (optional)
 try:
@@ -134,9 +129,9 @@ class TelegramHandler:
         user_id = str(update.effective_user.id)
         message = update.message
 
-        # Rate limiting check - use Redis if available, fallback to in-memory
+        # Rate limiting check - Redis primary with in-memory fallback
         try:
-            limiter = rate_limiter_redis if rate_limiter_redis else rate_limiter
+            limiter = get_rate_limiter()
             is_allowed, reason = limiter.check_rate_limit(user_id)
 
             if not is_allowed:
