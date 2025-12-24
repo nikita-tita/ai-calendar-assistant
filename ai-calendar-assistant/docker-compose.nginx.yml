@@ -1,0 +1,69 @@
+# Docker Compose extension for Nginx reverse proxy with SSL
+#
+# Usage with main compose file:
+#   docker-compose -f docker-compose.secure.yml -f docker-compose.nginx.yml up -d
+#
+# Before first run:
+#   1. Point DNS to your server
+#   2. Create initial dummy certificates:
+#      mkdir -p ./certbot/conf/live/calendar.housler.ru
+#      openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+#        -keyout ./certbot/conf/live/calendar.housler.ru/privkey.pem \
+#        -out ./certbot/conf/live/calendar.housler.ru/fullchain.pem \
+#        -subj "/CN=calendar.housler.ru"
+#   3. Start nginx and get real certificates:
+#      docker-compose -f docker-compose.secure.yml -f docker-compose.nginx.yml up -d
+#      docker-compose run --rm certbot certonly --webroot -w /var/www/certbot \
+#        -d calendar.housler.ru --email admin@housler.ru --agree-tos --no-eff-email
+
+version: '3.8'
+
+services:
+  # Nginx reverse proxy with SSL termination
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: calendar-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    networks:
+      - calendar-network
+    depends_on:
+      - telegram-bot
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Certbot for automatic SSL certificate renewal
+  certbot:
+    image: certbot/certbot:latest
+    container_name: calendar-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # Renew certificates every 12 hours
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # Override telegram-bot to not expose port directly (nginx handles it)
+  telegram-bot:
+    ports: []  # Remove direct port exposure
+    expose:
+      - "8000"
+
+volumes:
+  certbot-conf:
+    driver: local
+  certbot-www:
+    driver: local

@@ -315,16 +315,32 @@ def init_redis_rate_limiter():
         rate_limiter_redis = None
 
 
-def get_rate_limiter() -> RedisRateLimiter:
+def get_rate_limiter():
     """
-    Get rate limiter instance.
+    Get the best available rate limiter.
+
+    Priority:
+    1. Redis rate limiter (persistent, distributed)
+    2. In-memory rate limiter (fallback)
 
     Returns:
-        RedisRateLimiter instance
-
-    Raises:
-        RuntimeError: If rate limiter not initialized
+        Rate limiter instance (Redis or in-memory)
     """
+    if rate_limiter_redis is not None:
+        return rate_limiter_redis
+
+    # Fallback to in-memory rate limiter
+    from app.services.rate_limiter import rate_limiter
+    logger.warning(
+        "using_memory_rate_limiter",
+        message="Redis rate limiter unavailable, using in-memory fallback. "
+                "Rate limits will reset on application restart."
+    )
+    return rate_limiter
+
+
+def is_redis_available() -> bool:
+    """Check if Redis rate limiter is available and healthy."""
     if rate_limiter_redis is None:
-        raise RuntimeError("Redis rate limiter not initialized. Call init_redis_rate_limiter() first.")
-    return rate_limiter_redis
+        return False
+    return rate_limiter_redis.get_connection_status()

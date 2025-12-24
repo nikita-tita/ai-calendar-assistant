@@ -125,6 +125,12 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_per_minute: int = 10
 
+    # Encryption settings
+    # Key should be stored separately from encrypted data for security
+    encryption_key_file: str = "/etc/calendar-bot/.encryption_key"
+    encryption_key: Optional[str] = None  # Base64-encoded key (alternative to file)
+    encryption_data_dir: str = "/var/lib/calendar-bot"
+
     # Forum Activity Logger (logs user activity to Telegram forum topics)
     # Uses separate bot to avoid load on main calendar bot
     forum_logger_enabled: bool = False
@@ -133,6 +139,17 @@ class Settings(BaseSettings):
 
     # Admin settings
     admin_user_id: Optional[str] = None  # Telegram user ID - gets LLM stats in evening reminder
+
+    # SMS Authentication Settings
+    sms_provider: str = "mock"  # Options: "sms.ru", "twilio", "mock"
+    
+    # SMS.ru settings (популярный провайдер в России)
+    sms_ru_api_id: Optional[str] = None  # API ID из личного кабинета sms.ru
+    
+    # Twilio settings (международный провайдер)
+    twilio_account_sid: Optional[str] = None
+    twilio_auth_token: Optional[str] = None
+    twilio_from_phone: Optional[str] = None  # Номер отправителя в формате +1234567890
 
 
 # Global settings instance

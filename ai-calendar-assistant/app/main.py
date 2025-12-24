@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 import structlog
 
 from app.config import settings
-from app.routers import telegram, events, admin, admin_v2, logs, todos
+from app.routers import telegram, events, admin, admin_v2, logs, todos, sms_auth
 # Temporarily disabled - calendar_sync is independent microservice
 # from app.routers import calendar_sync, health
 # ARCHIVED - property is independent microservice (moved to _archived/property_bot_microservice)
@@ -65,6 +65,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(admin_v2.router, prefix="/api/admin/v2", tags=["admin_v2"])
 # app.include_router(property.router, prefix="/api/property", tags=["property"])  # ARCHIVED - independent microservice
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
+app.include_router(sms_auth.router, tags=["sms_auth"])
 # app.include_router(calendar_sync.router, tags=["calendar_sync"])  # Disabled - microservice
 
 
@@ -76,6 +77,13 @@ async def startup_event():
         environment=settings.app_env,
         debug=settings.debug,
     )
+
+    # Initialize Prometheus metrics
+    try:
+        from app.services.metrics import init_metrics
+        init_metrics()
+    except Exception as e:
+        logger.warning("metrics_init_failed", error=str(e))
 
     # Initialize Redis rate limiter
     try:
@@ -177,6 +185,23 @@ async def shutdown_event():
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    from fastapi.responses import PlainTextResponse
+    try:
+        from app.services.metrics import get_metrics_text
+        return PlainTextResponse(
+            content=get_metrics_text(),
+            media_type="text/plain; charset=utf-8"
+        )
+    except ImportError:
+        return PlainTextResponse(
+            content="# Metrics not available\n",
+            media_type="text/plain"
+        )
 
 
 @app.get("/")
