@@ -140,17 +140,6 @@ class Settings(BaseSettings):
     # Admin settings
     admin_user_id: Optional[str] = None  # Telegram user ID - gets LLM stats in evening reminder
 
-    # SMS Authentication Settings
-    sms_provider: str = "mock"  # Options: "sms.ru", "twilio", "mock"
-    
-    # SMS.ru settings (популярный провайдер в России)
-    sms_ru_api_id: Optional[str] = None  # API ID из личного кабинета sms.ru
-    
-    # Twilio settings (международный провайдер)
-    twilio_account_sid: Optional[str] = None
-    twilio_auth_token: Optional[str] = None
-    twilio_from_phone: Optional[str] = None  # Номер отправителя в формате +1234567890
-
 
 # Global settings instance
 settings = Settings()
