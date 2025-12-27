@@ -6,6 +6,68 @@
 
 ---
 
+## [2025-12-27] - Dead Code Cleanup
+
+### Removed
+
+**SMS Auth (16 файлов)** — неиспользуемая функциональность SMS-авторизации:
+- `app/routers/sms_auth.py` — роутер
+- `app/middleware/sms_auth_middleware.py` — middleware
+- `app/services/sms_auth_service.py` — сервис авторизации
+- `app/services/sms_service.py` — SMS провайдер
+- `app/models/sms_auth.py` — модели
+- `app/static/sms_auth_demo.html` — демо-страница
+- `tests/test_sms_auth.py` — тесты
+- `env.sms.example`, `env.sms_production.example` — примеры конфигов
+- 7 файлов документации (SMS_AUTHENTICATION.md, CHECKLIST_SMS.md, и др.)
+
+**Calendar Sync (6 файлов)** — отключённая интеграция с Google Calendar:
+- `app/routers/calendar_sync.py` — роутер синхронизации
+- `app/routers/health.py` — расширенный health check (дублировал /health в main.py)
+- `app/models/calendar_sync.py` — модели
+- `app/services/calendar_sync_service.py` — сервис синхронизации
+- `app/services/sync_database.py` — БД для синхронизации
+- `app/services/sync_hooks.py` — хуки
+
+**Property Bot (~15 файлов)** — архивированный бот для недвижимости:
+- `app/run_property_bot.py` — точка входа
+- `app/scripts/init_property_db.py` — инициализация БД
+- `app/scripts/test_property_*.py` (5 файлов) — тестовые скрипты
+- `app/tests/test_feed_mapper.py` — тесты маппера
+- `app/tests/integration/test_property_service.py` — интеграционные тесты
+- `app/tests/test_property_stage2_integration.py` — Stage 2 тесты
+- `app/migrations/` — миграции БД
+
+**Test JSON файлы (9 файлов)**:
+- `app/property_bot_test_simple_*.json` (7 файлов) — тестовые данные
+- `app/test_admin.json`, `app/test_analytics.json` — тестовые данные
+
+### Changed
+
+**app/main.py** — очистка от закомментированного кода:
+- Удалены закомментированные импорты (calendar_sync, health, property, sms_auth)
+- Удалены закомментированные регистрации роутеров
+- Удалена неиспользуемая функция `_sync_task_loop()` (Google Calendar)
+- Удалён закомментированный код Property Bot scheduler
+
+**app/config.py** — удалены неиспользуемые настройки:
+- SMS: `sms_provider`, `sms_ru_api_id`, `twilio_*`
+- Property Bot: `property_feed_url`, `property_database_url`, `property_db_password`
+- Yandex Maps/Vision API settings
+- Feature flags для property
+- Cache/Search/Rate limiting для property
+
+### Technical
+- **Удалено файлов:** ~35
+- **Удалено строк кода:** ~8500
+- **Коммиты:** `7c6049f` (SMS Auth), `ba0f847` (Calendar Sync + Property Bot)
+- **Деплой:** ✅ Развёрнуто на production
+
+### Why
+Код был полностью отключён (закомментирован в main.py), никогда не использовался в production, и создавал confusion при навигации по проекту.
+
+---
+
 ## [2025-12-20] - Disk Management & Infrastructure
 
 ### Problem
