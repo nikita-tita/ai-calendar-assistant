@@ -6,6 +6,53 @@
 
 ---
 
+## [2025-12-29] - Todos Data Recovery & Backup Infrastructure
+
+### Fixed
+
+**batch_confirm handler** — поддержка todos в batch_confirm:
+- Handler `_handle_batch_confirm` теперь корректно обрабатывает `intent="todo"`
+- Ранее todos из batch_actions игнорировались (обрабатывались только события)
+- Коммит: `40b78a3`
+
+**Encryption key migration** — миграция ключей шифрования todos:
+- Обнаружено 3 разных ключа шифрования (ENV, todos_file, main_file)
+- 17 из 20 файлов пользователей были зашифрованы старым ключом
+- Все файлы мигрированы на единый ключ из ENV
+- Создан backup перед миграцией
+
+### Added
+
+**Todos backup script** (`scripts/backup-todos.sh`):
+- Автоматический бэкап todos из Docker контейнера
+- Сохранение в `/root/backups/todos/` с timestamp
+- Retention: 30 дней
+- Добавлен в crontab: `5 3 * * *` (ежедневно в 03:05)
+- Коммит: `be8d087`
+
+**Reminder content logging** — логирование содержимого напоминаний:
+- Новая колонка `message_content TEXT` в таблице `sent_daily_reminders`
+- Все типы напоминаний (morning, motivation, evening) сохраняют полный текст
+- Автоматическая миграция схемы БД при запуске
+- Позволяет восстановить данные (например, список todos) из логов
+- Коммит: `f617ba6`
+
+### Data Recovery
+
+**Восстановление данных пользователя 2296243**:
+- Обнаружена потеря данных при включении шифрования (без миграции)
+- Восстановлено 7 todos из backup от Dec 4
+- Добавлено 4 todos из вечернего напоминания Dec 24
+- Итого: 13 todos (было 2)
+
+### Technical
+- **Коммитов:** 3
+- **Новые файлы:** `scripts/backup-todos.sh`
+- **Изменённые файлы:** `telegram_handler.py`, `daily_reminders.py`
+- **Деплой:** ✅ Развёрнуто на production
+
+---
+
 ## [2025-12-27] - Dead Code Cleanup
 
 ### Removed
