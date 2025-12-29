@@ -6,6 +6,30 @@
 
 ---
 
+## [2025-12-30] - E2E Functional Tests in Smoke Test
+
+### Added
+
+**E2E тесты в smoke_test.sh** — функциональные тесты сервисов:
+- `test_todo_service` — создание/проверка/удаление задачи через todos_service
+- `test_calendar_service` — создание/удаление события через calendar_radicale
+- `test_stt_service` — проверка конфигурации Yandex SpeechKit
+- `test_llm_parsing` — тест парсинга интентов через Yandex GPT
+
+**Особенности реализации:**
+- Тесты выполняются через `docker exec` + Python one-liners
+- Логи подавляются для чистого вывода результатов
+- Тестовые данные автоматически удаляются после проверки
+- Работает как локально на сервере, так и удалённо через SSH
+
+### Technical
+- **Коммит:** `2604b62`
+- **Изменённые файлы:** `scripts/monitoring/smoke_test.sh` (+171 строк)
+- **Тестов в отчёте:** 14 (было 10)
+- **Расписание:** cron 10:00 и 17:00 MSK
+
+---
+
 ## [2025-12-29] - Todos Data Recovery & Backup Infrastructure
 
 ### Fixed
