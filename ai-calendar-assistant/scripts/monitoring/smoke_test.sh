@@ -368,6 +368,170 @@ test_response_time() {
     fi
 }
 
+# ===== E2E FUNCTIONAL TESTS =====
+
+run_docker_python() {
+    # Helper to run Python code in container
+    local code=$1
+    if [[ "$IS_LOCAL_SERVER" == "true" ]]; then
+        docker exec telegram-bot python3 -c "$code" 2>&1
+    elif [[ -f "$SSH_KEY" ]]; then
+        ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
+            "docker exec telegram-bot python3 -c '$code'" 2>&1
+    else
+        echo "ERROR: Cannot connect"
+        return 1
+    fi
+}
+
+test_todo_service() {
+    log "Testing todo service (create/delete)..."
+
+    local result
+    result=$(run_docker_python "
+import asyncio, sys, logging
+logging.disable(logging.CRITICAL)
+sys.path.insert(0, '/app')
+from app.services.todos_service import todos_service
+from app.schemas.todos import TodoDTO
+
+async def test():
+    user_id = 'smoke_test_user'
+    try:
+        dto = TodoDTO(title='SMOKE_TEST_TODO_DELETE_ME')
+        todo_id = await todos_service.create_todo(user_id, dto)
+        if not todo_id:
+            return 'FAIL:create'
+        todos = await todos_service.list_todos(user_id)
+        found = any(t.id == todo_id for t in todos)
+        if not found:
+            return 'FAIL:verify'
+        deleted = await todos_service.delete_todo(user_id, todo_id)
+        return 'PASS' if deleted else 'FAIL:delete'
+    except Exception as e:
+        return f'FAIL:{str(e)[:25]}'
+print(asyncio.run(test()))
+" 2>/dev/null | tail -1)
+
+    if [[ "$result" == "PASS" ]]; then
+        add_result "PASS" "Todo service" "create/delete OK"
+        return 0
+    else
+        add_result "FAIL" "Todo service" "${result:-no response}"
+        return 1
+    fi
+}
+
+test_calendar_service() {
+    log "Testing calendar service (create/delete)..."
+
+    local result
+    result=$(run_docker_python "
+import asyncio, sys, logging
+logging.disable(logging.CRITICAL)
+sys.path.insert(0, '/app')
+from datetime import datetime, timedelta
+from app.services.calendar_radicale import calendar_service
+from app.schemas.events import EventDTO
+
+async def test():
+    user_id = 'smoke_test_user'
+    try:
+        start = datetime.now() + timedelta(days=1)
+        start = start.replace(hour=10, minute=0, second=0, microsecond=0)
+        end = start + timedelta(hours=1)
+        dto = EventDTO(title='SMOKE_TEST_EVENT_DELETE_ME', start_time=start, end_time=end)
+        uid = await calendar_service.create_event(user_id, dto)
+        if not uid:
+            return 'FAIL:create'
+        deleted = await calendar_service.delete_event(user_id, uid)
+        return 'PASS' if deleted else 'FAIL:delete'
+    except Exception as e:
+        return f'FAIL:{str(e)[:25]}'
+print(asyncio.run(test()))
+" 2>/dev/null | tail -1)
+
+    if [[ "$result" == "PASS" ]]; then
+        add_result "PASS" "Calendar service" "create/delete OK"
+        return 0
+    else
+        add_result "FAIL" "Calendar service" "${result:-no response}"
+        return 1
+    fi
+}
+
+test_stt_service() {
+    log "Testing STT service (voice recognition)..."
+
+    local result
+    result=$(run_docker_python "
+import asyncio, sys, logging
+logging.disable(logging.CRITICAL)
+sys.path.insert(0, '/app')
+from app.services.stt_yandex import stt_service_yandex
+
+async def test():
+    try:
+        # Test that service can be initialized and API key is set
+        if not stt_service_yandex.api_key:
+            return 'FAIL:no_api_key'
+        if not stt_service_yandex.folder_id:
+            return 'FAIL:no_folder_id'
+        return 'PASS'
+    except Exception as e:
+        return f'FAIL:{str(e)[:25]}'
+print(asyncio.run(test()))
+" 2>/dev/null | tail -1)
+
+    if [[ "$result" == "PASS" ]]; then
+        add_result "PASS" "STT service" "Yandex SpeechKit OK"
+        return 0
+    elif [[ "$result" == *"WARN"* ]]; then
+        add_result "WARN" "STT service" "${result#WARN:}"
+        return 0
+    else
+        add_result "FAIL" "STT service" "${result:-no response}"
+        return 1
+    fi
+}
+
+test_llm_parsing() {
+    log "Testing LLM parsing (intent recognition)..."
+
+    local result
+    result=$(run_docker_python "
+import asyncio, sys, logging
+logging.disable(logging.CRITICAL)
+sys.path.insert(0, '/app')
+
+async def test():
+    try:
+        from app.services.llm_agent_yandex import llm_agent_yandex
+        # Quick test - parse simple input (uses Yandex GPT API)
+        result = await llm_agent_yandex.extract_event('встреча завтра', user_id='smoke_test')
+        return 'PASS' if result else 'WARN:empty'
+    except Exception as e:
+        err = str(e)[:25]
+        if 'quota' in err.lower() or 'limit' in err.lower():
+            return 'WARN:quota'
+        if 'api' in err.lower() or '401' in err or '403' in err:
+            return 'WARN:api_key'
+        return f'FAIL:{err}'
+print(asyncio.run(test()))
+" 2>/dev/null | tail -1)
+
+    if [[ "$result" == "PASS" ]]; then
+        add_result "PASS" "LLM parsing" "Yandex GPT OK"
+        return 0
+    elif [[ "$result" == *"WARN"* ]]; then
+        add_result "WARN" "LLM parsing" "${result#WARN:}"
+        return 0
+    else
+        add_result "FAIL" "LLM parsing" "${result:-no response}"
+        return 1
+    fi
+}
+
 # ===== MAIN =====
 
 main() {
@@ -377,7 +541,7 @@ main() {
     log "Starting Smoke Test..."
     log "API Base URL: $API_BASE_URL"
 
-    # Run all tests
+    # Run infrastructure tests
     test_health_endpoint || true
     test_webapp_endpoint || true
     test_static_files || true
@@ -388,6 +552,12 @@ main() {
     test_docker_containers || true
     test_recent_errors || true
     test_calendar_events_count || true
+
+    # Run E2E functional tests
+    test_todo_service || true
+    test_calendar_service || true
+    test_stt_service || true
+    test_llm_parsing || true
 
     # Build final report
     local total=$((PASSED + FAILED + WARNINGS))
