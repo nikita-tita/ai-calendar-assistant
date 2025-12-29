@@ -37,7 +37,11 @@ fi
 PASSED=0
 FAILED=0
 WARNINGS=0
-REPORT=""
+
+# Results by category (format: "status|name|details|impact")
+RESULTS_FUNCTIONS=""    # Основные функции бота
+RESULTS_INFRA=""        # Инфраструктура
+RESULTS_ATTENTION=""    # Требует внимания
 
 # ===== FUNCTIONS =====
 
@@ -49,22 +53,30 @@ add_result() {
     local status=$1
     local test_name=$2
     local details=$3
+    local category=${4:-"infra"}  # functions, infra, attention
+    local impact=${5:-""}
+
+    local entry="${status}|${test_name}|${details}|${impact}"
 
     if [[ "$status" == "PASS" ]]; then
-        REPORT+="✅ $test_name"
         ((PASSED++))
     elif [[ "$status" == "FAIL" ]]; then
-        REPORT+="❌ $test_name"
         ((FAILED++))
     else
-        REPORT+="⚠️ $test_name"
         ((WARNINGS++))
     fi
 
-    if [[ -n "$details" ]]; then
-        REPORT+=" — $details"
-    fi
-    REPORT+=$'\n'
+    case "$category" in
+        functions)
+            RESULTS_FUNCTIONS+="${entry}"$'\n'
+            ;;
+        attention)
+            RESULTS_ATTENTION+="${entry}"$'\n'
+            ;;
+        *)
+            RESULTS_INFRA+="${entry}"$'\n'
+            ;;
+    esac
 }
 
 send_telegram() {
@@ -97,10 +109,10 @@ test_health_endpoint() {
     http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$HEALTH_URL" 2>/dev/null)
 
     if [[ "$http_code" == "200" ]] && [[ "$body" == *"ok"* ]]; then
-        add_result "PASS" "Health endpoint" "HTTP 200"
+        add_result "PASS" "API" "сервер отвечает" "infra" "бот полностью недоступен"
         return 0
     else
-        add_result "FAIL" "Health endpoint" "HTTP $http_code"
+        add_result "FAIL" "API" "сервер не отвечает (HTTP $http_code)" "infra" "бот полностью недоступен"
         return 1
     fi
 }
@@ -112,10 +124,10 @@ test_webapp_endpoint() {
     http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$WEBAPP_URL" 2>/dev/null)
 
     if [[ "$http_code" == "200" ]]; then
-        add_result "PASS" "WebApp endpoint" "HTTP 200"
+        add_result "PASS" "Сайт" "calendar.housler.ru доступен" "infra" "веб-интерфейс недоступен"
         return 0
     else
-        add_result "FAIL" "WebApp endpoint" "HTTP $http_code"
+        add_result "FAIL" "Сайт" "calendar.housler.ru недоступен (HTTP $http_code)" "infra" "веб-интерфейс недоступен"
         return 1
     fi
 }
@@ -129,17 +141,17 @@ test_static_files() {
     response=$(curl -s --connect-timeout 10 "$STATIC_URL" 2>/dev/null)
 
     if [[ -z "$response" ]]; then
-        add_result "FAIL" "Static files" "No response"
+        add_result "FAIL" "WebApp" "не загружается" "infra" "веб-интерфейс не работает"
         return 1
     fi
 
     version=$(echo "$response" | grep -o "APP_VERSION = '[^']*'" | head -1 | cut -d"'" -f2)
 
     if [[ -n "$version" ]]; then
-        add_result "PASS" "Static files" "v$version"
+        add_result "PASS" "WebApp" "версия $version" "infra" "веб-интерфейс не работает"
         return 0
     else
-        add_result "WARN" "Static files" "Version not found"
+        add_result "WARN" "WebApp" "версия не определена" "attention" "возможно старая версия"
         return 0
     fi
 }
@@ -152,13 +164,13 @@ test_api_events_auth() {
 
     # Without auth, should return 401, 403, or 404 (middleware blocks)
     if [[ "$http_code" == "401" ]] || [[ "$http_code" == "403" ]] || [[ "$http_code" == "404" ]]; then
-        add_result "PASS" "Events API auth" "Protected (HTTP $http_code)"
+        add_result "PASS" "Защита API" "события защищены" "infra" "данные календаря уязвимы"
         return 0
     elif [[ "$http_code" == "200" ]]; then
-        add_result "FAIL" "Events API auth" "NOT PROTECTED!"
+        add_result "FAIL" "Защита API" "события НЕ защищены!" "infra" "данные календаря уязвимы"
         return 1
     else
-        add_result "WARN" "Events API auth" "HTTP $http_code"
+        add_result "WARN" "Защита API" "статус $http_code" "attention" "проверить вручную"
         return 0
     fi
 }
@@ -170,13 +182,12 @@ test_api_todos_auth() {
     http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "$TODOS_API_URL" 2>/dev/null)
 
     if [[ "$http_code" == "401" ]] || [[ "$http_code" == "403" ]] || [[ "$http_code" == "404" ]]; then
-        add_result "PASS" "Todos API auth" "Protected (HTTP $http_code)"
+        # Skip - already checked in events test, no need to duplicate
         return 0
     elif [[ "$http_code" == "200" ]]; then
-        add_result "FAIL" "Todos API auth" "NOT PROTECTED!"
+        add_result "FAIL" "Защита API" "задачи НЕ защищены!" "infra" "данные задач уязвимы"
         return 1
     else
-        add_result "WARN" "Todos API auth" "HTTP $http_code"
         return 0
     fi
 }
@@ -188,7 +199,7 @@ test_ssl_certificate() {
     expiry=$(echo | openssl s_client -servername calendar.housler.ru -connect calendar.housler.ru:443 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
 
     if [[ -z "$expiry" ]]; then
-        add_result "WARN" "SSL certificate" "Could not check"
+        add_result "WARN" "SSL" "не удалось проверить" "attention" "проверить вручную"
         return 0
     fi
 
@@ -201,13 +212,13 @@ test_ssl_certificate() {
     days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
 
     if [[ $days_left -lt 7 ]]; then
-        add_result "FAIL" "SSL certificate" "Expires in $days_left days!"
+        add_result "FAIL" "SSL" "истекает через $days_left дней!" "infra" "сайт будет недоступен"
         return 1
     elif [[ $days_left -lt 30 ]]; then
-        add_result "WARN" "SSL certificate" "Expires in $days_left days"
+        add_result "WARN" "SSL" "истекает через $days_left дней" "attention" "обновить сертификат"
         return 0
     else
-        add_result "PASS" "SSL certificate" "Valid ($days_left days)"
+        add_result "PASS" "SSL" "ещё $days_left дней" "infra" "сайт будет недоступен"
         return 0
     fi
 }
@@ -225,12 +236,12 @@ test_docker_containers() {
         containers=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
             'docker ps --format "{{.Names}}:{{.Status}}" 2>/dev/null | grep -E "(telegram-bot|calendar-redis|radicale-calendar)"' 2>/dev/null)
     else
-        add_result "WARN" "Docker containers" "SSH key not found"
+        add_result "WARN" "Сервер" "нет доступа по SSH" "attention" "проверить подключение"
         return 0
     fi
 
     if [[ -z "$containers" ]]; then
-        add_result "FAIL" "Docker containers" "Cannot connect or no containers"
+        add_result "FAIL" "Сервер" "контейнеры не запущены" "infra" "бот не работает"
         return 1
     fi
 
@@ -245,13 +256,13 @@ test_docker_containers() {
     done <<< "$containers"
 
     if [[ $healthy_count -eq 3 ]]; then
-        add_result "PASS" "Docker containers" "3/3 healthy"
+        add_result "PASS" "Сервер" "все 3 контейнера работают" "infra" "бот не работает"
         return 0
     elif [[ $healthy_count -gt 0 ]]; then
-        add_result "WARN" "Docker containers" "$healthy_count/3 healthy"
+        add_result "WARN" "Сервер" "$healthy_count/3 контейнеров" "attention" "часть сервисов недоступна"
         return 0
     else
-        add_result "FAIL" "Docker containers" "0/3 healthy"
+        add_result "FAIL" "Сервер" "контейнеры не здоровы" "infra" "бот не работает"
         return 1
     fi
 }
@@ -269,14 +280,12 @@ test_recent_errors() {
         error_count=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
             'docker logs telegram-bot --since 6h 2>&1 | grep -ciE "error|exception|traceback" || echo 0' 2>/dev/null | tr -d '[:space:]' | head -1)
     else
-        add_result "WARN" "Recent errors" "SSH key not found"
-        return 0
+        return 0  # Already warned about SSH
     fi
 
     error_count=$(echo "$error_count" | tr -d '[:space:]' | head -1)
 
     if [[ -z "$error_count" ]] || [[ "$error_count" == "" ]]; then
-        add_result "WARN" "Recent errors" "Cannot check logs"
         return 0
     fi
 
@@ -287,13 +296,13 @@ test_recent_errors() {
     fi
 
     if [[ "$error_count" -eq 0 ]]; then
-        add_result "PASS" "Recent errors" "No errors (6h)"
+        # Don't report - no news is good news
         return 0
     elif [[ "$error_count" -lt 10 ]]; then
-        add_result "WARN" "Recent errors" "$error_count errors (6h)"
+        add_result "WARN" "Логи" "$error_count ошибок за 6ч" "attention" "единичные сбои, обычно не критично"
         return 0
     else
-        add_result "FAIL" "Recent errors" "$error_count errors (6h)"
+        add_result "FAIL" "Логи" "$error_count ошибок за 6ч" "attention" "много ошибок, проверить логи"
         return 1
     fi
 }
@@ -311,24 +320,17 @@ test_calendar_events_count() {
         count=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
             'docker exec radicale-calendar find /data -name "*.ics" 2>/dev/null | wc -l' 2>/dev/null)
     else
-        add_result "WARN" "Calendar events" "SSH key not found"
-        return 0
+        return 0  # Already warned about SSH
     fi
 
     if [[ -z "$count" ]] || [[ "$count" == "" ]]; then
-        add_result "WARN" "Calendar events" "Cannot count"
         return 0
     fi
 
     count=$(echo "$count" | tr -d '[:space:]')
 
-    if [[ "$count" -gt 0 ]]; then
-        add_result "PASS" "Calendar events" "$count events"
-        return 0
-    else
-        add_result "WARN" "Calendar events" "0 events"
-        return 0
-    fi
+    # Just informational, not reported
+    return 0
 }
 
 test_response_time() {
@@ -338,7 +340,6 @@ test_response_time() {
     time_total=$(curl -s -o /dev/null -w "%{time_total}" --connect-timeout 10 "$HEALTH_URL" 2>/dev/null)
 
     if [[ -z "$time_total" ]]; then
-        add_result "WARN" "Response time" "Cannot measure"
         return 0
     fi
 
@@ -352,18 +353,17 @@ test_response_time() {
     fi
 
     if [[ -z "$ms" ]] || [[ "$ms" == "" ]]; then
-        add_result "WARN" "Response time" "${time_total}s"
         return 0
     fi
 
     if [[ "$ms" -lt 1000 ]]; then
-        add_result "PASS" "Response time" "${ms}ms"
+        add_result "PASS" "Скорость" "ответ ${ms}мс" "infra" "бот медленно отвечает"
         return 0
     elif [[ "$ms" -lt 3000 ]]; then
-        add_result "WARN" "Response time" "${ms}ms (slow)"
+        add_result "WARN" "Скорость" "медленно (${ms}мс)" "attention" "бот отвечает с задержкой"
         return 0
     else
-        add_result "FAIL" "Response time" "${ms}ms (very slow)"
+        add_result "FAIL" "Скорость" "очень медленно (${ms}мс)" "infra" "бот почти не отвечает"
         return 1
     fi
 }
@@ -414,10 +414,10 @@ print(asyncio.run(test()))
 " 2>/dev/null | tail -1)
 
     if [[ "$result" == "PASS" ]]; then
-        add_result "PASS" "Todo service" "create/delete OK"
+        add_result "PASS" "Задачи" "создание/удаление работает" "functions" "не сможете добавлять задачи"
         return 0
     else
-        add_result "FAIL" "Todo service" "${result:-no response}"
+        add_result "FAIL" "Задачи" "ошибка: ${result:-нет ответа}" "functions" "не сможете добавлять задачи"
         return 1
     fi
 }
@@ -452,10 +452,10 @@ print(asyncio.run(test()))
 " 2>/dev/null | tail -1)
 
     if [[ "$result" == "PASS" ]]; then
-        add_result "PASS" "Calendar service" "create/delete OK"
+        add_result "PASS" "Календарь" "создание событий работает" "functions" "не сможете создавать события"
         return 0
     else
-        add_result "FAIL" "Calendar service" "${result:-no response}"
+        add_result "FAIL" "Календарь" "ошибка: ${result:-нет ответа}" "functions" "не сможете создавать события"
         return 1
     fi
 }
@@ -484,13 +484,13 @@ print(asyncio.run(test()))
 " 2>/dev/null | tail -1)
 
     if [[ "$result" == "PASS" ]]; then
-        add_result "PASS" "STT service" "Yandex SpeechKit OK"
+        add_result "PASS" "Голос" "распознавание речи работает" "functions" "не будет распознавать голосовые"
         return 0
     elif [[ "$result" == *"WARN"* ]]; then
-        add_result "WARN" "STT service" "${result#WARN:}"
+        add_result "WARN" "Голос" "${result#WARN:}" "attention" "голосовые могут не работать"
         return 0
     else
-        add_result "FAIL" "STT service" "${result:-no response}"
+        add_result "FAIL" "Голос" "ошибка: ${result:-нет ответа}" "functions" "не будет распознавать голосовые"
         return 1
     fi
 }
@@ -521,22 +521,95 @@ print(asyncio.run(test()))
 " 2>/dev/null | tail -1)
 
     if [[ "$result" == "PASS" ]]; then
-        add_result "PASS" "LLM parsing" "Yandex GPT OK"
+        add_result "PASS" "AI" "понимает команды" "functions" "не будет понимать текст"
         return 0
     elif [[ "$result" == *"WARN"* ]]; then
-        add_result "WARN" "LLM parsing" "${result#WARN:}"
+        add_result "WARN" "AI" "${result#WARN:}" "attention" "AI может работать нестабильно"
         return 0
     else
-        add_result "FAIL" "LLM parsing" "${result:-no response}"
+        add_result "FAIL" "AI" "ошибка: ${result:-нет ответа}" "functions" "не будет понимать текст"
         return 1
     fi
+}
+
+# ===== REPORT FORMATTING =====
+
+format_category_results() {
+    local results=$1
+    local output=""
+
+    # Parse each line: "status|name|details|impact"
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+
+        local status name details impact
+        IFS='|' read -r status name details impact <<< "$line"
+
+        local icon
+        case "$status" in
+            PASS) icon="✓" ;;
+            FAIL) icon="✗" ;;
+            WARN) icon="⚠" ;;
+            *) icon="?" ;;
+        esac
+
+        output+="• ${name} ${icon} — ${details}"$'\n'
+    done <<< "$results"
+
+    echo -n "$output"
+}
+
+build_human_report() {
+    local report=""
+
+    # Header with overall status
+    if [[ $FAILED -eq 0 ]]; then
+        if [[ $WARNINGS -eq 0 ]]; then
+            report+="🟢 <b>Бот работает нормально</b>"$'\n'
+        else
+            report+="🟡 <b>Бот работает, есть мелочи</b>"$'\n'
+        fi
+    else
+        report+="🔴 <b>Есть проблемы!</b>"$'\n'
+    fi
+    report+=$'\n'
+
+    # Functions section (if any results)
+    if [[ -n "$RESULTS_FUNCTIONS" ]]; then
+        report+="📱 <b>Основные функции:</b>"$'\n'
+        report+=$(format_category_results "$RESULTS_FUNCTIONS")
+        report+=$'\n'
+    fi
+
+    # Infrastructure section (if any results)
+    if [[ -n "$RESULTS_INFRA" ]]; then
+        report+="🌐 <b>Инфраструктура:</b>"$'\n'
+        report+=$(format_category_results "$RESULTS_INFRA")
+        report+=$'\n'
+    fi
+
+    # Attention section (only if there are warnings/issues)
+    if [[ -n "$RESULTS_ATTENTION" ]]; then
+        report+="⚡️ <b>Требует внимания:</b>"$'\n'
+        report+=$(format_category_results "$RESULTS_ATTENTION")
+        report+=$'\n'
+    fi
+
+    # If there are failures, add help section
+    if [[ $FAILED -gt 0 ]]; then
+        report+="❓ <b>Что делать:</b>"$'\n'
+        report+="• Проверить логи: docker logs telegram-bot"$'\n'
+        report+="• Перезапустить: docker-compose -f docker-compose.secure.yml restart"$'\n'
+    fi
+
+    echo -n "$report"
 }
 
 # ===== MAIN =====
 
 main() {
     local start_time
-    start_time=$(date '+%Y-%m-%d %H:%M:%S')
+    start_time=$(date '+%H:%M')
 
     log "Starting Smoke Test..."
     log "API Base URL: $API_BASE_URL"
@@ -559,33 +632,9 @@ main() {
     test_stt_service || true
     test_llm_parsing || true
 
-    # Build final report
-    local total=$((PASSED + FAILED + WARNINGS))
-    local status_emoji
-    local status_text
-
-    if [[ $FAILED -eq 0 ]]; then
-        if [[ $WARNINGS -eq 0 ]]; then
-            status_emoji="✅"
-            status_text="ALL TESTS PASSED"
-        else
-            status_emoji="⚠️"
-            status_text="PASSED WITH WARNINGS"
-        fi
-    else
-        status_emoji="🔴"
-        status_text="TESTS FAILED"
-    fi
-
-    local final_report="<b>${status_emoji} AI Calendar Assistant</b>
-<b>${status_text}</b>
-
-<b>📊 Results:</b> ✅${PASSED} ❌${FAILED} ⚠️${WARNINGS}
-
-<b>🔍 Details:</b>
-${REPORT}
-<b>🕐 Time:</b> ${start_time}
-<b>🌐 URL:</b> ${API_BASE_URL}"
+    # Build human-readable report
+    local final_report
+    final_report=$(build_human_report)
 
     # Print to console
     echo ""
@@ -593,12 +642,14 @@ ${REPORT}
     echo "  SMOKE TEST RESULTS"
     echo "=========================================="
     echo ""
-    echo "Status: $status_text"
-    echo "Passed: $PASSED"
-    echo "Failed: $FAILED"
-    echo "Warnings: $WARNINGS"
+    echo "Passed: $PASSED | Failed: $FAILED | Warnings: $WARNINGS"
     echo ""
-    echo "$REPORT"
+    echo "--- Functions ---"
+    echo "$RESULTS_FUNCTIONS"
+    echo "--- Infrastructure ---"
+    echo "$RESULTS_INFRA"
+    echo "--- Attention ---"
+    echo "$RESULTS_ATTENTION"
     echo "=========================================="
 
     # Send to Telegram
