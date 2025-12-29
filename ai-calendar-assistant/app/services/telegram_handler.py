@@ -2001,20 +2001,38 @@ Housler.ru сделал подборку сервисов, которые пом
         self._log_bot_response(user_id, message, user_text)
 
     async def _handle_batch_confirm(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
-        """Handle batch event creation."""
+        """Handle batch event/todo creation."""
         if not event_dto.batch_actions or len(event_dto.batch_actions) == 0:
             no_batch_msg = "Не смог распознать события."
             await update.message.reply_text(no_batch_msg)
             self._log_bot_response(user_id, no_batch_msg, user_text)
             return
 
-        # Create all events and collect results
+        # Create all events/todos and collect results
         created_events = []
+        created_todos = []
         created_uids = []  # Track UUIDs for context
         failed_count = 0
 
         for action in event_dto.batch_actions:
             try:
+                action_intent = action.get("intent", "").lower()
+                title = action.get("title")
+
+                # Handle TODO items (no start_time required)
+                if action_intent == "todo":
+                    from app.schemas.todos import TodoDTO
+                    todo_dto = TodoDTO(title=title)
+                    todo_id = await todos_service.create_todo(user_id, todo_dto)
+                    if todo_id:
+                        created_todos.append({'title': title})
+                        logger.info("batch_todo_created", user_id=user_id, title=title)
+                    else:
+                        failed_count += 1
+                        logger.warning("batch_todo_creation_failed", user_id=user_id, title=title)
+                    continue
+
+                # Handle calendar EVENTS (require start_time)
                 # Parse datetime from string/datetime/None
                 start_time = self._parse_action_datetime(action.get("start_time"))
                 end_time = self._parse_action_datetime(action.get("end_time"))
@@ -2023,7 +2041,7 @@ Housler.ru сделал подборку сервисов, которые пом
                 if not start_time:
                     logger.warning("batch_action_missing_start_time",
                                   user_id=user_id,
-                                  title=action.get("title"))
+                                  title=title)
                     failed_count += 1
                     continue
 
@@ -2031,7 +2049,7 @@ Housler.ru сделал подборку сервисов, которые пом
                 from app.schemas.events import EventDTO, IntentType
                 single_event = EventDTO(
                     intent=IntentType.CREATE,
-                    title=action.get("title"),
+                    title=title,
                     start_time=start_time,
                     end_time=end_time,
                     location=action.get("location"),
@@ -2041,7 +2059,7 @@ Housler.ru сделал подборку сервисов, которые пом
                 event_uid = await calendar_service.create_event(user_id, single_event)
                 if event_uid:
                     created_events.append({
-                        'title': action.get("title"),
+                        'title': title,
                         'start': start_time,  # Now datetime, not string
                         'end': end_time
                     })
@@ -2049,7 +2067,7 @@ Housler.ru сделал подборку сервисов, которые пом
                 else:
                     failed_count += 1
             except Exception as e:
-                logger.error("batch_event_creation_error", error=str(e), user_id=user_id,
+                logger.error("batch_creation_error", error=str(e), user_id=user_id,
                             title=action.get("title"))
                 failed_count += 1
 
@@ -2057,19 +2075,31 @@ Housler.ru сделал подборку сервисов, которые пом
         if created_uids:
             self._add_to_event_context(user_id, created_uids)
 
-        # Send result with event list
-        if len(created_events) > 0:
-            # Format list of created events
-            message = "✅ Записал:\n\n"
-            for evt in created_events:
-                time_str = format_datetime_human(evt['start'], self._get_user_timezone(update))
-                message += f"• {time_str} — {evt['title']}\n"
+        # Build result message
+        total_created = len(created_events) + len(created_todos)
+
+        if total_created > 0:
+            message = ""
+
+            # Format todos
+            if created_todos:
+                message += "✅ Добавил в задачи:\n"
+                for todo in created_todos:
+                    message += f"• {todo['title']}\n"
+                message += "\n"
+
+            # Format events
+            if created_events:
+                message += "✅ Записал в календарь:\n"
+                for evt in created_events:
+                    time_str = format_datetime_human(evt['start'], self._get_user_timezone(update))
+                    message += f"• {time_str} — {evt['title']}\n"
 
             if failed_count > 0:
                 message += f"\nНе создано: {failed_count}"
 
-            await update.message.reply_text(message)
-            self._log_bot_response(user_id, message, user_text)
+            await update.message.reply_text(message.strip())
+            self._log_bot_response(user_id, message.strip(), user_text)
         else:
             fail_batch_msg = "Не получилось создать. Попробуйте ещё раз."
             await update.message.reply_text(fail_batch_msg)
