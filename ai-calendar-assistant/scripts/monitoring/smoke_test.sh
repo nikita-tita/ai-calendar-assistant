@@ -272,13 +272,16 @@ test_recent_errors() {
 
     local error_count
 
+    # Filter for real errors only (exclude false positives like /api/admin/errors URL)
+    local error_filter='"level":\s*"error"|Traceback|Exception:|ERROR:'
+
     if [[ "$IS_LOCAL_SERVER" == "true" ]]; then
         # Running on server - use docker directly
-        error_count=$(docker logs telegram-bot --since 6h 2>&1 | grep -ciE "error|exception|traceback" || echo 0)
+        error_count=$(docker logs telegram-bot --since 6h 2>&1 | grep -cE "$error_filter" || echo 0)
     elif [[ -f "$SSH_KEY" ]]; then
         # Running remotely - use SSH
         error_count=$(ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o StrictHostKeyChecking=no "$SSH_HOST" \
-            'docker logs telegram-bot --since 6h 2>&1 | grep -ciE "error|exception|traceback" || echo 0' 2>/dev/null | tr -d '[:space:]' | head -1)
+            "docker logs telegram-bot --since 6h 2>&1 | grep -cE '$error_filter' || echo 0" 2>/dev/null | tr -d '[:space:]' | head -1)
     else
         return 0  # Already warned about SSH
     fi
