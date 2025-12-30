@@ -6,6 +6,51 @@
 
 ---
 
+## [2025-12-30] - Code Review Cleanup (Final)
+
+### Removed
+
+**Мёртвый код аутентификации (470 строк):**
+- `app/services/admin_auth.py` — устаревший сервис с SHA-256 хешированием
+- `app/services/admin_auth_jwt.py` — устаревший JWT сервис с SHA-256
+
+Эти файлы не использовались в production — актуальная аутентификация в `admin.py` и `admin_auth_service.py` уже использует bcrypt.
+
+### Fixed
+
+**Bare except блоки в `llm_agent_yandex.py` (7 мест):**
+
+| Строка | Контекст | Исправление |
+|--------|----------|-------------|
+| 1160 | `datetime.fromisoformat()` | `except (ValueError, TypeError)` |
+| 1183 | `datetime.fromisoformat()` | `except (ValueError, TypeError)` |
+| 1309 | date formatting | `except (ValueError, TypeError, AttributeError)` |
+| 1317 | date formatting | `except (ValueError, TypeError, AttributeError)` |
+| 1376 | batch event parsing | `except (ValueError, TypeError, AttributeError)` |
+| 1410 | batch event parsing | `except (ValueError, TypeError, AttributeError)` |
+| 1454 | `_parse_optional_datetime()` | `except (ValueError, TypeError)` |
+
+### Summary
+
+**Все проблемы из Code Review PR#1 закрыты:**
+
+| Проблема | Статус | Когда исправлено |
+|----------|--------|------------------|
+| SHA-256 хеширование | ✅ | Ранее (bcrypt в admin.py) |
+| Rate limiter в памяти | ✅ | Ранее (Redis в main.py) |
+| Race condition conversation_history | ✅ | Ранее (LRUDict) |
+| `_handle_text` 869 строк | ✅ | Ранее (~243 строки) |
+| Bare except блоки | ✅ | Этот коммит |
+| Мёртвый код | ✅ | Этот коммит |
+
+### Technical
+- **Коммит:** `cc96307`
+- **Файлов удалено:** 2
+- **Строк удалено:** 470
+- **Строк изменено:** 7 (bare except → specific exceptions)
+
+---
+
 ## [2025-12-30] - SQLite Backup Infrastructure
 
 ### Added
