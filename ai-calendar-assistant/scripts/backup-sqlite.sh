@@ -5,7 +5,7 @@
 # Run daily via cron at 3:10
 #
 
-set -e
+set -euo pipefail
 
 # Configuration
 BACKUP_DIR="/root/backups/sqlite"
@@ -41,7 +41,7 @@ for db_name in $DB_FILES; do
 
     if docker cp "$CONTAINER:$db_path" "$BACKUP_SUBDIR/$db_name" 2>/dev/null; then
         log "✓ $db_name"
-        ((COUNT++))
+        COUNT=$((COUNT + 1))
     else
         log "✗ $db_name (not found or error)"
     fi
