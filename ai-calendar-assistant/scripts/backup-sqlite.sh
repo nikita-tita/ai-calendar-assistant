@@ -31,34 +31,27 @@ mkdir -p "$BACKUP_SUBDIR"
 
 log "Starting SQLite backup..."
 
-# Get list of .db files
-DB_FILES=$(docker exec "$CONTAINER" find "$SOURCE_DIR" -name "*.db" 2>/dev/null || true)
+# Known database files
+DB_FILES="analytics.db admin_auth.db reminders.db"
 
-if [[ -z "$DB_FILES" ]]; then
-    log "No .db files found in $SOURCE_DIR"
-    exit 0
-fi
-
-# Backup each database
+# Backup each database using docker cp
 COUNT=0
-for db_path in $DB_FILES; do
-    db_name=$(basename "$db_path")
-    log "Backing up: $db_name"
+for db_name in $DB_FILES; do
+    db_path="$SOURCE_DIR/$db_name"
 
-    # Use SQLite backup command for safe copy (handles locks)
-    docker exec "$CONTAINER" sqlite3 "$db_path" ".backup '/tmp/${db_name}.backup'" 2>/dev/null || {
-        # Fallback to simple copy if sqlite3 not available
-        docker exec "$CONTAINER" cp "$db_path" "/tmp/${db_name}.backup" 2>/dev/null
-    }
-
-    # Copy from container
-    docker cp "$CONTAINER:/tmp/${db_name}.backup" "$BACKUP_SUBDIR/${db_name}" 2>/dev/null
-
-    # Cleanup temp file
-    docker exec "$CONTAINER" rm -f "/tmp/${db_name}.backup" 2>/dev/null || true
-
-    ((COUNT++))
+    if docker cp "$CONTAINER:$db_path" "$BACKUP_SUBDIR/$db_name" 2>/dev/null; then
+        log "✓ $db_name"
+        ((COUNT++))
+    else
+        log "✗ $db_name (not found or error)"
+    fi
 done
+
+if [[ $COUNT -eq 0 ]]; then
+    log "No databases backed up!"
+    rm -rf "$BACKUP_SUBDIR"
+    exit 1
+fi
 
 # Compress backup
 cd "$BACKUP_DIR"
