@@ -15,10 +15,10 @@ KEEP_DAYS=30
 QUIET=false
 
 # Parse arguments
-[[ "$1" == "--quiet" ]] && QUIET=true
+[[ "${1:-}" == "--quiet" ]] && QUIET=true
 
 log() {
-    [[ "$QUIET" == "false" ]] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    [[ "$QUIET" == "false" ]] && echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${1:-}"
 }
 
 # Create backup directory
