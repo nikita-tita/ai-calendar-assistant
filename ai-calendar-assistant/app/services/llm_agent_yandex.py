@@ -1157,7 +1157,7 @@ JSON:"""
         if "start_time" in input_data:
             try:
                 start_time = datetime.fromisoformat(input_data["start_time"])
-            except:
+            except (ValueError, TypeError):
                 # Try parsing as time-only (HH:MM) for recurring events
                 import re
                 import pytz
@@ -1180,7 +1180,7 @@ JSON:"""
         if "end_time" in input_data:
             try:
                 end_time = datetime.fromisoformat(input_data["end_time"])
-            except:
+            except (ValueError, TypeError):
                 # Try parsing as time-only (HH:MM)
                 import re
                 time_match = re.match(r'^(\d{1,2}):(\d{2})$', str(input_data["end_time"]))
@@ -1306,7 +1306,7 @@ JSON:"""
                 dt = self._parse_optional_datetime(first_date_str)
                 if dt:
                     first_date = format_datetime_human(dt, locale=language)
-        except:
+        except (ValueError, TypeError, AttributeError):
             pass
 
         try:
@@ -1314,7 +1314,7 @@ JSON:"""
                 dt = self._parse_optional_datetime(last_date_str)
                 if dt:
                     last_date = format_datetime_human(dt, locale=language)
-        except:
+        except (ValueError, TypeError, AttributeError):
             pass
 
         # Build compact summary based on action type
@@ -1373,7 +1373,7 @@ JSON:"""
                                     date_str = start_dt.strftime("%d.%m")
                                     time_str = f"{start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')}"
                                     summary += f"• {act_title}\n  📅 {date_str} | 🕐 {time_str}\n"
-                            except:
+                            except (ValueError, TypeError, AttributeError):
                                 summary += f"• {act_title}\n"
 
                         if action_count > 10:
@@ -1407,7 +1407,7 @@ JSON:"""
                                     date_str = start_dt.strftime("%d.%m")
                                     time_str = f"{start_dt.strftime('%H:%M')}-{end_dt.strftime('%H:%M')}"
                                     summary += f"• {act_title}\n  📅 {date_str} | 🕐 {time_str}\n"
-                            except:
+                            except (ValueError, TypeError, AttributeError):
                                 summary += f"• {act_title}\n"
 
                         if action_count > 10:
@@ -1451,7 +1451,7 @@ JSON:"""
                 tz = pytz.timezone(settings.default_timezone)
                 dt = tz.localize(dt)
             return dt
-        except:
+        except (ValueError, TypeError):
             return None
 
 
