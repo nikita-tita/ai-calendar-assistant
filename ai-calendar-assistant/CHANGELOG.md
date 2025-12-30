@@ -6,6 +6,32 @@
 
 ---
 
+## [2025-12-30] - SQLite Backup Infrastructure
+
+### Added
+
+**Автоматический бэкап SQLite баз данных:**
+
+- Новый скрипт `scripts/backup-sqlite.sh`
+- Бэкапит 3 базы: `analytics.db`, `admin_auth.db`, `reminders.db`
+- Cron: ежедневно в 3:10 (после todos backup)
+- Хранение: 30 дней в `/root/backups/sqlite/`
+- Формат: `sqlite_YYYYMMDD_HHMMSS.tar.gz` (~93KB)
+
+**Полная схема бэкапов:**
+| Данные | Время | Скрипт |
+|--------|-------|--------|
+| Radicale (календарь) | 3:00 | `backup-radicale.sh` |
+| Todos (задачи) | 3:05 | `backup-todos.sh` |
+| SQLite (БД) | 3:10 | `backup-sqlite.sh` |
+
+### Technical
+- **Коммиты:** `d613317`, `fc4a436`, `142c1a1`, `753b95b`
+- Использует `docker cp` для копирования из контейнера
+- Автоочистка бэкапов старше 30 дней
+
+---
+
 ## [2025-12-30] - Human-Readable Smoke Test Report
 
 ### Changed
