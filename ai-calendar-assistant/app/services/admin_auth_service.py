@@ -17,12 +17,21 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 import sqlite3
 
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+
 from app.models.admin_user import (
-    AdminUser, AdminLoginRequest, AdminLoginResponse, 
+    AdminUser, AdminLoginRequest, AdminLoginResponse,
     AdminTokenPayload, TOTPSetupResponse, AdminAuditLogEntry
 )
 
 logger = structlog.get_logger()
+
+# SEC-006: Redis key prefix for rate limiting
+RATE_LIMIT_KEY_PREFIX = "admin_rate_limit:"
 
 
 class AdminAuthService:
@@ -42,17 +51,46 @@ class AdminAuthService:
         self.db_path = db_path
         self._init_database()
         self._load_or_generate_keys()
-        
+
         # Token expiration settings
         self.access_token_expiration = timedelta(hours=1)
         self.refresh_token_expiration = timedelta(days=7)
-        
-        # Rate limiting (in-memory for now, should use Redis in production)
-        self._failed_attempts = {}  # ip -> (count, first_attempt_time)
+
+        # Rate limiting settings
         self.max_attempts = 3
         self.lockout_duration = timedelta(minutes=15)
-        
-        logger.info("admin_auth_service_initialized")
+
+        # SEC-006: Use Redis for distributed rate limiting if available
+        self._redis_client = None
+        self._failed_attempts = {}  # Fallback in-memory storage
+        self._init_redis()
+
+        logger.info("admin_auth_service_initialized", redis_enabled=self._redis_client is not None)
+
+    def _init_redis(self):
+        """Initialize Redis client for distributed rate limiting (SEC-006)."""
+        if not REDIS_AVAILABLE:
+            logger.warning("redis_not_available", message="Redis package not installed, using in-memory rate limiting")
+            return
+
+        try:
+            from app.config import settings
+            redis_url = getattr(settings, 'redis_url', None)
+
+            if redis_url:
+                self._redis_client = redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_timeout=5,
+                    socket_connect_timeout=5
+                )
+                # Test connection
+                self._redis_client.ping()
+                logger.info("redis_rate_limiter_connected", url=redis_url.split('@')[-1])  # Log without password
+            else:
+                logger.warning("redis_url_not_configured", message="Using in-memory rate limiting")
+        except Exception as e:
+            logger.warning("redis_connection_failed", error=str(e), message="Falling back to in-memory rate limiting")
     
     def _init_database(self):
         """Initialize database tables."""
@@ -173,38 +211,101 @@ class AdminAuthService:
         return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
     
     def _check_rate_limit(self, ip: str) -> bool:
-        """Check if IP is rate limited."""
+        """
+        Check if IP is rate limited (SEC-006: distributed via Redis).
+
+        Returns True if allowed, False if rate limited.
+        """
+        # SEC-006: Try Redis first for distributed rate limiting
+        if self._redis_client:
+            try:
+                key = f"{RATE_LIMIT_KEY_PREFIX}{ip}"
+                count = self._redis_client.get(key)
+
+                if count is None:
+                    return True  # No failed attempts
+
+                count = int(count)
+                if count >= self.max_attempts:
+                    logger.warning("rate_limit_exceeded", ip=ip, attempts=count, storage="redis")
+                    return False
+                return True
+            except Exception as e:
+                logger.warning("redis_rate_limit_check_failed", error=str(e), ip=ip)
+                # Fall through to in-memory
+
+        # Fallback: in-memory rate limiting
         now = datetime.now()
-        
+
         if ip in self._failed_attempts:
             count, first_attempt = self._failed_attempts[ip]
-            
+
             # Reset if lockout duration passed
             if now - first_attempt > self.lockout_duration:
                 del self._failed_attempts[ip]
                 return True
-            
+
             # Check if locked out
             if count >= self.max_attempts:
-                logger.warning("rate_limit_exceeded", ip=ip, attempts=count)
+                logger.warning("rate_limit_exceeded", ip=ip, attempts=count, storage="memory")
                 return False
-        
+
         return True
-    
+
     def _record_failed_attempt(self, ip: str):
-        """Record failed login attempt."""
+        """
+        Record failed login attempt (SEC-006: distributed via Redis).
+        """
+        # SEC-006: Try Redis first for distributed rate limiting
+        if self._redis_client:
+            try:
+                key = f"{RATE_LIMIT_KEY_PREFIX}{ip}"
+                pipe = self._redis_client.pipeline()
+
+                # Increment counter
+                pipe.incr(key)
+                # Set expiration (lockout duration)
+                pipe.expire(key, int(self.lockout_duration.total_seconds()))
+
+                results = pipe.execute()
+                count = results[0]
+
+                logger.info("failed_attempt_recorded", ip=ip, count=count, storage="redis")
+                return
+            except Exception as e:
+                logger.warning("redis_record_attempt_failed", error=str(e), ip=ip)
+                # Fall through to in-memory
+
+        # Fallback: in-memory rate limiting
         now = datetime.now()
-        
+
         if ip in self._failed_attempts:
             count, first_attempt = self._failed_attempts[ip]
             self._failed_attempts[ip] = (count + 1, first_attempt)
         else:
             self._failed_attempts[ip] = (1, now)
-    
+
+        logger.info("failed_attempt_recorded", ip=ip, count=self._failed_attempts[ip][0], storage="memory")
+
     def _clear_failed_attempts(self, ip: str):
-        """Clear failed attempts for IP."""
+        """
+        Clear failed attempts for IP (SEC-006: distributed via Redis).
+        """
+        # SEC-006: Try Redis first
+        if self._redis_client:
+            try:
+                key = f"{RATE_LIMIT_KEY_PREFIX}{ip}"
+                self._redis_client.delete(key)
+                logger.debug("failed_attempts_cleared", ip=ip, storage="redis")
+                return
+            except Exception as e:
+                logger.warning("redis_clear_attempts_failed", error=str(e), ip=ip)
+                # Fall through to in-memory
+
+        # Fallback: in-memory
         if ip in self._failed_attempts:
             del self._failed_attempts[ip]
+            logger.debug("failed_attempts_cleared", ip=ip, storage="memory")
     
     def create_admin_user(
         self,
