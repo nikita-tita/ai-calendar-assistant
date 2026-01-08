@@ -100,25 +100,25 @@
 git add -A && git commit -m "fix: описание" && git push origin main
 
 # 2. На сервере: pull и rebuild
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
-  cd /root/ai-calendar-assistant/ai-calendar-assistant &&
+sshpass -p '***REMOVED***' ssh root@95.163.227.26 '
+  cd /root/ai-calendar-assistant &&
   git pull origin main &&
-  docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
-  docker-compose -f docker-compose.secure.yml up -d telegram-bot
+  docker compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
+  docker compose -f docker-compose.secure.yml up -d telegram-bot
 '
 ```
 
 ### Проверка деплоя
 
 ```bash
-# Проверить версию WebApp
-curl -s https://calendar.housler.ru/static/index.html | grep "APP_VERSION"
-
 # Проверить здоровье API
-curl https://calendar.housler.ru/health
+curl http://95.163.227.26:8000/health
+
+# Проверить статус контейнеров
+sshpass -p '***REMOVED***' ssh root@95.163.227.26 'docker ps'
 
 # Проверить логи
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot --tail 50'
+sshpass -p '***REMOVED***' ssh root@95.163.227.26 'docker logs telegram-bot --tail 50'
 ```
 
 ---
@@ -193,11 +193,13 @@ const APP_VERSION = 'YYYY-MM-DD-vN';  // Пример: 2025-12-04-v2
 
 ## КОНТАКТЫ И ДОСТУПЫ
 
-- **Сервер:** 91.229.8.221
-- **SSH ключ:** `~/.ssh/id_housler`
+- **Сервер:** 95.163.227.26
+- **SSH:** `sshpass -p '***REMOVED***' ssh root@95.163.227.26`
+- **Root пароль:** `***REMOVED***`
 - **Git:** https://github.com/nikita-tita/ai-calendar-assistant
-- **Прод URL:** https://calendar.housler.ru
-- **Рабочая директория:** `/root/ai-calendar-assistant/ai-calendar-assistant/`
+- **Прод URL:** https://calendar.housler.ru (домен нужно перенастроить на новый IP)
+- **API URL:** http://95.163.227.26:8000
+- **Рабочая директория на сервере:** `/root/ai-calendar-assistant/`
 
 ---
 
@@ -212,4 +214,30 @@ const APP_VERSION = 'YYYY-MM-DD-vN';  // Пример: 2025-12-04-v2
 
 ---
 
-**Последнее обновление:** 2025-12-04
+**Последнее обновление:** 2026-01-08
+
+---
+
+## ЭКОСИСТЕМА HOUSLER
+
+Этот проект — часть экосистемы Housler. Общие сервисы:
+
+| Сервис | Провайдер | Документация |
+|--------|-----------|--------------|
+| **SMS авторизация** | agent.housler.ru (SMS.RU) | [AUTH_API.md](../../housler_pervichka/docs/SHARED/AUTH_API.md) |
+| **Email авторизация** | agent.housler.ru (Yandex SMTP) | [AUTH_API.md](../../housler_pervichka/docs/SHARED/AUTH_API.md) |
+| **Сервер** | 95.163.227.26 (reg.ru) | [SERVER_ACCESS.md](../../housler_pervichka/docs/SHARED/SERVER_ACCESS.md) |
+
+> **Примечание:** calendar.housler.ru использует Telegram авторизацию, не централизованный Auth API.
+
+---
+
+## ВАЖНО: НОВЫЙ СЕРВЕР (с 07.01.2026)
+
+Старый сервер (91.229.8.221) был удалён. Данные пользователей (календари) потеряны.
+
+Новый сервер:
+- **IP:** 95.163.227.26
+- **Пароль root:** ***REMOVED***
+- **Reg.ru панель:** https://cloud.reg.ru/panel/servers/
+- **Сервер:** Peach Lutetium (Ubuntu 24.04)
