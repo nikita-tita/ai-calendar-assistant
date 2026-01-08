@@ -1,6 +1,7 @@
 """Telegram bot message handler."""
 
 import time
+from datetime import datetime, timedelta
 from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application
@@ -11,6 +12,7 @@ from app.services.llm_agent_yandex import llm_agent_yandex as llm_agent
 from app.services.calendar_radicale import calendar_service
 from app.services.user_preferences import user_preferences
 from app.services.todos_service import todos_service
+from app.services.referral_service import referral_service
 
 # Analytics service - optional, fallback if not available
 try:
@@ -38,13 +40,8 @@ from app.schemas.events import IntentType
 from app.utils.datetime_parser import format_datetime_human
 from app.utils.lru_dict import LRUDict
 
-# Rate limiter - Redis with in-memory fallback
-try:
-    from app.services.rate_limiter_redis import rate_limiter_redis
-except ImportError:
-    rate_limiter_redis = None
-
-from app.services.rate_limiter import rate_limiter
+# Rate limiter - Redis primary with in-memory fallback
+from app.services.rate_limiter_redis import get_rate_limiter
 
 # Forum activity logger (optional)
 try:
@@ -132,9 +129,9 @@ class TelegramHandler:
         user_id = str(update.effective_user.id)
         message = update.message
 
-        # Rate limiting check - use Redis if available, fallback to in-memory
+        # Rate limiting check - Redis primary with in-memory fallback
         try:
-            limiter = rate_limiter_redis if rate_limiter_redis else rate_limiter
+            limiter = get_rate_limiter()
             is_allowed, reason = limiter.check_rate_limit(user_id)
 
             if not is_allowed:
@@ -192,6 +189,11 @@ class TelegramHandler:
             # Handle /timezone command
             if message.text and message.text.startswith('/timezone'):
                 await self._handle_timezone(update, user_id, message.text)
+                return
+
+            # Handle /share command
+            if message.text and message.text.startswith('/share'):
+                await self._handle_share_command(update, user_id)
                 return
 
             # Handle quick buttons
@@ -266,6 +268,35 @@ class TelegramHandler:
 
     async def _handle_start(self, update: Update, user_id: str) -> None:
         """Handle /start command."""
+        message = update.message
+
+        # Extract deep link parameter (e.g., /start ref_abc123)
+        start_param = None
+        if message.text and ' ' in message.text:
+            start_param = message.text.split(' ', 1)[1].strip()
+
+        # Process referral if present
+        if start_param and start_param.startswith('ref_'):
+            try:
+                referrer_id = referral_service.process_referral(user_id, start_param)
+                if referrer_id:
+                    # Log referral to analytics
+                    if ANALYTICS_ENABLED and analytics_service:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.REFERRAL_JOINED,
+                            details=f"Joined via referral from {referrer_id}",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    # Notify referrer
+                    await self._notify_referrer(referrer_id, update.effective_user)
+            except Exception as e:
+                logger.warning("referral_processing_failed", error=str(e))
+
         # Log user registration
         if ANALYTICS_ENABLED and analytics_service:
             try:
@@ -387,6 +418,66 @@ class TelegramHandler:
             await update.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
         elif update.callback_query:
             await update.callback_query.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
+
+    async def _notify_referrer(self, referrer_id: str, new_user) -> None:
+        """Notify referrer when someone joins via their link."""
+        try:
+            name = new_user.first_name or "Кто-то"
+
+            text = f"🎉 По твоей ссылке присоединился новый пользователь: {name}!\n\n" \
+                   f"Спасибо что рассказываешь о нас друзьям"
+
+            await self.bot.send_message(chat_id=int(referrer_id), text=text)
+
+            # Mark as notified
+            referral_service.mark_notified(str(new_user.id))
+
+            logger.info("referrer_notified", referrer_id=referrer_id, new_user_id=new_user.id)
+
+        except Exception as e:
+            logger.warning("referrer_notification_failed",
+                          referrer_id=referrer_id, error=str(e))
+
+    async def _handle_share_command(self, update: Update, user_id: str) -> None:
+        """Handle /share command - show referral link and stats."""
+        try:
+            stats = referral_service.get_referral_stats(user_id)
+            link = stats['referral_link']
+            total = stats['total_referred']
+
+            # Invite text for copying
+            invite_text = (
+                "Попробуй AI-календарь! Веду все дела голосом - "
+                "просто говорю боту что запланировать.\n\n"
+                f"Присоединяйся: {link}"
+            )
+
+            # Message to user
+            message = f"""<b>Поделиться с друзьями</b>
+
+Приглашение (нажми чтобы скопировать):
+
+<code>{invite_text}</code>
+
+<b>Твоя статистика:</b>
+Присоединились по ссылке: {total}"""
+
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Переслать друзьям",
+                                     switch_inline_query=invite_text)]
+            ])
+
+            await update.message.reply_text(
+                message,
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+
+        except Exception as e:
+            logger.error("share_command_failed", user_id=user_id, error=str(e))
+            await update.message.reply_text(
+                "Не удалось получить ссылку. Попробуйте позже."
+            )
 
     async def _handle_voice(self, update: Update, user_id: str) -> None:
         """Handle voice message using OpenAI Whisper."""
@@ -564,6 +655,7 @@ Housler.ru сделал подборку сервисов, которые пом
 Просто выбери свой сервис"""
 
         keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📤 Поделиться с друзьями", callback_data="share:menu")],
             [InlineKeyboardButton("📰 Новости", url="https://housler.ru/blog")],
             [InlineKeyboardButton("🏷 Оценить рыночную стоимость", url="https://housler.ru/calculator")],
             [InlineKeyboardButton("💰 Ипотечный брокер", url="https://m2.ru/ipoteka/calculator/?utm_source=telegram&utm_medium=message&utm_campaign=inhouse_nobrand_rassmotr_ipoteka_b2b_internal_chatbot")],
@@ -594,6 +686,7 @@ Housler.ru сделал подборку сервисов, которые пом
             [InlineKeyboardButton(f"{morning_status} Утренняя сводка ({settings_data['morning_summary_time']})", callback_data="settings:morning_toggle")],
             [InlineKeyboardButton(f"{evening_status} Вечерний дайджест ({settings_data['evening_digest_time']})", callback_data="settings:evening_toggle")],
             [InlineKeyboardButton(f"🌙 Тихие часы: {settings_data['quiet_hours_start']}–{settings_data['quiet_hours_end']}", callback_data="settings:quiet_hours")],
+            [InlineKeyboardButton("📤 Поделиться с друзьями", callback_data="settings:share")],
             [InlineKeyboardButton("❓ Справка и примеры", callback_data="settings:help")],
             [InlineKeyboardButton("💬 Написать нам", url="https://t.me/iay_pm")],
         ])
@@ -809,6 +902,45 @@ Housler.ru сделал подборку сервисов, которые пом
             if user_id not in self.conversation_history:
                 self.conversation_history[user_id] = []
             self.conversation_history[user_id] = [{"role": "system", "content": "awaiting_evening_time"}]
+
+        # Handle share callbacks (from settings or services menu)
+        elif data in ("settings:share", "share:menu"):
+            try:
+                stats = referral_service.get_referral_stats(user_id)
+                link = stats['referral_link']
+                total = stats['total_referred']
+
+                # Invite text for copying
+                invite_text = (
+                    "Попробуй AI-календарь! Веду все дела голосом - "
+                    "просто говорю боту что запланировать.\n\n"
+                    f"Присоединяйся: {link}"
+                )
+
+                # Message to user
+                message = f"""<b>Поделиться с друзьями</b>
+
+Приглашение (нажми чтобы скопировать):
+
+<code>{invite_text}</code>
+
+<b>Твоя статистика:</b>
+Присоединились по ссылке: {total}"""
+
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Переслать друзьям",
+                                         switch_inline_query=invite_text)],
+                    [InlineKeyboardButton("« Назад", callback_data="settings:back")]
+                ])
+
+                await query.edit_message_text(
+                    message,
+                    parse_mode="HTML",
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                logger.error("share_callback_failed", user_id=user_id, error=str(e))
+                await query.edit_message_text("Не удалось получить ссылку. Попробуйте позже.")
 
         elif data == "settings:help":
             help_text = """❓ Справка и примеры команд
@@ -1112,6 +1244,112 @@ Housler.ru сделал подборку сервисов, которые пом
 
     # ========== End Dialog History Methods ==========
 
+    # ========== DateTime Parsing Helpers ==========
+
+    def _parse_action_datetime(self, dt_value) -> Optional[datetime]:
+        """
+        Parse datetime from batch action value.
+        Handles string ISO format, datetime objects, and None.
+
+        Args:
+            dt_value: Can be ISO string, datetime, or None
+
+        Returns:
+            datetime object or None if parsing fails
+        """
+        from datetime import datetime
+        import pytz
+
+        if dt_value is None:
+            return None
+
+        if isinstance(dt_value, datetime):
+            # Already datetime - ensure timezone
+            if dt_value.tzinfo is None:
+                tz = pytz.timezone(settings.default_timezone)
+                return tz.localize(dt_value)
+            return dt_value
+
+        if isinstance(dt_value, str):
+            try:
+                dt = datetime.fromisoformat(dt_value)
+                # Add timezone if naive
+                if dt.tzinfo is None:
+                    tz = pytz.timezone(settings.default_timezone)
+                    dt = tz.localize(dt)
+                return dt
+            except (ValueError, TypeError):
+                logger.warning("datetime_parse_failed", value=dt_value)
+                return None
+
+        return None
+
+    # ========== End DateTime Parsing Helpers ==========
+
+    # ========== Context Enrichment Helpers ==========
+
+    def _enrich_short_response(self, user_text: str, user_id: str) -> str:
+        """
+        Enrich short user response with previous context.
+
+        When user replies with just a time ("12:00") or short phrase ("завтра")
+        to a clarify question, combine it with the original request.
+
+        Args:
+            user_text: Current user message
+            user_id: User ID for context lookup
+
+        Returns:
+            Enriched text or original text if no enrichment needed
+        """
+        # Only enrich very short messages (1-3 words)
+        words = user_text.strip().split()
+        if len(words) > 3:
+            return user_text
+
+        # Check if we have clarify context
+        history = self.conversation_history.get(user_id, [])
+        if len(history) < 2:
+            return user_text
+
+        last_bot = history[-1]
+        prev_user = history[-2]
+
+        # Must be assistant clarify followed by short user response
+        if last_bot.get("role") != "assistant" or prev_user.get("role") != "user":
+            return user_text
+
+        bot_response = last_bot.get("content", "").lower()
+        prev_request = prev_user.get("content", "")
+
+        # Detect if bot asked for time clarification
+        time_clarify_patterns = ["уточните время", "во сколько", "какое время", "укажите время"]
+        if any(p in bot_response for p in time_clarify_patterns):
+            # Combine: "Брокер тур" + "12:00" → "Брокер тур в 12:00"
+            enriched = f"{prev_request} в {user_text}"
+            logger.info("short_response_enriched",
+                       user_id=user_id,
+                       original=user_text,
+                       enriched=enriched,
+                       reason="time_clarify")
+            return enriched
+
+        # Detect if bot asked for date clarification
+        date_clarify_patterns = ["уточните дату", "какой день", "когда", "укажите день"]
+        if any(p in bot_response for p in date_clarify_patterns):
+            # Combine: "Встреча" + "завтра" → "Встреча завтра"
+            enriched = f"{prev_request} {user_text}"
+            logger.info("short_response_enriched",
+                       user_id=user_id,
+                       original=user_text,
+                       enriched=enriched,
+                       reason="date_clarify")
+            return enriched
+
+        return user_text
+
+    # ========== End Context Enrichment Helpers ==========
+
     async def _handle_settings_time_input(
         self, update: Update, user_id: str, text: str, pending_action: str
     ) -> bool:
@@ -1231,6 +1469,47 @@ Housler.ru сделал подборку сервисов, которые пом
             except Exception as e:
                 logger.warning("analytics_log_failed", error=str(e))
 
+        text_lower = text.lower().strip()
+
+        # ========== Pre-LLM Handlers (avoid expensive LLM calls) ==========
+
+        # Handle greetings
+        greeting_patterns = ["привет", "здравствуй", "добрый день", "добрый вечер",
+                            "доброе утро", "hello", "hi", "хай", "здарова"]
+        if any(text_lower.startswith(g) or text_lower == g for g in greeting_patterns):
+            greeting_response = ("👋 Привет! Чем могу помочь?\n\n"
+                                "📅 Создать событие: «Встреча завтра в 15:00»\n"
+                                "📝 Добавить задачу: «Позвонить клиенту»\n"
+                                "📋 Посмотреть планы: «Что на сегодня?»")
+            await update.message.reply_text(greeting_response)
+            self._log_bot_response(user_id, greeting_response, text)
+            return
+
+        # Handle small talk
+        small_talk_patterns = ["как дела", "как ты", "что нового", "как жизнь"]
+        if any(p in text_lower for p in small_talk_patterns):
+            small_talk_response = ("Отлично, готов работать! 💪\n\nЧто запланируем?")
+            await update.message.reply_text(small_talk_response)
+            self._log_bot_response(user_id, small_talk_response, text)
+            return
+
+        # Handle timezone complaints
+        time_complaint_patterns = ["неправильно время", "сбился календарь", "неверное время",
+                                  "какое сегодня число", "какой сейчас час", "какое время",
+                                  "не то время", "время неправильное"]
+        if any(p in text_lower for p in time_complaint_patterns):
+            import pytz
+            current_tz = user_preferences.get_timezone(user_id)
+            now = datetime.now(pytz.timezone(current_tz))
+            tz_response = (f"🕐 Моё время: {now.strftime('%H:%M')} ({current_tz})\n"
+                          f"📅 Дата: {now.strftime('%d.%m.%Y')}\n\n"
+                          f"Если нужно изменить часовой пояс — /timezone")
+            await update.message.reply_text(tz_response)
+            self._log_bot_response(user_id, tz_response, text)
+            return
+
+        # ========== End Pre-LLM Handlers ==========
+
         # Calendar mode only
         # Check calendar service connection
         if not calendar_service.is_connected():
@@ -1305,8 +1584,12 @@ Housler.ru сделал подборку сервисов, которые пом
         # Format: older messages first, then clarify context if any
         combined_history = dialog_history + clarify_context
 
+        # Enrich short responses with context from previous clarify question
+        # Example: "12:00" after "Уточните время" → "Брокер тур в 12:00"
+        enriched_text = self._enrich_short_response(text, user_id)
+
         event_dto = await llm_agent.extract_event(
-            text,
+            enriched_text,
             user_id,
             conversation_history=combined_history,
             timezone=user_tz,
@@ -1627,15 +1910,34 @@ Housler.ru сделал подборку сервисов, которые пом
             else:
                 day_word = query_date.strftime("%d.%m")
 
-            empty_msg = f"""📭 На {day_word} пусто.
+            # Try to find next upcoming event
+            user_tz = self._get_user_timezone(update)
+            now = datetime.now()
+            future_events = await calendar_service.list_events(
+                user_id, now, now + timedelta(days=30)
+            )
 
-📅 Дела (с временем):
+            if future_events:
+                # Show nearest event as helpful context
+                next_event = sorted(future_events, key=lambda e: e.start)[0]
+                next_time = format_datetime_human(next_event.start, user_tz)
+                empty_msg = f"""📭 На {day_word} пусто.
+
+📌 Ближайшее событие:
+• {next_time} — {next_event.summary}
+
+Добавить событие? Просто напишите:
+«Встреча завтра в 15:00»"""
+            else:
+                # No events at all - show examples
+                empty_msg = f"""📭 На {day_word} пусто.
+
+📅 Добавьте событие:
 • «Показ на Ленина в 14:00»
 • «Встреча с клиентом завтра в 11:00»
 
-📋 Задачи (без времени):
-• «Подготовить документы по сделке»
-• «Перезвонить Иванову»"""
+📋 Или задачу без времени:
+• «Подготовить документы по сделке»"""
 
             await update.message.reply_text(empty_msg)
             self._log_bot_response(user_id, empty_msg, user_text)
@@ -1699,27 +2001,57 @@ Housler.ru сделал подборку сервисов, которые пом
         self._log_bot_response(user_id, message, user_text)
 
     async def _handle_batch_confirm(self, update: Update, user_id: str, event_dto, user_text: str = None) -> None:
-        """Handle batch event creation."""
+        """Handle batch event/todo creation."""
         if not event_dto.batch_actions or len(event_dto.batch_actions) == 0:
             no_batch_msg = "Не смог распознать события."
             await update.message.reply_text(no_batch_msg)
             self._log_bot_response(user_id, no_batch_msg, user_text)
             return
 
-        # Create all events and collect results
+        # Create all events/todos and collect results
         created_events = []
+        created_todos = []
         created_uids = []  # Track UUIDs for context
         failed_count = 0
 
         for action in event_dto.batch_actions:
             try:
+                action_intent = action.get("intent", "").lower()
+                title = action.get("title")
+
+                # Handle TODO items (no start_time required)
+                if action_intent == "todo":
+                    from app.schemas.todos import TodoDTO
+                    todo_dto = TodoDTO(title=title)
+                    todo_id = await todos_service.create_todo(user_id, todo_dto)
+                    if todo_id:
+                        created_todos.append({'title': title})
+                        logger.info("batch_todo_created", user_id=user_id, title=title)
+                    else:
+                        failed_count += 1
+                        logger.warning("batch_todo_creation_failed", user_id=user_id, title=title)
+                    continue
+
+                # Handle calendar EVENTS (require start_time)
+                # Parse datetime from string/datetime/None
+                start_time = self._parse_action_datetime(action.get("start_time"))
+                end_time = self._parse_action_datetime(action.get("end_time"))
+
+                # Skip events without start_time - log and count as failed
+                if not start_time:
+                    logger.warning("batch_action_missing_start_time",
+                                  user_id=user_id,
+                                  title=title)
+                    failed_count += 1
+                    continue
+
                 # Create EventDTO for each action
                 from app.schemas.events import EventDTO, IntentType
                 single_event = EventDTO(
                     intent=IntentType.CREATE,
-                    title=action.get("title"),
-                    start_time=action.get("start_time"),
-                    end_time=action.get("end_time"),
+                    title=title,
+                    start_time=start_time,
+                    end_time=end_time,
                     location=action.get("location"),
                     description=action.get("description")
                 )
@@ -1727,34 +2059,47 @@ Housler.ru сделал подборку сервисов, которые пом
                 event_uid = await calendar_service.create_event(user_id, single_event)
                 if event_uid:
                     created_events.append({
-                        'title': action.get("title"),
-                        'start': action.get("start_time"),
-                        'end': action.get("end_time")
+                        'title': title,
+                        'start': start_time,  # Now datetime, not string
+                        'end': end_time
                     })
                     created_uids.append(event_uid)
                 else:
                     failed_count += 1
             except Exception as e:
-                logger.error("batch_event_creation_error", error=str(e), user_id=user_id)
+                logger.error("batch_creation_error", error=str(e), user_id=user_id,
+                            title=action.get("title"))
                 failed_count += 1
 
         # Save to context for follow-up commands ("перепиши эти события")
         if created_uids:
             self._add_to_event_context(user_id, created_uids)
 
-        # Send result with event list
-        if len(created_events) > 0:
-            # Format list of created events
-            message = "✅ Записал:\n\n"
-            for evt in created_events:
-                time_str = format_datetime_human(evt['start'], self._get_user_timezone(update))
-                message += f"• {time_str} — {evt['title']}\n"
+        # Build result message
+        total_created = len(created_events) + len(created_todos)
+
+        if total_created > 0:
+            message = ""
+
+            # Format todos
+            if created_todos:
+                message += "✅ Добавил в задачи:\n"
+                for todo in created_todos:
+                    message += f"• {todo['title']}\n"
+                message += "\n"
+
+            # Format events
+            if created_events:
+                message += "✅ Записал в календарь:\n"
+                for evt in created_events:
+                    time_str = format_datetime_human(evt['start'], self._get_user_timezone(update))
+                    message += f"• {time_str} — {evt['title']}\n"
 
             if failed_count > 0:
                 message += f"\nНе создано: {failed_count}"
 
-            await update.message.reply_text(message)
-            self._log_bot_response(user_id, message, user_text)
+            await update.message.reply_text(message.strip())
+            self._log_bot_response(user_id, message.strip(), user_text)
         else:
             fail_batch_msg = "Не получилось создать. Попробуйте ещё раз."
             await update.message.reply_text(fail_batch_msg)

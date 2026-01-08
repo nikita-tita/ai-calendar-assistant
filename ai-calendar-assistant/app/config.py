@@ -96,34 +96,11 @@ class Settings(BaseSettings):
                 logger.warning("missing_radicale_password",
                              message="RADICALE_BOT_PASSWORD not set. OK for dev, but required for production!")
 
-    # Property Bot Settings
-    property_feed_url: Optional[str] = None
-    db_password: Optional[str] = None
-    property_database_url: Optional[str] = None
-
-    # Yandex Maps & Vision APIs (optional)
-    yandex_maps_api_key: Optional[str] = None
-    yandex_vision_api_key: Optional[str] = None
-
-    # Feature Flags
-    enable_poi_enrichment: bool = True
-    enable_route_enrichment: bool = False
-    enable_vision_enrichment: bool = False
-    enable_price_context: bool = True
-    enable_developer_reputation: bool = True
-
-    # Cache Settings
-    poi_cache_ttl_days: int = 7
-    route_cache_ttl_days: int = 30
-    price_cache_ttl_hours: int = 24
-
-    # Search Settings
-    default_search_limit: int = 100
-    max_search_limit: int = 500
-
-    # Rate Limiting for Property Search
-    rate_limit_enabled: bool = True
-    rate_limit_per_minute: int = 10
+    # Encryption settings
+    # Key should be stored separately from encrypted data for security
+    encryption_key_file: str = "/etc/calendar-bot/.encryption_key"
+    encryption_key: Optional[str] = None  # Base64-encoded key (alternative to file)
+    encryption_data_dir: str = "/var/lib/calendar-bot"
 
     # Forum Activity Logger (logs user activity to Telegram forum topics)
     # Uses separate bot to avoid load on main calendar bot

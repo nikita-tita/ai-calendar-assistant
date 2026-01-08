@@ -4,17 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel - AI Calendar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <style>
-        body {font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0;}
-        .stat-card {background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 20px; transition: all 0.2s; cursor: pointer;}
-        .stat-card:hover {transform: translateY(-2px); border-color: #3b82f6; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);}
+        :root {
+            --bg-primary: #0b0b0b;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #181A20;
+            --border-color: #2a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent: #ffffff;
+        }
+        body {font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-primary); color: var(--text-primary);}
+        .stat-card {background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; transition: all 0.2s; cursor: pointer;}
+        .stat-card:hover {transform: translateY(-2px); border-color: #444; box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);}
         .chart-wrapper {position: relative; height: 300px; width: 100%;}
         @media (max-width: 768px) {.chart-wrapper {height: 250px;}}
-        .badge-test {background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;}
+        .badge-test {background: #333; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;}
         .clickable-row {cursor: pointer; transition: background 0.2s;}
-        .clickable-row:hover {background: #1e293b !important;}
+        .clickable-row:hover {background: var(--bg-tertiary) !important;}
+        /* Override Tailwind colors */
+        .bg-slate-800, .bg-slate-900 {background: var(--bg-secondary) !important;}
+        .bg-slate-700 {background: var(--bg-tertiary) !important;}
+        .border-slate-700, .border-slate-600 {border-color: var(--border-color) !important;}
+        .text-slate-400, .text-slate-500 {color: var(--text-secondary) !important;}
+        .bg-red-600 {background: #333 !important;}
+        .bg-red-600:hover, .hover\:bg-red-700:hover {background: #444 !important;}
+        .bg-blue-600 {background: var(--bg-tertiary) !important;}
+        .bg-blue-600:hover, .hover\:bg-blue-700:hover {background: #222 !important;}
+        .focus\:ring-blue-500:focus {--tw-ring-color: #444 !important;}
+        .text-blue-400 {color: var(--text-primary) !important;}
+        .text-green-400 {color: #a0a0a0 !important;}
+        .text-purple-400 {color: #c0c0c0 !important;}
+        .text-yellow-400 {color: #d0d0d0 !important;}
+        .text-red-400 {color: #888 !important;}
+        .text-orange-400 {color: #b0b0b0 !important;}
+        .divide-slate-700 > :not([hidden]) ~ :not([hidden]) {border-color: var(--border-color) !important;}
+        .from-slate-800, .to-slate-900, .from-blue-400, .to-purple-400 {--tw-gradient-from: var(--bg-secondary); --tw-gradient-to: var(--bg-primary);}
+        .bg-gradient-to-br, .bg-gradient-to-r {background: var(--bg-secondary) !important;}
+        .bg-clip-text {-webkit-background-clip: text; background-clip: text; color: var(--text-primary) !important; -webkit-text-fill-color: var(--text-primary) !important;}
     </style>
 </head>
 <body>
@@ -45,20 +78,36 @@
 <!-- Dashboard -->
 <div id="dashboard" class="hidden">
     <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-10">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="flex items-center gap-4">
-                <h1 class="text-xl md:text-2xl font-bold">AI Calendar Admin</h1>
-                <a href="/static/admin_report.html" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm transition-colors">📋 User Report</a>
-                <button onclick="showDashboard()" id="backBtn" class="hidden px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm">← Назад</button>
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex justify-between items-center mb-3">
+                <div class="flex items-center gap-4">
+                    <h1 class="text-xl md:text-2xl font-bold">AI Calendar Admin</h1>
+                    <button onclick="showDashboard()" id="backBtn" class="hidden px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm">← Назад</button>
+                </div>
+                <div class="flex items-center gap-3">
+                    <select id="periodSelector" onchange="changePeriod(this.value)" class="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm">
+                        <option value="7">7 дней</option>
+                        <option value="30" selected>30 дней</option>
+                        <option value="60">60 дней</option>
+                    </select>
+                    <button onclick="logout()" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition-colors">Выйти</button>
+                </div>
             </div>
-            <button onclick="logout()" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm transition-colors">Выйти</button>
+            <!-- Tab Navigation -->
+            <div class="flex gap-1 -mb-px" id="tabNav">
+                <button onclick="showTab('overview')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-700 text-white" data-tab="overview">📊 Обзор</button>
+                <button onclick="showTab('users')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="users">👥 Пользователи</button>
+                <button onclick="showTab('actions')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="actions">⚡ Действия</button>
+                <button onclick="showTab('llm')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="llm">🤖 LLM</button>
+                <button onclick="showTab('errors')" class="tab-btn px-4 py-2 rounded-t-lg text-sm font-medium transition-colors bg-slate-900 text-slate-400 hover:text-white" data-tab="errors">❌ Ошибки</button>
+            </div>
         </div>
     </header>
 
     <div class="container mx-auto px-4 py-6 max-w-7xl">
 
-        <!-- Main Dashboard View -->
-        <div id="mainView">
+        <!-- Tab: Overview -->
+        <div id="overviewTab" class="tab-content">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div class="stat-card" onclick="filterByType('users')">
                     <div class="text-3xl font-bold text-blue-400" id="totalUsers">0</div>
@@ -170,6 +219,279 @@
             </div>
         </div>
 
+        <!-- Tab: Users -->
+        <div id="usersTab" class="tab-content hidden">
+            <!-- DAU/WAU/MAU Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-blue-400" id="dauToday">0</div>
+                    <div class="text-sm text-slate-400 mt-1">DAU сегодня</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-cyan-400" id="wauTotal">0</div>
+                    <div class="text-sm text-slate-400 mt-1">WAU (7 дней)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-green-400" id="mauTotal">0</div>
+                    <div class="text-sm text-slate-400 mt-1">MAU за период</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-purple-400" id="dauWauRatio">0%</div>
+                    <div class="text-sm text-slate-400 mt-1">DAU/WAU</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-orange-400" id="dauMauRatio">0%</div>
+                    <div class="text-sm text-slate-400 mt-1">DAU/MAU</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-yellow-400" id="newUsersCount">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Новых за период</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">DAU по дням</h3>
+                    <div class="chart-wrapper"><canvas id="dauChart"></canvas></div>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">Сегменты пользователей</h3>
+                    <div class="chart-wrapper"><canvas id="segmentsChart"></canvas></div>
+                    <div id="segmentsLegend" class="mt-4 text-sm"></div>
+                </div>
+            </div>
+
+            <!-- Retention -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-3">Retention</h3>
+                    <div class="flex gap-4">
+                        <div class="flex-1 bg-slate-900 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-green-400" id="retentionDay1">0%</div>
+                            <div class="text-xs text-slate-400 mt-1">Day 1</div>
+                        </div>
+                        <div class="flex-1 bg-slate-900 rounded-lg p-4 text-center">
+                            <div class="text-2xl font-bold text-blue-400" id="retentionDay7">0%</div>
+                            <div class="text-xs text-slate-400 mt-1">Day 7</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-3">Средние показатели</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between"><span class="text-slate-400">Средний DAU:</span><span id="avgDau" class="font-medium">0</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">Активных сегодня:</span><span id="activeToday" class="font-medium text-green-400">0</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Users Table -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">Топ активных пользователей</h3></div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-900">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium">#</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Пользователь</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Действия</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">События</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Сообщения</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">LLM ₽</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topUsersTable" class="divide-y divide-slate-700">
+                            <tr><td colspan="6" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Actions -->
+        <div id="actionsTab" class="tab-content hidden">
+            <!-- Breadcrumbs -->
+            <div id="actionsBreadcrumbs" class="mb-4 text-sm text-slate-400">
+                <span class="text-white">Действия</span>
+            </div>
+
+            <!-- Actions Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-blue-400" id="actionsToday">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Сегодня</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-cyan-400" id="actionsWeek">0</div>
+                    <div class="text-sm text-slate-400 mt-1">За 7 дней</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-green-400" id="actionsMonth">0</div>
+                    <div class="text-sm text-slate-400 mt-1">За 30 дней</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-purple-400" id="actionTypesCount">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Типов действий</div>
+                </div>
+            </div>
+
+            <!-- Actions Summary View (Level 1) -->
+            <div id="actionsSummaryView">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">Сводка по типам действий</h3></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-900">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Тип действия</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Сегодня</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">7 дней</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">30 дней</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Тренд</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="actionsSummaryTable" class="divide-y divide-slate-700">
+                                <tr><td colspan="6" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions By Type View (Level 2) -->
+            <div id="actionsByTypeView" class="hidden">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-700">
+                        <h3 class="text-lg font-semibold">Пользователи: <span id="actionTypeTitle" class="text-blue-400"></span></h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-slate-900">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Пользователь</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Действий</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium">Последнее</th>
+                                    <th class="px-4 py-3 text-left text-sm font-medium"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="actionsByTypeTable" class="divide-y divide-slate-700">
+                                <tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: LLM Costs -->
+        <div id="llmTab" class="tab-content hidden">
+            <!-- LLM Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-green-400" id="llmTotalCost">0 ₽</div>
+                    <div class="text-sm text-slate-400 mt-1">Всего потрачено</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-blue-400" id="llmTotalTokens">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Токенов</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-purple-400" id="llmTotalRequests">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Запросов</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-yellow-400" id="llmAvgCostPerDay">0 ₽</div>
+                    <div class="text-sm text-slate-400 mt-1">Средний за день</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">Расходы по дням</h3>
+                    <div class="chart-wrapper"><canvas id="llmCostChart"></canvas></div>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">По моделям</h3>
+                    <div class="chart-wrapper"><canvas id="llmModelsChart"></canvas></div>
+                </div>
+            </div>
+
+            <!-- LLM by User Table -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">Расходы по пользователям</h3></div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-900">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Пользователь</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Запросов</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Токенов</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Стоимость</th>
+                            </tr>
+                        </thead>
+                        <tbody id="llmUsersTable" class="divide-y divide-slate-700">
+                            <tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Errors -->
+        <div id="errorsTab" class="tab-content hidden">
+            <!-- Error Summary Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-red-400" id="errorsTotal">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Всего ошибок</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-yellow-400" id="errorsToday">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Сегодня</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-orange-400" id="errorsLLM">0</div>
+                    <div class="text-sm text-slate-400 mt-1">LLM ошибки</div>
+                </div>
+                <div class="stat-card">
+                    <div class="text-3xl font-bold text-purple-400" id="errorsOther">0</div>
+                    <div class="text-sm text-slate-400 mt-1">Прочие</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">Ошибки по дням</h3>
+                    <div class="chart-wrapper"><canvas id="errorsTimelineChart"></canvas></div>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                    <h3 class="text-lg font-semibold mb-4">По типам</h3>
+                    <div class="chart-wrapper"><canvas id="errorsTypesChart"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Errors Table -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                <div class="p-4 border-b border-slate-700"><h3 class="text-lg font-semibold">Последние ошибки</h3></div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-slate-900">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Время</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Пользователь</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Тип</th>
+                                <th class="px-4 py-3 text-left text-sm font-medium">Сообщение</th>
+                            </tr>
+                        </thead>
+                        <tbody id="errorsTable" class="divide-y divide-slate-700">
+                            <tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- User Profile View -->
         <div id="userView" class="hidden">
             <div class="mb-6">
@@ -253,6 +575,36 @@ let currentView = 'main';
 let allActions = [];
 let errorsData = { errors: [], stats: { total: 0, by_type: {} } };
 let requires2FA = false;
+
+// New analytics state
+let currentTab = 'overview';
+let currentPeriod = 30;
+let dauChart = null;
+let segmentsChart = null;
+let llmCostChart = null;
+let llmModelsChart = null;
+let errorsTimelineChart = null;
+let errorsTypesChart = null;
+let tabDataCache = {};
+
+// XSS protection - escape HTML entities
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// XSS protection for HTML attributes (escapes quotes)
+function escapeAttr(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
 
 // Restore session - check if already authenticated via httpOnly cookie
 async function restoreSession() {
@@ -587,8 +939,8 @@ function updateActivityChart(data) {
             datasets: [{
                 label: 'Действия',
                 data: values,
-                borderColor: 'rgb(59, 130, 246)',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96, 165, 250, 0.1)',
                 tension: 0.4,
                 fill: true
             }]
@@ -598,8 +950,8 @@ function updateActivityChart(data) {
             maintainAspectRatio: false,
             plugins: {legend: {display: false}},
             scales: {
-                y: {beginAtZero: true, ticks: {color: '#94a3b8'}, grid: {color: '#334155'}},
-                x: {ticks: {color: '#94a3b8'}, grid: {color: '#334155'}}
+                y: {beginAtZero: true, ticks: {color: '#888'}, grid: {color: '#2a2a2a'}},
+                x: {ticks: {color: '#888'}, grid: {color: '#2a2a2a'}}
             }
         }
     });
@@ -615,14 +967,14 @@ function updateDistributionChart(stats) {
             labels: ['События', 'Сообщения', 'Ошибки'],
             datasets: [{
                 data: [stats.total_events, stats.total_messages, stats.total_errors],
-                backgroundColor: ['rgba(34, 197, 94, 0.8)', 'rgba(168, 85, 247, 0.8)', 'rgba(239, 68, 68, 0.8)'],
+                backgroundColor: ['#4ade80', '#a78bfa', '#f87171'],
                 borderWidth: 0
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {legend: {position: 'bottom', labels: {color: '#e2e8f0'}}}
+            plugins: {legend: {position: 'bottom', labels: {color: '#888'}}}
         }
     });
 }
@@ -639,17 +991,17 @@ function updateUsersTable(users) {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         }) : '-';
 
-        // Build user display name and Telegram link
-        let userName = u.user_id;
+        // Build user display name and Telegram link (XSS-safe)
+        let userName = escapeHtml(u.user_id);
         let tgLink = '';
         if (u.username) {
-            userName = `@${u.username}`;
-            tgLink = ` <a href="https://t.me/${u.username}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
+            userName = `@${escapeHtml(u.username)}`;
+            tgLink = ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
         } else if (u.first_name || u.last_name) {
-            userName = [u.first_name, u.last_name].filter(Boolean).join(' ');
+            userName = [u.first_name, u.last_name].filter(Boolean).map(escapeHtml).join(' ');
         }
 
-        const userDisplay = `<div class="font-mono text-blue-400">${u.user_id}</div>
+        const userDisplay = `<div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
                              <div class="text-xs text-slate-500">${userName}${tgLink}</div>`;
 
         // Use fields from UserDetail model
@@ -678,13 +1030,14 @@ function updateActionsTable(actions) {
         const time = new Date(a.timestamp).toLocaleString('ru-RU', {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         });
-        const details = (a.details || '').substring(0, 50) + (a.details?.length > 50 ? '...' : '');
+        const rawDetails = (a.details || '').substring(0, 50) + (a.details?.length > 50 ? '...' : '');
+        const details = escapeHtml(rawDetails);
         const testBadge = a.is_test ? '<span class="badge-test ml-2">ТЕСТ</span>' : '';
         return `
-            <tr class="clickable-row" onclick="showUserProfile('${a.user_id}')">
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(a.user_id)}')">
                 <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
-                <td class="px-4 py-3 text-sm font-mono text-blue-400">${a.user_id}</td>
-                <td class="px-4 py-3 text-sm">${actionLabels[a.action_type] || a.action_type}${testBadge}</td>
+                <td class="px-4 py-3 text-sm font-mono text-blue-400">${escapeHtml(a.user_id)}</td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[a.action_type] || a.action_type)}${testBadge}</td>
                 <td class="px-4 py-3 text-sm text-slate-400">${details}</td>
             </tr>
         `;
@@ -693,7 +1046,8 @@ function updateActionsTable(actions) {
 
 async function showUserProfile(userId) {
     currentView = 'user';
-    document.getElementById('mainView').classList.add('hidden');
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
     document.getElementById('userView').classList.remove('hidden');
     document.getElementById('filteredView').classList.add('hidden');
     document.getElementById('backBtn').classList.remove('hidden');
@@ -738,7 +1092,8 @@ async function showUserProfile(userId) {
 
 async function filterByType(type) {
     currentView = 'filter';
-    document.getElementById('mainView').classList.add('hidden');
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
     document.getElementById('userView').classList.add('hidden');
     document.getElementById('filteredView').classList.remove('hidden');
     document.getElementById('backBtn').classList.remove('hidden');
@@ -766,24 +1121,25 @@ async function filterByType(type) {
                 .join(', ');
             subtitle = `Всего: ${errorsData.stats?.total || 0}` + (typeBreakdown ? ` | ${typeBreakdown}` : '');
 
-            // Show errors table
+            // Show errors table (XSS-safe)
             const tbody = document.getElementById('filteredTable');
             tbody.innerHTML = errorsData.errors.map(e => {
                 const time = new Date(e.timestamp).toLocaleString('ru-RU', {
                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
                 });
-                const userName = e.username ? `@${e.username}` : (e.first_name || e.user_id);
-                const errorMsg = e.error_message ? `<div class="text-xs text-red-400 mt-1">${e.error_message.substring(0, 100)}${e.error_message.length > 100 ? '...' : ''}</div>` : '';
+                const userName = e.username ? `@${escapeHtml(e.username)}` : escapeHtml(e.first_name || e.user_id);
+                const rawErrorMsg = e.error_message ? e.error_message.substring(0, 100) + (e.error_message.length > 100 ? '...' : '') : '';
+                const errorMsg = rawErrorMsg ? `<div class="text-xs text-red-400 mt-1">${escapeHtml(rawErrorMsg)}</div>` : '';
                 return `
-                    <tr class="clickable-row text-red-300" onclick="showUserProfile('${e.user_id}')">
+                    <tr class="clickable-row text-red-300" onclick="showUserProfile('${escapeAttr(e.user_id)}')">
                         <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
                         <td class="px-4 py-3 text-sm">
-                            <div class="font-mono text-blue-400">${e.user_id}</div>
+                            <div class="font-mono text-blue-400">${escapeHtml(e.user_id)}</div>
                             <div class="text-xs text-slate-500">${userName}</div>
                         </td>
-                        <td class="px-4 py-3 text-sm">${actionLabels[e.action_type] || e.action_type}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[e.action_type] || e.action_type)}</td>
                         <td class="px-4 py-3 text-sm">
-                            <div class="text-slate-400">${e.details || '-'}</div>
+                            <div class="text-slate-400">${escapeHtml(e.details || '-')}</div>
                             ${errorMsg}
                         </td>
                     </tr>
@@ -825,11 +1181,11 @@ async function filterByType(type) {
         const testBadge = a.is_test ? ' <span class="badge-test">ТЕСТ</span>' : '';
         const errorClass = (a.action_type === 'error' || !a.success) ? 'text-red-400' : '';
         return `
-            <tr class="clickable-row ${errorClass}" onclick="showUserProfile('${a.user_id}')">
+            <tr class="clickable-row ${errorClass}" onclick="showUserProfile('${escapeAttr(a.user_id)}')">
                 <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
-                <td class="px-4 py-3 text-sm font-mono text-blue-400">${a.user_id}</td>
-                <td class="px-4 py-3 text-sm">${actionLabels[a.action_type] || a.action_type}${testBadge}</td>
-                <td class="px-4 py-3 text-sm text-slate-400">${a.details || '-'}</td>
+                <td class="px-4 py-3 text-sm font-mono text-blue-400">${escapeHtml(a.user_id)}</td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[a.action_type] || a.action_type)}${testBadge}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${escapeHtml(a.details || '-')}</td>
             </tr>
         `;
     }).join('');
@@ -838,7 +1194,7 @@ async function filterByType(type) {
 function showUsersDetailed(users) {
     document.getElementById('filterTitle').textContent = '👥 Все пользователи';
     document.getElementById('filterSubtitle').textContent = `Всего пользователей: ${users.length}`;
-    
+
     const tbody = document.getElementById('filteredTable');
     tbody.innerHTML = users.map(u => {
         const firstSeen = new Date(u.first_seen).toLocaleString('ru-RU', {
@@ -847,22 +1203,22 @@ function showUsersDetailed(users) {
         const lastSeen = new Date(u.last_seen).toLocaleString('ru-RU', {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         });
-        
-        // Build user name
-        let userName = u.user_id;
+
+        // Build user name (XSS-safe)
+        let userName = escapeHtml(u.user_id);
         let tgLink = '';
         if (u.username) {
-            userName = `@${u.username}`;
-            tgLink = ` <a href="https://t.me/${u.username}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
+            userName = `@${escapeHtml(u.username)}`;
+            tgLink = ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>`;
         } else if (u.first_name || u.last_name) {
-            userName = [u.first_name, u.last_name].filter(Boolean).join(' ');
+            userName = [u.first_name, u.last_name].filter(Boolean).map(escapeHtml).join(' ');
         }
-        
-        const userDisplay = `<div class="font-mono text-blue-400">${u.user_id}</div>
+
+        const userDisplay = `<div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
                              <div class="text-xs text-slate-500">${userName}${tgLink}</div>`;
-        
+
         return `
-            <tr class="clickable-row" onclick="showUserProfile('${u.user_id}')">
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
                 <td class="px-4 py-3 text-sm">${firstSeen}</td>
                 <td class="px-4 py-3 text-sm">${userDisplay}</td>
                 <td class="px-4 py-3 text-sm">События: ${u.total_events}, Сообщения: ${u.total_messages}, Ошибки: ${u.total_errors}</td>
@@ -872,13 +1228,594 @@ function showUsersDetailed(users) {
     }).join('');
 }
 
-function showDashboard() {
-    currentView = 'main';
-    document.getElementById('mainView').classList.remove('hidden');
+// ============ TAB NAVIGATION ============
+
+function showTab(tabName) {
+    currentTab = tabName;
+
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+
+    // Show selected tab
+    const tabEl = document.getElementById(tabName + 'Tab');
+    if (tabEl) tabEl.classList.remove('hidden');
+
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.dataset.tab === tabName) {
+            btn.classList.remove('bg-slate-900', 'text-slate-400');
+            btn.classList.add('bg-slate-700', 'text-white');
+        } else {
+            btn.classList.remove('bg-slate-700', 'text-white');
+            btn.classList.add('bg-slate-900', 'text-slate-400');
+        }
+    });
+
+    // Hide user/filtered views when switching tabs
     document.getElementById('userView').classList.add('hidden');
     document.getElementById('filteredView').classList.add('hidden');
     document.getElementById('backBtn').classList.add('hidden');
-    loadDashboard();
+    currentView = 'main';
+
+    // Load tab data
+    if (tabName === 'overview') {
+        loadDashboard();
+    } else if (tabName === 'users') {
+        loadUsersTab();
+    } else if (tabName === 'actions') {
+        loadActionsTab();
+    } else if (tabName === 'llm') {
+        loadLLMTab();
+    } else if (tabName === 'errors') {
+        loadErrorsTab();
+    }
+}
+
+function changePeriod(days) {
+    currentPeriod = parseInt(days);
+    tabDataCache = {}; // Clear cache when period changes
+    showTab(currentTab); // Reload current tab
+}
+
+// ============ USERS TAB ============
+
+async function loadUsersTab() {
+    try {
+        // Load metrics and top users in parallel
+        const [metricsRes, topUsersRes] = await Promise.all([
+            fetch(`${API_V2}/users/metrics?days=${currentPeriod}`, { credentials: 'include' }),
+            fetch(`${API_V2}/users/top?days=${currentPeriod}&limit=10`, { credentials: 'include' })
+        ]);
+
+        if (!metricsRes.ok) {
+            console.error('metrics failed:', metricsRes.status, await metricsRes.text());
+            throw new Error('Failed to load metrics');
+        }
+        if (!topUsersRes.ok) {
+            console.error('topUsers failed:', topUsersRes.status, await topUsersRes.text());
+            throw new Error('Failed to load top users');
+        }
+
+        const metrics = await metricsRes.json();
+        const topUsersData = await topUsersRes.json();
+        const topUsers = topUsersData.users || [];
+
+        console.log('Users tab loaded:', { metrics, topUsers });
+
+        // Update cards
+        const todayDau = metrics.dau?.length > 0 ? metrics.dau[metrics.dau.length - 1].count : 0;
+        document.getElementById('dauToday').textContent = todayDau;
+        document.getElementById('wauTotal').textContent = metrics.wau || 0;
+        document.getElementById('mauTotal').textContent = metrics.mau || 0;
+        document.getElementById('dauWauRatio').textContent = (metrics.dau_wau_ratio * 100).toFixed(1) + '%';
+        document.getElementById('dauMauRatio').textContent = (metrics.dau_mau_ratio * 100).toFixed(1) + '%';
+        document.getElementById('newUsersCount').textContent = metrics.new_users?.this_month || 0;
+        document.getElementById('avgDau').textContent = (metrics.avg_dau || 0).toFixed(1);
+        document.getElementById('activeToday').textContent = todayDau;
+        document.getElementById('retentionDay1').textContent = (metrics.retention?.day_1 * 100 || 0).toFixed(0) + '%';
+        document.getElementById('retentionDay7').textContent = (metrics.retention?.day_7 * 100 || 0).toFixed(0) + '%';
+
+        // DAU Chart
+        updateDauChart(metrics.dau || []);
+
+        // Segments Chart
+        updateSegmentsChart(metrics.segments || {});
+
+        // Top Users Table
+        updateTopUsersTable(topUsers);
+
+    } catch (err) {
+        console.error('Failed to load users tab:', err);
+        // Show error in table
+        document.getElementById('topUsersTable').innerHTML =
+            `<tr><td colspan="6" class="px-4 py-3 text-center text-red-400">Ошибка загрузки: ${err.message}</td></tr>`;
+    }
+}
+
+function updateDauChart(data) {
+    const ctx = document.getElementById('dauChart').getContext('2d');
+    if (dauChart) dauChart.destroy();
+
+    const labels = data.map(d => {
+        const date = new Date(d.date);
+        return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    });
+    const values = data.map(d => d.count);
+
+    dauChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'DAU',
+                data: values,
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#888' }, grid: { color: '#2a2a2a' } },
+                x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#2a2a2a' } }
+            }
+        }
+    });
+}
+
+function updateSegmentsChart(segments) {
+    const ctx = document.getElementById('segmentsChart').getContext('2d');
+    if (segmentsChart) segmentsChart.destroy();
+
+    const labels = ['Power Users', 'Regular', 'Casual', 'Dormant'];
+    const data = [
+        segments.power_users || 0,
+        segments.regular_users || 0,
+        segments.casual_users || 0,
+        segments.dormant_users || 0
+    ];
+    const colors = ['#60a5fa', '#4ade80', '#facc15', '#6b7280'];
+
+    segmentsChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{ data: data, backgroundColor: colors, borderWidth: 0 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#888' } } }
+        }
+    });
+
+    // Update legend text
+    document.getElementById('segmentsLegend').innerHTML = `
+        <div class="grid grid-cols-2 gap-2 text-xs">
+            <div><span style="color:#60a5fa">●</span> Power (50+ действий): ${segments.power_users || 0}</div>
+            <div><span style="color:#4ade80">●</span> Regular (10-49): ${segments.regular_users || 0}</div>
+            <div><span style="color:#facc15">●</span> Casual (1-9): ${segments.casual_users || 0}</div>
+            <div><span style="color:#6b7280">●</span> Dormant (неактивные): ${segments.dormant_users || 0}</div>
+        </div>
+    `;
+}
+
+function updateTopUsersTable(users) {
+    const tbody = document.getElementById('topUsersTable');
+    if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = users.map((u, i) => {
+        const userName = u.username ? `@${escapeHtml(u.username)}` : escapeHtml(u.first_name || u.user_id);
+        const tgLink = u.username ? ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>` : '';
+        const cost = u.llm_cost ? u.llm_cost.toFixed(2) + ' ₽' : '0 ₽';
+
+        return `
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
+                <td class="px-4 py-3 text-sm text-slate-400">${i + 1}</td>
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
+                    <div class="text-xs text-slate-500">${userName}${tgLink}</div>
+                </td>
+                <td class="px-4 py-3 text-sm font-medium">${u.total_actions || 0}</td>
+                <td class="px-4 py-3 text-sm">${u.events || 0}</td>
+                <td class="px-4 py-3 text-sm">${u.messages || 0}</td>
+                <td class="px-4 py-3 text-sm text-green-400">${cost}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// ============ LLM TAB ============
+
+async function loadLLMTab() {
+    try {
+        const response = await fetch(`${API_V2}/llm/costs?days=${currentPeriod}`, { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load LLM data');
+
+        const data = await response.json();
+
+        // Update cards
+        const totalCost = data.totals?.cost_rub || 0;
+        const totalTokens = data.totals?.tokens || 0;
+        const totalRequests = data.totals?.requests || 0;
+        const daysCount = data.daily_costs?.length || 1;
+
+        document.getElementById('llmTotalCost').textContent = totalCost.toFixed(2) + ' ₽';
+        document.getElementById('llmTotalTokens').textContent = formatNumber(totalTokens);
+        document.getElementById('llmTotalRequests').textContent = totalRequests;
+        document.getElementById('llmAvgCostPerDay').textContent = (totalCost / daysCount).toFixed(2) + ' ₽';
+
+        // Cost chart
+        updateLLMCostChart(data.daily_costs || []);
+
+        // Models chart - convert object to array
+        const modelArray = Object.entries(data.by_model || {}).map(([model, info]) => ({
+            model: model,
+            cost: info.cost_rub || 0,
+            tokens: info.tokens || 0,
+            requests: info.requests || 0
+        }));
+        updateLLMModelsChart(modelArray);
+
+        // Users table
+        updateLLMUsersTable(data.by_user || []);
+
+    } catch (err) {
+        console.error('Failed to load LLM tab:', err);
+    }
+}
+
+function updateLLMCostChart(data) {
+    const ctx = document.getElementById('llmCostChart').getContext('2d');
+    if (llmCostChart) llmCostChart.destroy();
+
+    const labels = data.map(d => {
+        const date = new Date(d.date);
+        return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    });
+    const costs = data.map(d => d.cost_rub || 0);
+    const tokens = data.map(d => d.tokens || 0);
+
+    llmCostChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Стоимость (₽)',
+                data: costs,
+                backgroundColor: '#4ade80',
+                yAxisID: 'y'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#888' }, grid: { color: '#2a2a2a' } },
+                x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#2a2a2a' } }
+            }
+        }
+    });
+}
+
+function updateLLMModelsChart(data) {
+    const ctx = document.getElementById('llmModelsChart').getContext('2d');
+    if (llmModelsChart) llmModelsChart.destroy();
+
+    const labels = data.map(d => d.model || 'unknown');
+    const values = data.map(d => d.cost || 0);
+    const colors = ['#60a5fa', '#a78bfa', '#22d3ee', '#fb923c'];
+
+    llmModelsChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: labels,
+            datasets: [{ data: values, backgroundColor: colors.slice(0, labels.length), borderWidth: 0 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#888' } } }
+        }
+    });
+}
+
+function updateLLMUsersTable(users) {
+    const tbody = document.getElementById('llmUsersTable');
+    if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
+        return;
+    }
+
+    // Sort by cost descending
+    users.sort((a, b) => (b.cost_rub || 0) - (a.cost_rub || 0));
+
+    tbody.innerHTML = users.slice(0, 15).map(u => {
+        const userName = u.username ? `@${escapeHtml(u.username)}` : escapeHtml(u.first_name || u.user_id);
+        return `
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
+                    <div class="text-xs text-slate-500">${userName}</div>
+                </td>
+                <td class="px-4 py-3 text-sm">${u.requests || 0}</td>
+                <td class="px-4 py-3 text-sm">${formatNumber(u.tokens || 0)}</td>
+                <td class="px-4 py-3 text-sm text-green-400">${(u.cost_rub || 0).toFixed(2)} ₽</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// ============ ERRORS TAB ============
+
+async function loadErrorsTab() {
+    try {
+        // Load errors for the selected period
+        const hours = currentPeriod * 24;
+        const response = await fetch(`${API_BASE}/errors?hours=${hours}&limit=100`, { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load errors');
+
+        const data = await response.json();
+
+        // Update cards
+        const total = data.stats?.total || 0;
+        const byType = data.stats?.by_type || {};
+        const llmErrors = (byType.llm_error || 0) + (byType.llm_parse_error || 0) + (byType.llm_timeout || 0);
+        const todayCount = data.errors?.filter(e => {
+            const d = new Date(e.timestamp);
+            const today = new Date();
+            return d.toDateString() === today.toDateString();
+        }).length || 0;
+
+        document.getElementById('errorsTotal').textContent = total;
+        document.getElementById('errorsToday').textContent = todayCount;
+        document.getElementById('errorsLLM').textContent = llmErrors;
+        document.getElementById('errorsOther').textContent = total - llmErrors;
+
+        // Group errors by day for chart
+        const byDay = {};
+        (data.errors || []).forEach(e => {
+            const date = new Date(e.timestamp).toISOString().split('T')[0];
+            byDay[date] = (byDay[date] || 0) + 1;
+        });
+
+        updateErrorsTimelineChart(byDay);
+        updateErrorsTypesChart(byType);
+        updateErrorsTable(data.errors || []);
+
+    } catch (err) {
+        console.error('Failed to load errors tab:', err);
+    }
+}
+
+function updateErrorsTimelineChart(byDay) {
+    const ctx = document.getElementById('errorsTimelineChart').getContext('2d');
+    if (errorsTimelineChart) errorsTimelineChart.destroy();
+
+    const sortedDates = Object.keys(byDay).sort();
+    const labels = sortedDates.map(d => {
+        const date = new Date(d);
+        return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    });
+    const values = sortedDates.map(d => byDay[d]);
+
+    errorsTimelineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Ошибки',
+                data: values,
+                borderColor: '#f87171',
+                backgroundColor: 'rgba(248, 113, 113, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#888' }, grid: { color: '#2a2a2a' } },
+                x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#2a2a2a' } }
+            }
+        }
+    });
+}
+
+function updateErrorsTypesChart(byType) {
+    const ctx = document.getElementById('errorsTypesChart').getContext('2d');
+    if (errorsTypesChart) errorsTypesChart.destroy();
+
+    const labels = Object.keys(byType).map(k => actionLabels[k] || k);
+    const values = Object.values(byType);
+    const colors = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#22d3ee'];
+
+    errorsTypesChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{ data: values, backgroundColor: colors.slice(0, labels.length), borderWidth: 0 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#888' } } }
+        }
+    });
+}
+
+function updateErrorsTable(errors) {
+    const tbody = document.getElementById('errorsTable');
+    if (!errors || errors.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет ошибок</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = errors.slice(0, 50).map(e => {
+        const time = new Date(e.timestamp).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        const userName = e.username ? `@${escapeHtml(e.username)}` : escapeHtml(e.first_name || e.user_id);
+        const rawErrorMsg = e.error_message ? e.error_message.substring(0, 80) + (e.error_message.length > 80 ? '...' : '') : e.details || '-';
+        const errorMsg = escapeHtml(rawErrorMsg);
+
+        return `
+            <tr class="clickable-row text-red-300" onclick="showUserProfile('${escapeAttr(e.user_id)}')">
+                <td class="px-4 py-3 text-sm text-slate-400">${time}</td>
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-mono text-blue-400">${escapeHtml(e.user_id)}</div>
+                    <div class="text-xs text-slate-500">${userName}</div>
+                </td>
+                <td class="px-4 py-3 text-sm">${escapeHtml(actionLabels[e.action_type] || e.action_type)}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${errorMsg}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// ============ ACTIONS TAB ============
+
+let currentActionType = null;
+
+async function loadActionsTab() {
+    try {
+        // Reset to summary view
+        document.getElementById('actionsSummaryView').classList.remove('hidden');
+        document.getElementById('actionsByTypeView').classList.add('hidden');
+        document.getElementById('actionsBreadcrumbs').innerHTML = '<span class="text-white">Действия</span>';
+        currentActionType = null;
+
+        const response = await fetch(`${API_V2}/actions/summary`, { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load actions summary');
+
+        const data = await response.json();
+
+        // Update cards
+        document.getElementById('actionsToday').textContent = data.totals?.today || 0;
+        document.getElementById('actionsWeek').textContent = data.totals?.week || 0;
+        document.getElementById('actionsMonth').textContent = data.totals?.month || 0;
+        document.getElementById('actionTypesCount').textContent = data.summary?.length || 0;
+
+        // Update summary table
+        updateActionsSummaryTable(data.summary || []);
+
+    } catch (err) {
+        console.error('Failed to load actions tab:', err);
+        document.getElementById('actionsSummaryTable').innerHTML =
+            `<tr><td colspan="6" class="px-4 py-3 text-center text-red-400">Ошибка загрузки: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+function updateActionsSummaryTable(summary) {
+    const tbody = document.getElementById('actionsSummaryTable');
+    if (!summary || summary.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-3 text-center text-slate-500">Нет данных</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = summary.map(s => {
+        const trendIcon = s.trend > 0 ? '↑' : (s.trend < 0 ? '↓' : '→');
+        const trendColor = s.trend > 0 ? 'text-green-400' : (s.trend < 0 ? 'text-red-400' : 'text-slate-400');
+        const trendText = `${trendIcon} ${Math.abs(s.trend).toFixed(1)}%`;
+        const actionLabel = actionLabels[s.action_type] || s.action_type;
+
+        return `
+            <tr class="clickable-row" onclick="showActionsByType('${escapeAttr(s.action_type)}')">
+                <td class="px-4 py-3 text-sm font-medium">${escapeHtml(actionLabel)}</td>
+                <td class="px-4 py-3 text-sm">${s.today}</td>
+                <td class="px-4 py-3 text-sm">${s.week}</td>
+                <td class="px-4 py-3 text-sm">${s.month}</td>
+                <td class="px-4 py-3 text-sm ${trendColor}">${trendText}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">→</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function showActionsByType(actionType) {
+    try {
+        currentActionType = actionType;
+        const actionLabel = actionLabels[actionType] || actionType;
+
+        // Update breadcrumbs
+        document.getElementById('actionsBreadcrumbs').innerHTML = `
+            <span class="cursor-pointer hover:text-white" onclick="loadActionsTab()">Действия</span>
+            <span class="mx-2">›</span>
+            <span class="text-white">${escapeHtml(actionLabel)}</span>
+        `;
+
+        // Show users view
+        document.getElementById('actionsSummaryView').classList.add('hidden');
+        document.getElementById('actionsByTypeView').classList.remove('hidden');
+        document.getElementById('actionTypeTitle').textContent = actionLabel;
+
+        // Load users for this action type
+        const response = await fetch(`${API_V2}/actions/by-type/${encodeURIComponent(actionType)}`, { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load actions by type');
+
+        const data = await response.json();
+        updateActionsByTypeTable(data.users || []);
+
+    } catch (err) {
+        console.error('Failed to load actions by type:', err);
+        document.getElementById('actionsByTypeTable').innerHTML =
+            `<tr><td colspan="4" class="px-4 py-3 text-center text-red-400">Ошибка загрузки: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+function updateActionsByTypeTable(users) {
+    const tbody = document.getElementById('actionsByTypeTable');
+    if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-slate-500">Нет пользователей</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = users.map(u => {
+        const userName = u.username ? `@${escapeHtml(u.username)}` : escapeHtml(u.first_name || u.user_id);
+        const tgLink = u.username ? ` <a href="https://t.me/${escapeAttr(u.username)}" target="_blank" class="text-blue-400 hover:text-blue-300">🔗</a>` : '';
+        const lastAction = u.last_action ? new Date(u.last_action).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        }) : '-';
+
+        return `
+            <tr class="clickable-row" onclick="showUserProfile('${escapeAttr(u.user_id)}')">
+                <td class="px-4 py-3 text-sm">
+                    <div class="font-mono text-blue-400">${escapeHtml(u.user_id)}</div>
+                    <div class="text-xs text-slate-500">${userName}${tgLink}</div>
+                </td>
+                <td class="px-4 py-3 text-sm font-medium">${u.action_count || 0}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">${lastAction}</td>
+                <td class="px-4 py-3 text-sm text-slate-400">→</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Export actions functions to window for onclick handlers
+window.showActionsByType = showActionsByType;
+window.loadActionsTab = loadActionsTab;
+
+// ============ HELPERS ============
+
+function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function showDashboard() {
+    currentView = 'main';
+    showTab('overview');
 }
 
 // Broadcast functions

@@ -71,6 +71,28 @@ class AnalyticsService:
                 conn.execute('ALTER TABLE users ADD COLUMN is_hidden_in_admin INTEGER DEFAULT 0')
                 logger.info("migration_added_is_hidden_in_admin_column")
 
+            # Migration: add referral columns if missing
+            if 'referred_by' not in columns:
+                conn.execute('ALTER TABLE users ADD COLUMN referred_by TEXT')
+                logger.info("migration_added_referred_by_column")
+            if 'referral_code' not in columns:
+                conn.execute('ALTER TABLE users ADD COLUMN referral_code TEXT')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code)')
+                logger.info("migration_added_referral_code_column")
+
+            # Referrals table for detailed tracking
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS referrals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    referrer_id TEXT NOT NULL,
+                    referred_id TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    notified INTEGER DEFAULT 0,
+                    UNIQUE(referred_id)
+                )
+            ''')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)')
+
             # Actions table
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS actions (
@@ -959,6 +981,457 @@ class AnalyticsService:
         except Exception as e:
             logger.error("clear_test_data_error", error=str(e))
             return 0
+        finally:
+            conn.close()
+
+    # ==================== EXTENDED ANALYTICS METHODS ====================
+
+    def get_daily_timeline(self, days: int = 30) -> List[Dict]:
+        """
+        Get aggregated statistics by day for the last N days.
+
+        Returns list of dicts with: date, actions, users, events, messages, errors
+        """
+        conn = self._get_connection()
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+            cursor = conn.execute('''
+                SELECT
+                    date(timestamp) as date,
+                    COUNT(*) as actions,
+                    COUNT(DISTINCT user_id) as users,
+                    SUM(CASE WHEN action_type IN ('event_create', 'event_update', 'event_delete') THEN 1 ELSE 0 END) as events,
+                    SUM(CASE WHEN action_type IN ('text_message', 'voice_message') THEN 1 ELSE 0 END) as messages,
+                    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as errors
+                FROM actions
+                WHERE date(timestamp) >= ? AND is_test = 0
+                GROUP BY date(timestamp)
+                ORDER BY date(timestamp)
+            ''', (start_date,))
+
+            data = {row['date']: dict(row) for row in cursor.fetchall()}
+
+            # Fill missing days with zeros
+            result = []
+            current = datetime.now() - timedelta(days=days)
+            while current.date() <= datetime.now().date():
+                date_str = current.strftime('%Y-%m-%d')
+                if date_str in data:
+                    result.append(data[date_str])
+                else:
+                    result.append({
+                        'date': date_str,
+                        'actions': 0,
+                        'users': 0,
+                        'events': 0,
+                        'messages': 0,
+                        'errors': 0
+                    })
+                current += timedelta(days=1)
+
+            return result
+        except Exception as e:
+            logger.error("get_daily_timeline_error", error=str(e))
+            return []
+        finally:
+            conn.close()
+
+    def get_llm_cost_breakdown(self, days: int = 30) -> Dict:
+        """
+        Get LLM cost breakdown by day, model, and user.
+
+        Returns dict with: daily_costs, by_model, by_user, totals
+        """
+        conn = self._get_connection()
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+            # Daily costs
+            daily_cursor = conn.execute('''
+                SELECT
+                    date(timestamp) as date,
+                    COALESCE(SUM(cost_rub), 0) as cost_rub,
+                    COALESCE(SUM(total_tokens), 0) as tokens,
+                    COUNT(*) as requests
+                FROM actions
+                WHERE action_type = 'llm_request'
+                  AND date(timestamp) >= ?
+                  AND is_test = 0
+                GROUP BY date(timestamp)
+                ORDER BY date(timestamp)
+            ''', (start_date,))
+            daily_costs = [dict(row) for row in daily_cursor.fetchall()]
+
+            # By model
+            model_cursor = conn.execute('''
+                SELECT
+                    COALESCE(llm_model, 'unknown') as model,
+                    COALESCE(SUM(cost_rub), 0) as cost_rub,
+                    COALESCE(SUM(total_tokens), 0) as tokens,
+                    COUNT(*) as requests
+                FROM actions
+                WHERE action_type = 'llm_request'
+                  AND date(timestamp) >= ?
+                  AND is_test = 0
+                GROUP BY llm_model
+            ''', (start_date,))
+            by_model = {row['model']: dict(row) for row in model_cursor.fetchall()}
+
+            # By user (top 20)
+            user_cursor = conn.execute('''
+                SELECT
+                    a.user_id,
+                    u.username,
+                    u.first_name,
+                    COALESCE(SUM(a.cost_rub), 0) as cost_rub,
+                    COALESCE(SUM(a.total_tokens), 0) as tokens,
+                    COUNT(*) as requests
+                FROM actions a
+                LEFT JOIN users u ON a.user_id = u.user_id
+                WHERE a.action_type = 'llm_request'
+                  AND date(a.timestamp) >= ?
+                  AND a.is_test = 0
+                GROUP BY a.user_id
+                ORDER BY cost_rub DESC
+                LIMIT 20
+            ''', (start_date,))
+            by_user = [dict(row) for row in user_cursor.fetchall()]
+
+            # Totals
+            total_cost = sum(d['cost_rub'] for d in daily_costs)
+            total_tokens = sum(d['tokens'] for d in daily_costs)
+            total_requests = sum(d['requests'] for d in daily_costs)
+            unique_users = len(by_user)
+
+            return {
+                'daily_costs': daily_costs,
+                'by_model': by_model,
+                'by_user': by_user,
+                'totals': {
+                    'cost_rub': round(total_cost, 2),
+                    'tokens': total_tokens,
+                    'requests': total_requests,
+                    'unique_users': unique_users,
+                    'avg_cost_per_user': round(total_cost / unique_users, 2) if unique_users else 0,
+                    'avg_cost_per_request': round(total_cost / total_requests, 4) if total_requests else 0
+                },
+                'period_days': days
+            }
+        except Exception as e:
+            logger.error("get_llm_cost_breakdown_error", error=str(e))
+            return {
+                'daily_costs': [], 'by_model': {}, 'by_user': [],
+                'totals': {'cost_rub': 0, 'tokens': 0, 'requests': 0, 'unique_users': 0,
+                          'avg_cost_per_user': 0, 'avg_cost_per_request': 0},
+                'period_days': days
+            }
+        finally:
+            conn.close()
+
+    def get_user_engagement_metrics(self, days: int = 30) -> Dict:
+        """
+        Get user engagement metrics: DAU/WAU/MAU, retention, segments.
+
+        Returns dict with: dau, wau, mau, dau_mau_ratio, dau_wau_ratio, segments, retention, new_users
+        """
+        conn = self._get_connection()
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+            today = datetime.now().strftime('%Y-%m-%d')
+            week_start = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+
+            # DAU by day
+            dau_cursor = conn.execute('''
+                SELECT date(timestamp) as date, COUNT(DISTINCT user_id) as count
+                FROM actions
+                WHERE date(timestamp) >= ? AND is_test = 0
+                GROUP BY date(timestamp)
+                ORDER BY date(timestamp)
+            ''', (start_date,))
+            dau = [dict(row) for row in dau_cursor.fetchall()]
+
+            # WAU (unique users in last 7 days)
+            wau = conn.execute('''
+                SELECT COUNT(DISTINCT user_id) as count
+                FROM actions
+                WHERE date(timestamp) >= ? AND is_test = 0
+            ''', (week_start,)).fetchone()['count']
+
+            # MAU (unique users in period)
+            mau = conn.execute('''
+                SELECT COUNT(DISTINCT user_id) as count
+                FROM actions
+                WHERE date(timestamp) >= ? AND is_test = 0
+            ''', (start_date,)).fetchone()['count']
+
+            # Average DAU (last 7 days)
+            recent_dau = [d['count'] for d in dau[-7:]] if dau else [0]
+            avg_dau = sum(recent_dau) / len(recent_dau) if recent_dau else 0
+
+            # User segments (based on last 7 days activity)
+            segments_cursor = conn.execute('''
+                WITH user_activity AS (
+                    SELECT user_id, COUNT(*) as actions
+                    FROM actions
+                    WHERE date(timestamp) >= ? AND is_test = 0
+                    GROUP BY user_id
+                )
+                SELECT
+                    SUM(CASE WHEN actions >= 50 THEN 1 ELSE 0 END) as power_users,
+                    SUM(CASE WHEN actions >= 10 AND actions < 50 THEN 1 ELSE 0 END) as regular_users,
+                    SUM(CASE WHEN actions >= 1 AND actions < 10 THEN 1 ELSE 0 END) as casual_users
+                FROM user_activity
+            ''', (week_start,))
+            segments_row = segments_cursor.fetchone()
+
+            # Dormant users (active before but not in last 7 days)
+            dormant = conn.execute('''
+                SELECT COUNT(DISTINCT user_id) as count
+                FROM actions
+                WHERE user_id NOT IN (
+                    SELECT DISTINCT user_id FROM actions
+                    WHERE date(timestamp) >= ? AND is_test = 0
+                ) AND is_test = 0
+            ''', (week_start,)).fetchone()['count']
+
+            # New users (first action in period)
+            new_today = conn.execute('''
+                SELECT COUNT(*) as count FROM (
+                    SELECT user_id, MIN(date(timestamp)) as first_day
+                    FROM actions WHERE is_test = 0
+                    GROUP BY user_id
+                    HAVING first_day = ?
+                )
+            ''', (today,)).fetchone()['count']
+
+            new_week = conn.execute('''
+                SELECT COUNT(*) as count FROM (
+                    SELECT user_id, MIN(date(timestamp)) as first_day
+                    FROM actions WHERE is_test = 0
+                    GROUP BY user_id
+                    HAVING first_day >= ?
+                )
+            ''', (week_start,)).fetchone()['count']
+
+            new_month = conn.execute('''
+                SELECT COUNT(*) as count FROM (
+                    SELECT user_id, MIN(date(timestamp)) as first_day
+                    FROM actions WHERE is_test = 0
+                    GROUP BY user_id
+                    HAVING first_day >= ?
+                )
+            ''', (start_date,)).fetchone()['count']
+
+            # Simple retention calculation (day 1 and day 7)
+            retention_d1 = self._calculate_retention(conn, 1)
+            retention_d7 = self._calculate_retention(conn, 7)
+
+            return {
+                'dau': dau,
+                'wau': wau,
+                'mau': mau,
+                'avg_dau': round(avg_dau, 1),
+                'dau_wau_ratio': round(avg_dau / wau, 2) if wau else 0,
+                'dau_mau_ratio': round(avg_dau / mau, 2) if mau else 0,
+                'segments': {
+                    'power_users': segments_row['power_users'] or 0,
+                    'regular_users': segments_row['regular_users'] or 0,
+                    'casual_users': segments_row['casual_users'] or 0,
+                    'dormant_users': dormant
+                },
+                'retention': {
+                    'day_1': retention_d1,
+                    'day_7': retention_d7
+                },
+                'new_users': {
+                    'today': new_today,
+                    'this_week': new_week,
+                    'this_month': new_month
+                },
+                'period_days': days
+            }
+        except Exception as e:
+            logger.error("get_user_engagement_metrics_error", error=str(e), exc_info=True)
+            return {
+                'dau': [], 'wau': 0, 'mau': 0, 'avg_dau': 0,
+                'dau_wau_ratio': 0, 'dau_mau_ratio': 0,
+                'segments': {'power_users': 0, 'regular_users': 0, 'casual_users': 0, 'dormant_users': 0},
+                'retention': {'day_1': 0, 'day_7': 0},
+                'new_users': {'today': 0, 'this_week': 0, 'this_month': 0},
+                'period_days': days
+            }
+        finally:
+            conn.close()
+
+    def _calculate_retention(self, conn, days_after: int) -> float:
+        """Calculate retention rate for users N days after first visit."""
+        try:
+            result = conn.execute('''
+                WITH first_visit AS (
+                    SELECT user_id, MIN(date(timestamp)) as first_day
+                    FROM actions WHERE is_test = 0
+                    GROUP BY user_id
+                ),
+                eligible AS (
+                    SELECT user_id, first_day
+                    FROM first_visit
+                    WHERE date(first_day, '+' || ? || ' days') <= date('now')
+                ),
+                returned AS (
+                    SELECT DISTINCT e.user_id
+                    FROM eligible e
+                    INNER JOIN actions a ON e.user_id = a.user_id
+                    WHERE date(a.timestamp) = date(e.first_day, '+' || ? || ' days')
+                      AND a.is_test = 0
+                )
+                SELECT
+                    CAST(COUNT(DISTINCT r.user_id) AS FLOAT) /
+                    NULLIF(COUNT(DISTINCT e.user_id), 0) as retention
+                FROM eligible e
+                LEFT JOIN returned r ON e.user_id = r.user_id
+            ''', (days_after, days_after)).fetchone()
+
+            return round(result['retention'] or 0, 2)
+        except Exception as e:
+            logger.warning("retention_calculation_error", days=days_after, error=str(e))
+            return 0.0
+
+    def get_top_users(self, limit: int = 10, days: int = 30) -> List[Dict]:
+        """
+        Get top active users for the period.
+
+        Returns list of dicts with: user_id, username, first_name, total_actions,
+        events, messages, llm_cost, last_seen
+        """
+        conn = self._get_connection()
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+            cursor = conn.execute('''
+                SELECT
+                    a.user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    COUNT(*) as total_actions,
+                    SUM(CASE WHEN a.action_type IN ('event_create', 'event_update', 'event_delete') THEN 1 ELSE 0 END) as events,
+                    SUM(CASE WHEN a.action_type IN ('text_message', 'voice_message') THEN 1 ELSE 0 END) as messages,
+                    COALESCE(SUM(a.cost_rub), 0) as llm_cost,
+                    MAX(a.timestamp) as last_seen
+                FROM actions a
+                LEFT JOIN users u ON a.user_id = u.user_id
+                WHERE date(a.timestamp) >= ? AND a.is_test = 0
+                GROUP BY a.user_id
+                ORDER BY total_actions DESC
+                LIMIT ?
+            ''', (start_date, limit))
+
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error("get_top_users_error", error=str(e))
+            return []
+        finally:
+            conn.close()
+
+    def get_action_type_summary(self) -> Dict:
+        """
+        Get summary of actions by type with today/week/month breakdown.
+
+        Returns dict with action types and their counts for different periods.
+        """
+        conn = self._get_connection()
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            week_start = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            month_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+
+            # Get all action types with counts for each period
+            cursor = conn.execute('''
+                SELECT
+                    action_type,
+                    SUM(CASE WHEN date(timestamp) = ? THEN 1 ELSE 0 END) as today,
+                    SUM(CASE WHEN date(timestamp) >= ? THEN 1 ELSE 0 END) as week,
+                    SUM(CASE WHEN date(timestamp) >= ? THEN 1 ELSE 0 END) as month,
+                    COUNT(DISTINCT user_id) as unique_users
+                FROM actions
+                WHERE is_test = 0
+                GROUP BY action_type
+                ORDER BY month DESC
+            ''', (today, week_start, month_start))
+
+            summary = []
+            for row in cursor.fetchall():
+                # Calculate trend (compare this week vs previous week)
+                prev_week_start = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+                prev_week_end = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+
+                prev_week_count = conn.execute('''
+                    SELECT COUNT(*) as count FROM actions
+                    WHERE action_type = ? AND date(timestamp) >= ? AND date(timestamp) < ? AND is_test = 0
+                ''', (row['action_type'], prev_week_start, prev_week_end)).fetchone()['count']
+
+                current_week = row['week']
+                if prev_week_count > 0:
+                    trend = round((current_week - prev_week_count) / prev_week_count * 100, 1)
+                elif current_week > 0:
+                    trend = 100.0
+                else:
+                    trend = 0.0
+
+                summary.append({
+                    'action_type': row['action_type'],
+                    'today': row['today'],
+                    'week': row['week'],
+                    'month': row['month'],
+                    'unique_users': row['unique_users'],
+                    'trend': trend
+                })
+
+            return {
+                'summary': summary,
+                'totals': {
+                    'today': sum(s['today'] for s in summary),
+                    'week': sum(s['week'] for s in summary),
+                    'month': sum(s['month'] for s in summary)
+                }
+            }
+        except Exception as e:
+            logger.error("get_action_type_summary_error", error=str(e), exc_info=True)
+            return {'summary': [], 'totals': {'today': 0, 'week': 0, 'month': 0}}
+        finally:
+            conn.close()
+
+    def get_actions_by_type(self, action_type: str, limit: int = 50) -> List[Dict]:
+        """
+        Get users and their action counts for a specific action type.
+
+        Returns list of users with their activity for this action type.
+        """
+        conn = self._get_connection()
+        try:
+            week_start = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+
+            cursor = conn.execute('''
+                SELECT
+                    a.user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    COUNT(*) as action_count,
+                    MAX(a.timestamp) as last_action
+                FROM actions a
+                LEFT JOIN users u ON a.user_id = u.user_id
+                WHERE a.action_type = ? AND a.is_test = 0 AND date(a.timestamp) >= ?
+                GROUP BY a.user_id
+                ORDER BY action_count DESC
+                LIMIT ?
+            ''', (action_type, week_start, limit))
+
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error("get_actions_by_type_error", action_type=action_type, error=str(e))
+            return []
         finally:
             conn.close()
 

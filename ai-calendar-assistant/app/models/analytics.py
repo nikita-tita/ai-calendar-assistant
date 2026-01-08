@@ -40,6 +40,8 @@ class ActionType(str, Enum):
     INTENT_UNCLEAR = "intent_unclear"  # LLM returned clarify intent
     # LLM usage tracking
     LLM_REQUEST = "llm_request"       # Successful LLM request (for cost tracking)
+    # Referral tracking
+    REFERRAL_JOINED = "referral_joined"  # New user joined via referral link
 
 
 class UserAction(BaseModel):

@@ -8,10 +8,6 @@ import structlog
 
 from app.config import settings
 from app.routers import telegram, events, admin, admin_v2, logs, todos
-# Temporarily disabled - calendar_sync is independent microservice
-# from app.routers import calendar_sync, health
-# ARCHIVED - property is independent microservice (moved to _archived/property_bot_microservice)
-# from app.routers import property
 from app.utils.logger import setup_logging
 from app.middleware import TelegramAuthMiddleware
 
@@ -57,15 +53,12 @@ app.add_middleware(TelegramAuthMiddleware)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Include routers
-# app.include_router(health.router, tags=["health"])  # Disabled - microservice
 app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 app.include_router(events.router, prefix="/api", tags=["events"])
 app.include_router(todos.router, prefix="/api", tags=["todos"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(admin_v2.router, prefix="/api/admin/v2", tags=["admin_v2"])
-# app.include_router(property.router, prefix="/api/property", tags=["property"])  # ARCHIVED - independent microservice
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
-# app.include_router(calendar_sync.router, tags=["calendar_sync"])  # Disabled - microservice
 
 
 @app.on_event("startup")
@@ -77,6 +70,13 @@ async def startup_event():
         debug=settings.debug,
     )
 
+    # Initialize Prometheus metrics
+    try:
+        from app.services.metrics import init_metrics
+        init_metrics()
+    except Exception as e:
+        logger.warning("metrics_init_failed", error=str(e))
+
     # Initialize Redis rate limiter
     try:
         from app.services.rate_limiter_redis import init_redis_rate_limiter
@@ -84,58 +84,6 @@ async def startup_event():
         logger.info("redis_rate_limiter_enabled")
     except Exception as e:
         logger.warning("redis_rate_limiter_failed_using_memory", error=str(e))
-
-    # ARCHIVED - Property Bot feed scheduler disabled (independent microservice)
-    # if settings.property_feed_url:
-    #     try:
-    #         from app.services.property.feed_scheduler import feed_scheduler
-    #         feed_scheduler.start()
-    #         logger.info("property_feed_scheduler_started",
-    #                    feed_url=settings.property_feed_url[:50] + "...")
-    #     except Exception as e:
-    #         logger.error("feed_scheduler_start_error", error=str(e), exc_info=True)
-    # else:
-    #     logger.warning("property_feed_url_not_configured",
-    #                   message="Property feed auto-update disabled. Set PROPERTY_FEED_URL to enable.")
-
-    # Calendar sync disabled - independent microservice
-    # if settings.google_oauth_client_id and settings.google_oauth_client_secret:
-    #     from app.services.calendar_sync_service import init_calendar_sync_service
-    #     init_calendar_sync_service(
-    #         google_client_id=settings.google_oauth_client_id,
-    #         google_client_secret=settings.google_oauth_client_secret,
-    #         google_redirect_uri=settings.google_oauth_redirect_uri or
-    #             f"https://этонесамыйдлинныйдомен.рф/sync/oauth/google/callback"
-    #     )
-    #     logger.info("calendar_sync_initialized")
-    #
-    #     # Start background sync task
-    #     import asyncio
-    #     from app.services.calendar_sync_service import calendar_sync_service
-    #     asyncio.create_task(_sync_task_loop())
-    #     logger.info("background_sync_task_started")
-    # else:
-    #     logger.warning("google_oauth_not_configured",
-    #                   message="Calendar sync disabled. Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to enable.")
-
-
-async def _sync_task_loop():
-    """Background task that syncs calendars every 10 minutes."""
-    import asyncio
-    from app.services.calendar_sync_service import calendar_sync_service
-
-    # Wait 30 seconds before first sync (let app startup complete)
-    await asyncio.sleep(30)
-
-    while True:
-        try:
-            if calendar_sync_service:
-                await calendar_sync_service.sync_all_users()
-        except Exception as e:
-            logger.error("sync_task_error", error=str(e), exc_info=True)
-
-        # Wait 10 minutes
-        await asyncio.sleep(600)
 
 
 @app.on_event("shutdown")
@@ -177,6 +125,23 @@ async def shutdown_event():
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    from fastapi.responses import PlainTextResponse
+    try:
+        from app.services.metrics import get_metrics_text
+        return PlainTextResponse(
+            content=get_metrics_text(),
+            media_type="text/plain; charset=utf-8"
+        )
+    except ImportError:
+        return PlainTextResponse(
+            content="# Metrics not available\n",
+            media_type="text/plain"
+        )
 
 
 @app.get("/")

@@ -1,0 +1,79 @@
+# Shannon Configuration for AI Calendar Assistant
+# Target: https://calendar.housler.ru
+
+# Admin Panel v1 Authentication (Three-factor)
+authentication:
+  login_type: form
+  login_url: "https://calendar.housler.ru/static/admin_report.html"
+
+  credentials:
+    # These will be provided via environment or secure input
+    password_1: "${ADMIN_PASSWORD_1}"
+    password_2: "${ADMIN_PASSWORD_2}"
+    password_3: "${ADMIN_PASSWORD_3}"
+
+  login_flow:
+    - "Type $password_1 into the first password field"
+    - "Type $password_2 into the second password field"
+    - "Type $password_3 into the third password field"
+    - "Click the 'Login' or 'Войти' button"
+
+  success_condition:
+    type: element_visible
+    selector: ".user-list, .dashboard, #report-content"
+
+# Security testing rules
+rules:
+  # Endpoints to focus on (high-value targets)
+  focus:
+    - description: "Admin API endpoints - high privilege"
+      type: path
+      url_path: "/api/admin"
+
+    - description: "Events API - user data access"
+      type: path
+      url_path: "/api/events"
+
+    - description: "Todos API - user data access"
+      type: path
+      url_path: "/api/todos"
+
+    - description: "Telegram webhook - external input"
+      type: path
+      url_path: "/telegram/webhook"
+
+    - description: "Static files - potential XSS"
+      type: path
+      url_path: "/static"
+
+  # Endpoints to avoid (could break production)
+  avoid:
+    - description: "Broadcast endpoint - could spam users"
+      type: path
+      url_path: "/api/admin/broadcast"
+
+    - description: "Health endpoints - not security relevant"
+      type: path
+      url_path: "/health"
+
+# OWASP categories to test
+owasp_focus:
+  - injection        # SQL, Command, LDAP injection
+  - xss              # Cross-Site Scripting
+  - auth_bypass      # Authentication bypass
+  - idor             # Insecure Direct Object Reference
+  - ssrf             # Server-Side Request Forgery
+
+# Application context
+context:
+  framework: "FastAPI (Python)"
+  database: "SQLite"
+  authentication:
+    - "Telegram WebApp HMAC (X-Telegram-Init-Data header)"
+    - "Three-factor password authentication for admin"
+    - "JWT sessions for admin v2"
+  sensitive_data:
+    - "User calendar events"
+    - "User todos (encrypted with Fernet)"
+    - "Telegram user data"
+    - "Admin credentials"
