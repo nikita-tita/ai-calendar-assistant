@@ -1,9 +1,11 @@
 """Main application entry point."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 import structlog
 
 from app.config import settings
@@ -23,6 +25,12 @@ app = FastAPI(
     version="0.1.0",
     debug=settings.debug,
 )
+
+# SEC-006: Register slowapi rate limiter for admin endpoints
+# This enables distributed rate limiting via Redis
+from app.routers.admin_v2 import limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Add CORS middleware with restricted origins
 # Parse CORS origins from config (comma-separated string)

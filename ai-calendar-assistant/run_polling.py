@@ -145,7 +145,8 @@ async def main():
     logger.info("Admin report schedule started (21:00 MSK via @dogovorarenda_bot)")
 
     # Setup signal handlers for graceful shutdown (handles Docker SIGTERM)
-    loop = asyncio.get_event_loop()
+    # Use get_running_loop() instead of deprecated get_event_loop() in async context
+    loop = asyncio.get_running_loop()
 
     def signal_handler(sig):
         logger.info(f"Received signal {sig}, initiating graceful shutdown...")
