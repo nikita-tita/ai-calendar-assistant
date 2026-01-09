@@ -117,16 +117,16 @@
 
 ```bash
 # Проверка здоровья
-curl http://91.229.8.221:8000/health
+curl http://95.163.227.26:8000/health
 
 # Ручной бэкап
-ssh root@91.229.8.221 "./ai-calendar-assistant/backup-calendar.sh"
+ssh root@95.163.227.26 "./ai-calendar-assistant/backup-calendar.sh"
 
 # Логи бота
-ssh root@91.229.8.221 "docker logs telegram-bot --tail 50"
+ssh root@95.163.227.26 "docker logs telegram-bot --tail 50"
 
 # Список бэкапов
-ssh root@91.229.8.221 "ls -lh /root/backups/calendar-assistant/"
+ssh root@95.163.227.26 "ls -lh /root/backups/calendar-assistant/"
 
 # Финальная проверка безопасности
 ./final_security_check.sh

@@ -179,10 +179,10 @@ DATABASE_PROPERTY_URL          ❌ НЕТ (нужен для property bot)
    git commit -m "Add property bot integration"
 
    # Отправить на сервер
-   scp -r app/ root@91.229.8.221:/root/ai-calendar-assistant/
+   scp -r app/ root@95.163.227.26:/root/ai-calendar-assistant/
 
    # Перезапустить
-   ssh root@91.229.8.221 "docker restart telegram-bot-polling"
+   ssh root@95.163.227.26 "docker restart telegram-bot-polling"
    ```
 
 4. **Тестирование**
@@ -348,12 +348,12 @@ if text == "🔙 Календарь":
 
 **Telegram бот:** @aibroker_bot
 **Bot ID:** 8378762774
-**Сервер:** 91.229.8.221
+**Сервер:** 95.163.227.26
 **Путь:** /root/ai-calendar-assistant
 
 **Логи:**
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 docker logs --tail 100 telegram-bot-polling
 ```
 

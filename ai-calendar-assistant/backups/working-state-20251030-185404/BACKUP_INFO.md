@@ -84,7 +84,7 @@
 
 ## Environment
 
-- Server: 91.229.8.221
+- Server: 95.163.227.26
 - Container: telegram-bot-polling
 - Bot: @CalendarAI_m2_bot
 - Database: Radicale CalDAV (radicale-calendar container)
@@ -104,20 +104,20 @@ Modified files:
 
 ```bash
 # Copy files to server
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   app/services/telegram_handler.py \
   app/services/llm_agent_yandex.py \
   app/services/calendar_radicale.py \
   app/services/daily_reminders.py \
   app/services/user_preferences.py \
-  root@91.229.8.221:/root/ai-calendar-assistant/app/services/
+  root@95.163.227.26:/root/ai-calendar-assistant/app/services/
 
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   app/utils/datetime_parser.py \
-  root@91.229.8.221:/root/ai-calendar-assistant/app/utils/
+  root@95.163.227.26:/root/ai-calendar-assistant/app/utils/
 
 # Deploy to container
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 "\
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 "\
   docker cp /root/ai-calendar-assistant/app/services/telegram_handler.py telegram-bot-polling:/app/app/services/ && \
   docker cp /root/ai-calendar-assistant/app/services/llm_agent_yandex.py telegram-bot-polling:/app/app/services/ && \
   docker cp /root/ai-calendar-assistant/app/services/calendar_radicale.py telegram-bot-polling:/app/app/services/ && \

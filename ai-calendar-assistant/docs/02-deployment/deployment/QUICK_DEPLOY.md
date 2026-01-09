@@ -3,7 +3,7 @@
 ## Ваши данные сервера
 
 ```
-IP: 91.229.8.221
+IP: 95.163.227.26
 Логин: root
 Пароль: xZV5uNNlvqd9G01r
 ОС: Ubuntu 22.04 LTS
@@ -43,7 +43,7 @@ nano .env
 ### Шаг 1: Подключитесь к серверу
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 # Пароль: xZV5uNNlvqd9G01r
 ```
 
@@ -53,7 +53,7 @@ ssh root@91.229.8.221
 
 ```bash
 # На локальной машине:
-scp /Users/fatbookpro/ai-calendar-assistant/setup-server.sh root@91.229.8.221:/root/
+scp /Users/fatbookpro/ai-calendar-assistant/setup-server.sh root@95.163.227.26:/root/
 # Пароль: xZV5uNNlvqd9G01r
 
 # На сервере:
@@ -66,7 +66,7 @@ chmod +x /root/setup-server.sh
 ```bash
 # На локальной машине:
 cd /Users/fatbookpro/ai-calendar-assistant
-scp -r * root@91.229.8.221:/root/ai-calendar-assistant/
+scp -r * root@95.163.227.26:/root/ai-calendar-assistant/
 ```
 
 ### Шаг 4: Создайте .env на сервере
@@ -106,7 +106,7 @@ docker logs -f telegram-bot
 
 ## 📋 Полезные команды на сервере
 
-После подключения через `ssh root@91.229.8.221`:
+После подключения через `ssh root@95.163.227.26`:
 
 ```bash
 # Просмотр логов
@@ -241,7 +241,7 @@ REG.RU VPS (тариф Start):
 
 ## 🎯 Быстрые ссылки
 
-- SSH: `ssh root@91.229.8.221`
+- SSH: `ssh root@95.163.227.26`
 - DNS админка: https://dnsadmin.hosting.reg.ru/manager/ispmgr
 - Личный кабинет REG.RU: https://www.reg.ru/user/account
 

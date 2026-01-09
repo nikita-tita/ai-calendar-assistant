@@ -1,6 +1,6 @@
 # Production Readiness Report
 **Дата**: 30 октября 2025, 19:15 MSK
-**Сервер**: 91.229.8.221
+**Сервер**: 95.163.227.26
 **Бот**: @CalendarAI_m2_bot
 
 ---
@@ -24,7 +24,7 @@
 - **Статус**: Up 3 hours
 - **Функция**: API для веб-приложения и админки
 - **Порт**: 8000 (внешний)
-- **URL**: http://91.229.8.221:8000
+- **URL**: http://95.163.227.26:8000
 - **Endpoints**: /health, /api/admin/*, /api/events, /telegram/webhook
 
 ### 3. **radicale-calendar** ✅ РАБОТАЕТ
@@ -59,14 +59,14 @@
   - Пароль 3: `***REDACTED_ADMIN***`
 
 #### 🔌 API напрямую
-- **URL**: http://91.229.8.221:8000/api/admin/
+- **URL**: http://95.163.227.26:8000/api/admin/
 - **Авторизация**: Bearer token из /verify
 
 ### Доступные Endpoints
 
 #### 1. **POST /api/admin/verify** - Вход
 ```bash
-curl -X POST http://91.229.8.221:8000/api/admin/verify \
+curl -X POST http://95.163.227.26:8000/api/admin/verify \
   -H "Content-Type: application/json" \
   -d '{"password1":"***REDACTED_ADMIN***","password2":"***REDACTED_ADMIN***","password3":"***REDACTED_ADMIN***"}'
 ```
@@ -82,7 +82,7 @@ curl -X POST http://91.229.8.221:8000/api/admin/verify \
 #### 2. **GET /api/admin/users** - Список пользователей ✅
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  http://91.229.8.221:8000/api/admin/users
+  http://95.163.227.26:8000/api/admin/users
 ```
 
 **Что видно**:
@@ -109,7 +109,7 @@ curl -H "Authorization: Bearer <token>" \
 #### 3. **GET /api/admin/users/{user_id}/dialog** - История пользователя ✅
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  http://91.229.8.221:8000/api/admin/users/2296243/dialog
+  http://95.163.227.26:8000/api/admin/users/2296243/dialog
 ```
 
 **Что логируется**:
@@ -271,29 +271,29 @@ curl -H "Authorization: Bearer <token>" \
 ### Проверка работоспособности
 ```bash
 # Статус всех сервисов
-ssh root@91.229.8.221 "docker ps"
+ssh root@95.163.227.26 "docker ps"
 
 # Логи основного бота (последние 50 строк)
-ssh root@91.229.8.221 "docker logs --tail 50 telegram-bot-polling"
+ssh root@95.163.227.26 "docker logs --tail 50 telegram-bot-polling"
 
 # Healthcheck API
-curl http://91.229.8.221:8000/health
+curl http://95.163.227.26:8000/health
 
 # Список пользователей (нужен токен)
 curl -H "Authorization: Bearer <token>" \
-  http://91.229.8.221:8000/api/admin/users
+  http://95.163.227.26:8000/api/admin/users
 ```
 
 ### Быстрый рестарт
 ```bash
 # Рестарт бота
-ssh root@91.229.8.221 "docker restart telegram-bot-polling"
+ssh root@95.163.227.26 "docker restart telegram-bot-polling"
 
 # Рестарт API
-ssh root@91.229.8.221 "docker restart ai-calendar-assistant"
+ssh root@95.163.227.26 "docker restart ai-calendar-assistant"
 
 # Рестарт всех сервисов
-ssh root@91.229.8.221 "docker restart telegram-bot-polling ai-calendar-assistant radicale-calendar"
+ssh root@95.163.227.26 "docker restart telegram-bot-polling ai-calendar-assistant radicale-calendar"
 ```
 
 ### Восстановление из бэкапа

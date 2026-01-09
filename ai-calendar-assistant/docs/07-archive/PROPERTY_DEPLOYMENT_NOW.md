@@ -97,7 +97,7 @@
 ### Проверка 1: Загружены ли квартиры?
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "docker exec postgres_calendar psql -U calendar_user -d calendar_bot \
    -c 'SELECT COUNT(*) FROM property_listings;'"
 ```
@@ -107,7 +107,7 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
 ### Проверка 2: Работает ли бот?
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "docker logs --tail 20 telegram-bot"
 ```
 
@@ -116,7 +116,7 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
 ### Проверка 3: Feed loader status
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "docker exec telegram-bot python3 -c '
 import sys
 sys.path.insert(0, \"/app\")
@@ -133,7 +133,7 @@ print(feed_loader.get_status())
 
 ```bash
 # Загрузить вручную
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 << 'EOF'
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 << 'EOF'
 cd /root/ai-calendar-assistant
 docker exec telegram-bot python3 -c "
 import asyncio
@@ -149,7 +149,7 @@ EOF
 
 ```bash
 # Создать таблицы вручную
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 << 'EOF'
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 << 'EOF'
 docker exec postgres_calendar psql -U calendar_user -d calendar_bot \
   -f /root/ai-calendar-assistant/migrations/001_add_extended_property_fields.sql
 EOF
@@ -159,11 +159,11 @@ EOF
 
 ```bash
 # Посмотреть логи
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "docker logs --tail 50 telegram-bot"
 
 # Перезапустить
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "cd /root/ai-calendar-assistant && docker-compose restart telegram-bot"
 ```
 

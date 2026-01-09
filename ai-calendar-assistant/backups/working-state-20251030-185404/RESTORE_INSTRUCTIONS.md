@@ -12,20 +12,20 @@ cp backups/working-state-20251030-185404/datetime_parser.py app/utils/
 ### 2. Deploy to Server
 ```bash
 # Copy to server
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   app/services/telegram_handler.py \
   app/services/llm_agent_yandex.py \
   app/services/calendar_radicale.py \
   app/services/daily_reminders.py \
   app/services/user_preferences.py \
-  root@91.229.8.221:/root/ai-calendar-assistant/app/services/
+  root@95.163.227.26:/root/ai-calendar-assistant/app/services/
 
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   app/utils/datetime_parser.py \
-  root@91.229.8.221:/root/ai-calendar-assistant/app/utils/
+  root@95.163.227.26:/root/ai-calendar-assistant/app/utils/
 
 # Deploy to container and restart
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 "\
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 "\
   docker cp /root/ai-calendar-assistant/app/services/telegram_handler.py telegram-bot-polling:/app/app/services/ && \
   docker cp /root/ai-calendar-assistant/app/services/llm_agent_yandex.py telegram-bot-polling:/app/app/services/ && \
   docker cp /root/ai-calendar-assistant/app/services/calendar_radicale.py telegram-bot-polling:/app/app/services/ && \
@@ -51,8 +51,8 @@ git checkout 6a05189
 
 ```bash
 # Extract server backup
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
-  root@91.229.8.221:/root/backups/working-state-20251030-190733.tar.gz \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
+  root@95.163.227.26:/root/backups/working-state-20251030-190733.tar.gz \
   ./restore-backup.tar.gz
 
 tar -xzf restore-backup.tar.gz
@@ -64,12 +64,12 @@ tar -xzf restore-backup.tar.gz
 
 ```bash
 # Download container backup
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
-  root@91.229.8.221:/root/backups/container-working-state-20251030-190733.tar.gz \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
+  root@95.163.227.26:/root/backups/container-working-state-20251030-190733.tar.gz \
   ./container-backup.tar.gz
 
 # Extract on server and copy to container
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 "\
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 "\
   cd /tmp && \
   tar -xzf /root/backups/container-working-state-20251030-190733.tar.gz && \
   docker cp /tmp/app/services/telegram_handler.py telegram-bot-polling:/app/app/services/ && \
@@ -85,7 +85,7 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 
 
 ```bash
 # Check bot is running
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 "\
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 "\
   docker ps | grep telegram-bot-polling && \
   docker logs --tail 20 telegram-bot-polling"
 
@@ -117,7 +117,7 @@ cp backups/working-state-20251030-185404/*.py app/services/
 cp backups/working-state-20251030-185404/datetime_parser.py app/utils/
 
 # Option 3: Restore container from backup (fastest for production)
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 "\
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 "\
   cd /tmp && tar -xzf /root/backups/container-working-state-20251030-190733.tar.gz && \
   docker cp /tmp/app telegram-bot-polling:/app/ && \
   docker restart telegram-bot-polling"

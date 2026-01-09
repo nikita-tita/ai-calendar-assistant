@@ -96,10 +96,10 @@ python3 test_calendar_stability.py
 
 **Проверка:**
 ```bash
-ssh root@91.229.8.221 "docker ps | grep telegram-bot"
+ssh root@95.163.227.26 "docker ps | grep telegram-bot"
 # ✅ telegram-bot: Up and healthy
 
-ssh root@91.229.8.221 "docker logs telegram-bot --tail 20 2>&1"
+ssh root@95.163.227.26 "docker logs telegram-bot --tail 20 2>&1"
 # ✅ application_started
 # ✅ Bot is running!
 # ✅ Calendar found for all users
@@ -199,7 +199,7 @@ ssh root@91.229.8.221 "docker logs telegram-bot --tail 20 2>&1"
 1. **Проверить редактирование в веб-приложении**
    ```bash
    # Развернуть актуальную версию webapp
-   scp webapp_server.html root@91.229.8.221:/root/ai-calendar-assistant/
+   scp webapp_server.html root@95.163.227.26:/root/ai-calendar-assistant/
 
    # Проверить в браузере
    open https://этонесамыйдлинныйдомен.рф
@@ -211,7 +211,7 @@ ssh root@91.229.8.221 "docker logs telegram-bot --tail 20 2>&1"
    # sqlalchemy>=2.0.0
 
    # Пересобрать
-   ssh root@91.229.8.221
+   ssh root@95.163.227.26
    cd /root/ai-calendar-assistant
    docker-compose build telegram-bot
    docker-compose up -d
@@ -251,17 +251,17 @@ ssh root@91.229.8.221 "docker logs telegram-bot --tail 20 2>&1"
 
 ### Статус контейнеров
 ```bash
-ssh root@91.229.8.221 "docker ps | grep -E 'telegram-bot|radicale'"
+ssh root@95.163.227.26 "docker ps | grep -E 'telegram-bot|radicale'"
 ```
 
 ### Логи бота
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot --tail 50 2>&1"
+ssh root@95.163.227.26 "docker logs telegram-bot --tail 50 2>&1"
 ```
 
 ### Проверка календаря
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot 2>&1 | grep calendar_found"
+ssh root@95.163.227.26 "docker logs telegram-bot 2>&1 | grep calendar_found"
 ```
 
 ### API тесты

@@ -93,7 +93,7 @@ elif is_tomorrow:
 
 ```bash
 # Файл скопирован на сервер
-scp app/services/telegram_handler.py root@91.229.8.221:/root/ai-calendar-assistant/app/services/
+scp app/services/telegram_handler.py root@95.163.227.26:/root/ai-calendar-assistant/app/services/
 
 # Обновлен файл в Docker контейнере
 docker cp /root/ai-calendar-assistant/app/services/telegram_handler.py telegram-bot:/app/app/services/telegram_handler.py

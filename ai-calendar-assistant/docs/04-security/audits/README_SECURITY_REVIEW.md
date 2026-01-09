@@ -112,7 +112,7 @@
 ./fix-critical-security-now.sh
 
 # Проверка:
-curl http://91.229.8.221:5232  # Должен FAIL
+curl http://95.163.227.26:5232  # Должен FAIL
 ls -la .env                     # Должно быть -rw-------
 ```
 
@@ -243,7 +243,7 @@ ssh root@server ls -lh /root/backups/calendar-assistant/
 ### Проверить Radicale
 
 ```bash
-curl http://91.229.8.221:5232
+curl http://95.163.227.26:5232
 # Ожидается: Connection refused ✅
 # Если доступен: ❌ КРИТИЧНО
 ```

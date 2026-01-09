@@ -37,7 +37,7 @@
 | Календарь | Radicale CalDAV |
 | Кэш | Redis |
 | Контейнеризация | Docker Compose |
-| Хостинг | VPS 91.229.8.221 |
+| Хостинг | VPS 95.163.227.26 |
 
 ---
 
@@ -403,7 +403,7 @@ git commit -m "docs: Update SYSTEM_GUIDE.md"
 
 ```bash
 # Выполнить локально — задеплоит на сервер
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+ssh -i ~/.ssh/id_housler root@95.163.227.26 '
   cd /root/ai-calendar-assistant/ai-calendar-assistant &&
   git pull origin main &&
   docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
@@ -428,7 +428,7 @@ git commit -m "fix: описание"
 git push origin main
 
 # 2. SSH на сервер
-ssh -i ~/.ssh/id_housler root@91.229.8.221
+ssh -i ~/.ssh/id_housler root@95.163.227.26
 
 # 3. На сервере: перейти в директорию
 cd /root/ai-calendar-assistant/ai-calendar-assistant
@@ -454,10 +454,10 @@ curl https://calendar.housler.ru/health
 curl -s https://calendar.housler.ru/static/index.html | grep "APP_VERSION"
 
 # Контейнеры
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker ps --format "table {{.Names}}\t{{.Status}}"'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker ps --format "table {{.Names}}\t{{.Status}}"'
 
 # Логи
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot --tail 50'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker logs telegram-bot --tail 50'
 ```
 
 ### Откат изменений
@@ -648,9 +648,9 @@ DEFAULT_TIMEZONE=Europe/Moscow
 
 | Ресурс | Значение |
 |--------|----------|
-| Сервер | 91.229.8.221 |
+| Сервер | 95.163.227.26 |
 | SSH ключ | `~/.ssh/id_housler` |
-| SSH команда | `ssh -i ~/.ssh/id_housler root@91.229.8.221` |
+| SSH команда | `ssh -i ~/.ssh/id_housler root@95.163.227.26` |
 | Production URL | https://calendar.housler.ru |
 | GitHub | https://github.com/nikita-tita/ai-calendar-assistant |
 | Telegram бот (основной) | @aibroker_bot |

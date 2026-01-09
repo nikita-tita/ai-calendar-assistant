@@ -72,7 +72,7 @@ docker-compose -f docker-compose.secure.yml ps
 
 ```bash
 # 1. Подключиться к серверу
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26
 
 # 2. Перейти в директорию проекта
 cd /root/ai-calendar-assistant
@@ -90,21 +90,21 @@ docker rm telegram-bot
 cd /Users/fatbookpro/ai-calendar-assistant
 
 # Скопировать обновленные файлы
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   app/services/calendar_radicale.py \
   app/config.py \
   app/main.py \
   app/utils/pii_masking.py \
   docker-compose.secure.yml \
-  root@91.229.8.221:/root/ai-calendar-assistant/
+  root@95.163.227.26:/root/ai-calendar-assistant/
 
 # Скопировать Radicale конфигурацию
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no -r \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no -r \
   radicale/ \
-  root@91.229.8.221:/root/ai-calendar-assistant/
+  root@95.163.227.26:/root/ai-calendar-assistant/
 
 # Обновить .env (добавить новые переменные)
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 << 'EOF'
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 << 'EOF'
 cd /root/ai-calendar-assistant
 
 # Добавить секреты в .env

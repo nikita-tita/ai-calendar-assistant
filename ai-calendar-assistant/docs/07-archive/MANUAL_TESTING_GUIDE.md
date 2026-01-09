@@ -212,27 +212,27 @@ docker logs telegram-bot-polling 2>&1 | grep "today_events" | tail -3
 
 ### Watch all events in real-time:
 ```bash
-ssh root@91.229.8.221 "docker logs -f telegram-bot-polling 2>&1" | grep -v "getUpdates"
+ssh root@95.163.227.26 "docker logs -f telegram-bot-polling 2>&1" | grep -v "getUpdates"
 ```
 
 ### Check for errors:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot-polling 2>&1 | grep -i error | tail -20"
+ssh root@95.163.227.26 "docker logs telegram-bot-polling 2>&1 | grep -i error | tail -20"
 ```
 
 ### Check voice processing:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot-polling 2>&1 | grep 'voice_message\|transcribed\|stt' | tail -20"
+ssh root@95.163.227.26 "docker logs telegram-bot-polling 2>&1 | grep 'voice_message\|transcribed\|stt' | tail -20"
 ```
 
 ### Check event creation:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot-polling 2>&1 | grep 'event_created\|event_create_error' | tail -20"
+ssh root@95.163.227.26 "docker logs telegram-bot-polling 2>&1 | grep 'event_created\|event_create_error' | tail -20"
 ```
 
 ### Check property bot:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot-polling 2>&1 | grep 'property\|search_criteria' | tail -20"
+ssh root@95.163.227.26 "docker logs telegram-bot-polling 2>&1 | grep 'property\|search_criteria' | tail -20"
 ```
 
 ---
@@ -265,22 +265,22 @@ ssh root@91.229.8.221 "docker logs telegram-bot-polling 2>&1 | grep 'property\|s
 
 ### 1. Check bot is running:
 ```bash
-ssh root@91.229.8.221 "docker ps | grep telegram-bot-polling"
+ssh root@95.163.227.26 "docker ps | grep telegram-bot-polling"
 ```
 
 ### 2. Check recent errors:
 ```bash
-ssh root@91.229.8.221 "docker logs --tail 50 telegram-bot-polling 2>&1 | grep -i error"
+ssh root@95.163.227.26 "docker logs --tail 50 telegram-bot-polling 2>&1 | grep -i error"
 ```
 
 ### 3. Restart bot:
 ```bash
-ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && docker-compose -f docker-compose.polling.yml restart telegram-bot"
+ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && docker-compose -f docker-compose.polling.yml restart telegram-bot"
 ```
 
 ### 4. Check API keys still present:
 ```bash
-ssh root@91.229.8.221 "docker exec telegram-bot-polling printenv | grep YANDEX"
+ssh root@95.163.227.26 "docker exec telegram-bot-polling printenv | grep YANDEX"
 ```
 
 ---
@@ -325,8 +325,8 @@ Mark off as you test:
 
 ## 📞 Server Access
 
-**SSH:** `root@91.229.8.221`
-**Password:** `upvzrr3LH4pxsaqs`
+**SSH:** `root@95.163.227.26`
+**Password:** `$SERVER_PASSWORD`
 **Container:** `telegram-bot-polling`
 **Bot:** @aibroker_bot
 **Test User ID:** 2296243
@@ -337,7 +337,7 @@ Mark off as you test:
 
 Run this command to verify bot health:
 ```bash
-ssh root@91.229.8.221 "
+ssh root@95.163.227.26 "
 echo '=== Bot Status ===' &&
 docker ps | grep telegram-bot-polling &&
 echo '' &&

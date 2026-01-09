@@ -65,8 +65,8 @@ cp .env.example .env
 #!/bin/bash
 # safe-deploy.sh
 
-SERVER="root@91.229.8.221"
-PASSWORD="upvzrr3LH4pxsaqs"
+SERVER="root@95.163.227.26"
+PASSWORD="$SERVER_PASSWORD"
 REMOTE_DIR="/root/ai-calendar-assistant"
 
 # 1. Upload updated files
@@ -90,8 +90,8 @@ echo "✅ Deployed without rebuild - data preserved!"
 #!/bin/bash
 # full-rebuild.sh - ИСПОЛЬЗУЙТЕ ТОЛЬКО если нужны новые pip пакеты!
 
-SERVER="root@91.229.8.221"
-PASSWORD="upvzrr3LH4pxsaqs"
+SERVER="root@95.163.227.26"
+PASSWORD="$SERVER_PASSWORD"
 REMOTE_DIR="/root/ai-calendar-assistant"
 
 # 1. Создать бэкап .env
@@ -134,13 +134,13 @@ echo "✅ Full rebuild complete!"
 **Решение:**
 ```bash
 # 1. Восстановить .env из бэкапа
-ssh root@91.229.8.221 "
+ssh root@95.163.227.26 "
     ls -la /root/ai-calendar-assistant/.env.backup* &&
     cat /root/ai-calendar-assistant/.env.backup-YYYYMMDD > /root/ai-calendar-assistant/.env
 "
 
 # 2. Перезапустить контейнер
-ssh root@91.229.8.221 "
+ssh root@95.163.227.26 "
     cd /root/ai-calendar-assistant &&
     docker-compose -f docker-compose.hybrid.yml restart telegram-bot
 "
@@ -226,6 +226,6 @@ docker-compose -f docker-compose.hybrid.yml up -d
 
 - **Telegram Bot**: @BotFather
 - **Yandex Cloud**: console.cloud.yandex.ru
-- **Сервер**: root@91.229.8.221
+- **Сервер**: root@95.163.227.26
 
-**Пароль сервера:** upvzrr3LH4pxsaqs
+**Пароль сервера:** $SERVER_PASSWORD

@@ -6,14 +6,14 @@
 set -e
 
 # Конфигурация
-SERVER="root@91.229.8.221"
+SERVER="root@95.163.227.26"
 PROJECT_PATH="/root/ai-calendar-assistant"
 LOCAL_PROJECT="/Users/fatbookpro/ai-calendar-assistant"
 
 echo "🚀 Развёртывание AI Calendar Bot на REG.RU..."
 echo "================================================"
 echo ""
-echo "Сервер: 91.229.8.221"
+echo "Сервер: 95.163.227.26"
 echo "Проект: ${PROJECT_PATH}"
 echo ""
 
@@ -186,9 +186,9 @@ echo "================================================"
 echo "✅ Развёртывание завершено!"
 echo ""
 echo "🔗 Полезные ссылки:"
-echo "  SSH: ssh root@91.229.8.221"
+echo "  SSH: ssh root@95.163.227.26"
 echo "  DNS: https://dnsadmin.hosting.reg.ru/manager/ispmgr"
 echo ""
 echo "💡 Для просмотра логов выполните:"
-echo "  ssh root@91.229.8.221 'docker logs -f telegram-bot'"
+echo "  ssh root@95.163.227.26 'docker logs -f telegram-bot'"
 echo ""

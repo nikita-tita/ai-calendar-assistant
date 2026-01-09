@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Date Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f5f5f5;
+            border-left: 4px solid #0088cc;
+        }
+        h2 {
+            color: #0088cc;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Тест Даты JavaScript</h1>
+
+    <div class="test">
+        <h2>1. new Date()</h2>
+        <div id="test1"></div>
+    </div>
+
+    <div class="test">
+        <h2>2. Текущая дата</h2>
+        <div id="test2"></div>
+    </div>
+
+    <div class="test">
+        <h2>3. Форматирование (как в приложении)</h2>
+        <div id="test3"></div>
+    </div>
+
+    <div class="test">
+        <h2>4. Месяц и год</h2>
+        <div id="test4"></div>
+    </div>
+
+    <script>
+        // Test 1: Basic new Date()
+        const now = new Date();
+        document.getElementById('test1').innerHTML = `
+            <strong>Timestamp:</strong> ${now.getTime()}<br>
+            <strong>ISO:</strong> ${now.toISOString()}<br>
+            <strong>String:</strong> ${now.toString()}<br>
+            <strong>Locale:</strong> ${now.toLocaleString('ru-RU')}
+        `;
+
+        // Test 2: Date components
+        document.getElementById('test2').innerHTML = `
+            <strong>День:</strong> ${now.getDate()}<br>
+            <strong>Месяц:</strong> ${now.getMonth() + 1} (${now.getMonth()})<br>
+            <strong>Год:</strong> ${now.getFullYear()}<br>
+            <strong>День недели:</strong> ${now.getDay()}
+        `;
+
+        // Test 3: Format like in app
+        function formatDate(date) {
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+
+            function sameDay(d1, d2) {
+                return d1.getDate() === d2.getDate() &&
+                       d1.getMonth() === d2.getMonth() &&
+                       d1.getFullYear() === d2.getFullYear();
+            }
+
+            if (sameDay(date, today)) return 'Сегодня';
+            if (sameDay(date, tomorrow)) return 'Завтра';
+            if (sameDay(date, yesterday)) return 'Вчера';
+
+            const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+            return `${date.getDate()} ${months[date.getMonth()]}`;
+        }
+
+        document.getElementById('test3').innerHTML = `
+            <strong>Форматированная дата:</strong> ${formatDate(now)}
+        `;
+
+        // Test 4: Month/Year
+        const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+        document.getElementById('test4').innerHTML = `
+            <strong>Месяц и год:</strong> ${months[now.getMonth()]} ${now.getFullYear()}
+        `;
+
+        // Log to console
+        console.log('Current date:', now);
+        console.log('Formatted:', formatDate(now));
+    </script>
+</body>
+</html>

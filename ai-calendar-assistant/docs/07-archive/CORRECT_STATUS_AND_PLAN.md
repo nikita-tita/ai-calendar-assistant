@@ -169,10 +169,10 @@ tar -czf property-bot.tar.gz \
   migrations/
 
 # Загрузить на сервер
-scp property-bot.tar.gz root@91.229.8.221:/root/ai-calendar-assistant/
+scp property-bot.tar.gz root@95.163.227.26:/root/ai-calendar-assistant/
 
 # На сервере распаковать
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 tar -xzf property-bot.tar.gz
 ```
@@ -277,15 +277,15 @@ tar -czf property-bot-integration.tar.gz \
 ### Шаг 2: Загрузка на сервер
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' scp property-bot-integration.tar.gz root@91.229.8.221:/root/ai-calendar-assistant/
+sshpass -p '$SERVER_PASSWORD' scp property-bot-integration.tar.gz root@95.163.227.26:/root/ai-calendar-assistant/
 
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && tar -xzf property-bot-integration.tar.gz"
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && tar -xzf property-bot-integration.tar.gz"
 ```
 
 ### Шаг 3: Настройка PostgreSQL
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 << 'EOF'
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 << 'EOF'
 cd /root/ai-calendar-assistant
 
 # Запустить PostgreSQL
@@ -378,7 +378,7 @@ async def _handle_start(self, update: Update, user_id: str) -> None:
 ### Шаг 6: Обновить .env на сервере
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 << 'EOF'
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 << 'EOF'
 cat >> /root/ai-calendar-assistant/.env << 'ENVEND'
 
 # Property Bot Database
@@ -394,10 +394,10 @@ EOF
 ### Шаг 7: Перезапустить бота
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 "docker restart telegram-bot-polling"
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 "docker restart telegram-bot-polling"
 
 # Проверить логи
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 "docker logs --tail 50 telegram-bot-polling"
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 "docker logs --tail 50 telegram-bot-polling"
 ```
 
 ---

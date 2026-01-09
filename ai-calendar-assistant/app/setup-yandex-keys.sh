@@ -28,8 +28,8 @@ echo ""
 echo "✅ Ключи получены. Обновляю конфигурацию..."
 
 # Update .env on server
-SERVER="root@91.229.8.221"
-PASSWORD="upvzrr3LH4pxsaqs"
+SERVER="root@95.163.227.26"
+PASSWORD="$SERVER_PASSWORD"
 
 sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER" "
 # Backup current .env

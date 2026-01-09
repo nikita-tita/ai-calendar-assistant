@@ -59,7 +59,7 @@ if (!userId) {
 ### Команды развёртывания:
 ```bash
 # 1. Загрузка исправленного WebApp
-scp webapp_server.html root@91.229.8.221:/var/www/calendar/index.html
+scp webapp_server.html root@95.163.227.26:/var/www/calendar/index.html
 
 # 2. Проверка
 ls -lh /var/www/calendar/index.html

@@ -346,7 +346,7 @@ else:
 
 ```bash
 # Сервер
-Host: 91.229.8.221
+Host: 95.163.227.26
 Container: telegram-bot
 Status: ✅ Running
 

@@ -16,7 +16,7 @@
 
 ```bash
 # Текущее состояние:
-$ curl http://91.229.8.221:5232
+$ curl http://95.163.227.26:5232
 HTTP/1.0 302 Found  # ❌ ДОСТУПЕН!
 ```
 
@@ -28,7 +28,7 @@ HTTP/1.0 302 Found  # ❌ ДОСТУПЕН!
 **Вектор атаки:**
 ```bash
 # Любой злоумышленник может:
-curl http://91.229.8.221:5232/2296243/  # Доступ к календарю пользователя
+curl http://95.163.227.26:5232/2296243/  # Доступ к календарю пользователя
 # Получение всех событий, личных данных, расписания
 ```
 
@@ -226,18 +226,18 @@ return {"valid": True, "mode": auth_type, "token": token}
 
 ```bash
 # Тест 1: Публичный доступ к Radicale
-curl http://91.229.8.221:5232/
+curl http://95.163.227.26:5232/
 # Ожидается: Connection refused
 # Фактически: ❌ HTTP 302 (доступен)
 
 # Тест 2: Доступ к календарю пользователя
-curl http://91.229.8.221:5232/2296243/
+curl http://95.163.227.26:5232/2296243/
 # Ожидается: Connection refused
 # Фактически: ❌ HTTP 401 Unauthorized (но ДОСТУПЕН!)
 
 # Тест 3: Брутфорс аутентификации
 for i in {1..1000}; do
-  curl -u "user:pass$i" http://91.229.8.221:5232/ &
+  curl -u "user:pass$i" http://95.163.227.26:5232/ &
 done
 # Ожидается: Rate limiting, ban IP
 # Фактически: ❌ Все запросы проходят
@@ -298,7 +298,7 @@ docker volume rm calendar-assistant_radicale_data
 ```bash
 # Тест 1: Брутфорс админ панели
 for i in {1..1000}; do
-  curl -X POST http://91.229.8.221:8000/api/admin/verify \
+  curl -X POST http://95.163.227.26:8000/api/admin/verify \
     -H "Content-Type: application/json" \
     -d '{"password1":"test","password2":"test","password3":"test"}' &
 done
@@ -306,12 +306,12 @@ done
 # Фактически: ⚠️ Нет rate limiting
 
 # Тест 2: Проверка SQL injection
-curl http://91.229.8.221:8000/api/events/2296243' OR '1'='1
+curl http://95.163.227.26:8000/api/events/2296243' OR '1'='1
 # Ожидается: 400 Bad Request
 # Фактически: ✅ Защищено (параметризованные запросы)
 
 # Тест 3: XSS в названиях событий
-curl -X POST http://91.229.8.221:8000/api/events/2296243 \
+curl -X POST http://95.163.227.26:8000/api/events/2296243 \
   -d '{"title":"<script>alert(1)</script>"}'
 # Ожидается: Санитизация HTML
 # Фактически: ⚠️ Нужно проверить
@@ -445,12 +445,12 @@ chmod 600 .env
 
 ```bash
 # 1. Закрыть Radicale (КРИТИЧНО!)
-ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && \
+ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && \
   sed -i 's/- \"5232:5232\"/# - \"5232:5232\"/g' docker-compose.yml && \
   docker-compose up -d"
 
 # 2. Исправить .env permissions (КРИТИЧНО!)
-ssh root@91.229.8.221 "chmod 600 /root/ai-calendar-assistant/.env"
+ssh root@95.163.227.26 "chmod 600 /root/ai-calendar-assistant/.env"
 
 # 3. Затем развернуть все улучшения
 ./deploy-security-improvements.sh

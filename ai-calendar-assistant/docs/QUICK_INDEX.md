@@ -189,7 +189,7 @@ docker-compose -f docker-compose.secure.yml ps
 git add -A && git commit -m "fix: описание" && git push origin main
 
 # 2. На сервере: pull и rebuild (одна команда)
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+ssh -i ~/.ssh/id_housler root@95.163.227.26 '
   cd /root/ai-calendar-assistant/ai-calendar-assistant &&
   git pull origin main &&
   docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&

@@ -10,7 +10,7 @@ echo "================================================"
 echo ""
 
 # Configuration (override with environment variables)
-SERVER="${DEPLOY_SERVER:-root@91.229.8.221}"
+SERVER="${DEPLOY_SERVER:-root@95.163.227.26}"
 REMOTE_DIR="${DEPLOY_DIR:-/root/ai-calendar-assistant}"
 USE_SSH_KEY="${USE_SSH_KEY:-true}"
 

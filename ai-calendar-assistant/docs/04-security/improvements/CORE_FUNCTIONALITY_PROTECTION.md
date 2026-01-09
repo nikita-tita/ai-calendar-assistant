@@ -185,7 +185,7 @@ echo "✅ Все проверки пройдены!"
 
 ```bash
 # На сервере REG.RU
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 
 # Создать скрипт бэкапа
 cat > /root/backup-calendar-bot.sh << 'EOF'
@@ -234,11 +234,11 @@ crontab -e
 
 ```bash
 # 1. Проверить логи
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker logs telegram-bot 2>&1 | grep -i error | tail -50"
 
 # 2. Найти ошибку в llm_extract
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker logs telegram-bot 2>&1 | grep llm_extract_error"
 
 # 3. Быстрый откат
@@ -251,10 +251,10 @@ git checkout HEAD~1 -- app/services/llm_agent_yandex.py
 
 ```bash
 # Восстановить из последнего бэкапа
-ssh root@91.229.8.221 "ls -lt /root/backups/ | head -5"
+ssh root@95.163.227.26 "ls -lt /root/backups/ | head -5"
 # Выбрать последний backup
-ssh root@91.229.8.221 "tar -xzf /root/backups/calendar-bot-data-YYYYMMDD_HHMMSS.tar.gz -C /"
-ssh root@91.229.8.221 "docker restart telegram-bot"
+ssh root@95.163.227.26 "tar -xzf /root/backups/calendar-bot-data-YYYYMMDD_HHMMSS.tar.gz -C /"
+ssh root@95.163.227.26 "docker restart telegram-bot"
 ```
 
 ## 📊 Мониторинг
@@ -268,7 +268,7 @@ ssh root@91.229.8.221 "docker restart telegram-bot"
 
 ```bash
 # Быстрая проверка
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker exec telegram-bot du -sh /var/lib/calendar-bot/*"
 ```
 

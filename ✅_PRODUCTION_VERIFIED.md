@@ -61,7 +61,7 @@ URL: https://calendar.housler.ru/
 
 | Компонент | Статус | Значение |
 |-----------|--------|----------|
-| **DNS** | ✅ | calendar.housler.ru → 91.229.8.221 |
+| **DNS** | ✅ | calendar.housler.ru → 95.163.227.26 |
 | **SSL** | ✅ | Let's Encrypt, валиден до 22.02.2026 |
 | **HTML файл** | ✅ | 31,934 bytes (совпадает с локальным) |
 | **Date init** | ✅ | `new Date()` - текущая дата |
@@ -217,7 +217,7 @@ Gzipped: ~8-10 KB (оценка)
    - Создавать задачи текстом
 
 3. **Мониторить:**
-   - Логи: `ssh root@91.229.8.221 'docker logs telegram-bot-polling --tail 50'`
+   - Логи: `ssh root@95.163.227.26 'docker logs telegram-bot-polling --tail 50'`
    - Health: `curl https://calendar.housler.ru/health`
 
 ---

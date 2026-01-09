@@ -86,7 +86,7 @@ class TestRadicaleSecurity:
         # Should use internal network (radicale hostname, not localhost/public IP)
         assert "radicale" in radicale_url.lower() or "localhost" in radicale_url.lower()
         # Should not use public IP or domain
-        assert "http://91.229.8.221" not in radicale_url
+        assert "http://95.163.227.26" not in radicale_url
         assert "http://1.2.3.4" not in radicale_url
 
 

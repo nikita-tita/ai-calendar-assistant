@@ -22,7 +22,7 @@ AI Calendar Assistant — это Telegram-бот для управления к�
 ### Сервер
 | Параметр | Значение |
 |----------|----------|
-| IP-адрес | 91.229.8.221 |
+| IP-адрес | 95.163.227.26 |
 | Хостинг | REG.RU (Москва) |
 | ОС | Ubuntu 22.04 |
 | Домен | calendar.housler.ru |
@@ -279,7 +279,7 @@ DEBUG=False
 git add -A && git commit -m "fix: описание" && git push origin main
 
 # 2. На сервере: pull и rebuild
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+ssh -i ~/.ssh/id_housler root@95.163.227.26 '
   cd /root/ai-calendar-assistant/ai-calendar-assistant &&
   git pull origin main &&
   docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&

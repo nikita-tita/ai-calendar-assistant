@@ -115,8 +115,8 @@ curl -I https://этонесамыйдлинныйдомен.рф
 # (добавить проверку user_mode и кнопки)
 
 # 3. Деплой
-scp -r app/ root@91.229.8.221:/root/ai-calendar-assistant/
-ssh root@91.229.8.221 "docker restart telegram-bot-polling"
+scp -r app/ root@95.163.227.26:/root/ai-calendar-assistant/
+ssh root@95.163.227.26 "docker restart telegram-bot-polling"
 ```
 
 ---
@@ -271,7 +271,7 @@ CalDAV operations: < 100ms
 
 ### Сервер
 
-- **IP:** 91.229.8.221
+- **IP:** 95.163.227.26
 - **User:** root
 - **Path:** /root/ai-calendar-assistant
 
@@ -279,7 +279,7 @@ CalDAV operations: < 100ms
 
 ```bash
 # SSH
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 
 # Логи
 docker logs --tail 100 telegram-bot-polling
@@ -309,7 +309,7 @@ docker restart telegram-bot-polling
 
 ```bash
 # Проверить ключи
-ssh root@91.229.8.221 "grep YANDEX /root/ai-calendar-assistant/.env"
+ssh root@95.163.227.26 "grep YANDEX /root/ai-calendar-assistant/.env"
 
 # Проверить логи
 docker logs telegram-bot-polling 2>&1 | grep yandex
@@ -368,11 +368,11 @@ ai-calendar-assistant/
 2. Закоммитить изменения
 3. Отправить на сервер:
    ```bash
-   scp -r app/ root@91.229.8.221:/root/ai-calendar-assistant/
+   scp -r app/ root@95.163.227.26:/root/ai-calendar-assistant/
    ```
 4. Перезапустить:
    ```bash
-   ssh root@91.229.8.221 "docker restart telegram-bot-polling"
+   ssh root@95.163.227.26 "docker restart telegram-bot-polling"
    ```
 
 ---

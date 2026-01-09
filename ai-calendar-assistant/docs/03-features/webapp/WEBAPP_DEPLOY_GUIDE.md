@@ -49,15 +49,15 @@
 
 ```bash
 # 1. Создать бэкап
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "cp /var/www/calendar/index.html /var/www/calendar_backup/index.html.$(date +%Y%m%d_%H%M%S)"
 
 # 2. Загрузить новый файл
-sshpass -p 'upvzrr3LH4pxsaqs' scp webapp_current.html \
-  root@91.229.8.221:/var/www/calendar/index.html
+sshpass -p '$SERVER_PASSWORD' scp webapp_current.html \
+  root@95.163.227.26:/var/www/calendar/index.html
 
 # 3. Проверить
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "head -100 /var/www/calendar/index.html | grep Version"
 ```
 
@@ -67,11 +67,11 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
 
 ```bash
 # Посмотреть доступные бэкапы
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "ls -lht /var/www/calendar_backup/"
 
 # Откатиться к конкретному бэкапу
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "cp /var/www/calendar_backup/index.html.20251021_120000 /var/www/calendar/index.html"
 ```
 
@@ -121,7 +121,7 @@ const APP_VERSION = '2025-10-21-12:00';  // Измените на текущую
 
 ```bash
 # Проверить версию на сервере
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "grep 'APP_VERSION' /var/www/calendar/index.html"
 
 # Проверить заголовки cache-control
@@ -140,13 +140,13 @@ curl -I https://этонесамыйдлинныйдомен.рф | grep -i cach
 
 ### Проверить логи Nginx
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "tail -f /var/log/nginx/access.log"
 ```
 
 ### Проверить логи ошибок
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "tail -f /var/log/nginx/error.log"
 ```
 
@@ -179,10 +179,10 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
 **Решение:**
 ```bash
 # Проверить синтаксис
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 "nginx -t"
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 "nginx -t"
 
 # Перезагрузить
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 "systemctl reload nginx"
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 "systemctl reload nginx"
 ```
 
 ## 📞 Support

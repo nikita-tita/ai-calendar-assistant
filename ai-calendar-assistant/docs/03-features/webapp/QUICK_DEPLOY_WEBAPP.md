@@ -18,10 +18,10 @@
 
 ```bash
 # Посмотреть бэкапы
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 "ls -lht /var/www/calendar_backup/"
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 "ls -lht /var/www/calendar_backup/"
 
 # Откатиться (замените timestamp на нужный)
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "cp /var/www/calendar_backup/index.html.TIMESTAMP /var/www/calendar/index.html"
 ```
 
@@ -29,7 +29,7 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
 
 ```bash
 # Версия на сервере
-sshpass -p 'upvzrr3LH4pxsaqs' ssh root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 \
   "grep APP_VERSION /var/www/calendar/index.html"
 
 # Заголовки кэша

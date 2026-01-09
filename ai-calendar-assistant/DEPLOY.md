@@ -1,5 +1,18 @@
 # Руководство по деплою
 
+> **Последнее обновление:** Январь 2026
+
+## Сервер
+
+| Параметр | Значение |
+|----------|----------|
+| **Хостинг** | [reg.ru Cloud](https://cloud.reg.ru/panel/servers/5344931/network) |
+| **IP** | 95.163.227.26 |
+| **SSH (ключ)** | `ssh -i ~/.ssh/id_housler root@95.163.227.26` |
+| **SSH (пароль)** | `ssh root@95.163.227.26` (пароль: `$SERVER_PASSWORD`) |
+| **URL** | https://calendar.housler.ru |
+| **Порт** | 8000 |
+
 ## Быстрый деплой
 
 ```bash
@@ -7,7 +20,7 @@
 git add -A && git commit -m "fix: описание" && git push origin main
 
 # 2. Задеплоить на сервер (одна команда)
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+ssh root@95.163.227.26 '
   cd /root/ai-calendar-assistant/ai-calendar-assistant &&
   git pull origin main &&
   docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
@@ -45,21 +58,21 @@ curl https://calendar.housler.ru/health
 curl -s https://calendar.housler.ru/static/index.html | grep "APP_VERSION"
 
 # Проверить версию в контейнере
-ssh -i ~/.ssh/id_housler root@91.229.8.221 \
+ssh -i ~/.ssh/id_housler root@95.163.227.26 \
   'docker exec telegram-bot cat /app/app/static/index.html | grep "APP_VERSION"'
 
 # Посмотреть логи
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot --tail 50'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker logs telegram-bot --tail 50'
 
 # Статус контейнеров
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker ps | grep -E "(telegram-bot|redis|radicale)"'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker ps | grep -E "(telegram-bot|redis|radicale)"'
 ```
 
 ## Откат изменений
 
 ```bash
 # На сервере - откатить к предыдущему коммиту
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+ssh -i ~/.ssh/id_housler root@95.163.227.26 '
   cd /root/ai-calendar-assistant/ai-calendar-assistant &&
   git log --oneline -5 &&
   git checkout HEAD~1 -- app/ &&
@@ -104,7 +117,7 @@ cp /root/backup_before_cleanup_20251204/.env \
 
 ```bash
 # SSH на сервер
-ssh -i ~/.ssh/id_housler root@91.229.8.221
+ssh -i ~/.ssh/id_housler root@95.163.227.26
 
 # Перейти в рабочую директорию
 cd /root/ai-calendar-assistant/ai-calendar-assistant
@@ -122,9 +135,21 @@ docker-compose -f docker-compose.secure.yml down
 docker-compose -f docker-compose.secure.yml up -d
 ```
 
+## Связанные проекты на сервере
+
+| Проект | URL | Путь |
+|--------|-----|------|
+| calendar.housler.ru | https://calendar.housler.ru | `/root/ai-calendar-assistant` |
+| housler.ru | https://housler.ru | `/root/cian-analyzer` |
+| agent.housler.ru | https://agent.housler.ru | `/var/www/agent.housler.ru` |
+| lk.housler.ru | https://lk.housler.ru | `/root/lk` |
+
+См. [housler_pervichka/DEPLOY.md](../../housler_pervichka/DEPLOY.md) для полной документации по всем проектам.
+
 ## Контакты
 
-- **Сервер:** 91.229.8.221
-- **SSH ключ:** `~/.ssh/id_housler`
+- **Сервер:** 95.163.227.26
+- **Пароль:** `$SERVER_PASSWORD`
+- **SSH ключ (альтернатива):** `~/.ssh/id_housler`
 - **Git:** https://github.com/nikita-tita/ai-calendar-assistant
 - **Прод URL:** https://calendar.housler.ru

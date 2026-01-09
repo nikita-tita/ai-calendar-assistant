@@ -7,9 +7,9 @@ set -e
 
 echo "🚀 Deploying Property Bot to server..."
 
-SERVER="root@91.229.8.221"
+SERVER="root@95.163.227.26"
 REMOTE_DIR="/root/ai-calendar-assistant"
-PASSWORD="upvzrr3LH4pxsaqs"
+PASSWORD="$SERVER_PASSWORD"
 
 # Files to deploy
 FILES=(

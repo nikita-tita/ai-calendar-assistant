@@ -25,11 +25,11 @@ TODOS_API_URL="${API_BASE_URL}/api/todos"
 
 # Server SSH (only used when running from local machine)
 SSH_KEY="$HOME/.ssh/id_housler"
-SSH_HOST="root@91.229.8.221"
+SSH_HOST="root@95.163.227.26"
 
 # Detect if running on server (localhost)
 IS_LOCAL_SERVER=false
-if [[ "$(hostname -I 2>/dev/null | grep -c '91.229.8.221')" -gt 0 ]] || [[ "$(hostname)" == *"calendar"* ]] || [[ -f "/root/ai-calendar-assistant/ai-calendar-assistant/docker-compose.secure.yml" ]]; then
+if [[ "$(hostname -I 2>/dev/null | grep -c '95.163.227.26')" -gt 0 ]] || [[ "$(hostname)" == *"calendar"* ]] || [[ -f "/root/ai-calendar-assistant/ai-calendar-assistant/docker-compose.secure.yml" ]]; then
     IS_LOCAL_SERVER=true
 fi
 

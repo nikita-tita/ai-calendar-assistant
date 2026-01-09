@@ -158,7 +158,7 @@ from .property_scoring import property_scoring_service
 python3 test_calendar_stability.py
 
 # На сервере
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 python3 test_calendar_stability.py
 ```
@@ -200,7 +200,7 @@ python3 test_calendar_stability.py
 
 #### Rollback при ошибке:
 ```bash
-ssh root@91.229.8.221 'cd /root/ai-calendar-assistant && \
+ssh root@95.163.227.26 'cd /root/ai-calendar-assistant && \
   tar -xzf /root/backups/deployments/backup_TIMESTAMP.tar.gz && \
   docker restart telegram-bot'
 ```
@@ -278,7 +278,7 @@ curl https://этонесамыйдлинныйдомен.рф/health/calendar
 curl https://этонесамыйдлинныйдомен.рф/health/property
 
 # Проверить логи
-ssh root@91.229.8.221 "docker logs telegram-bot --tail 50"
+ssh root@95.163.227.26 "docker logs telegram-bot --tail 50"
 ```
 
 ### Тестирование в Telegram

@@ -3,7 +3,7 @@
 ## Информация о вашем сервере
 
 **Сервер:** Sapphire Palladium
-**IP-адрес:** 91.229.8.221
+**IP-адрес:** 95.163.227.26
 **ОС:** Ubuntu 22.04 LTS
 **Логин:** root
 **Пароль:** xZV5uNNlvqd9G01r
@@ -23,7 +23,7 @@
 **Вариант A: Через терминал Mac**
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 ```
 
 Когда попросит пароль, введите: `xZV5uNNlvqd9G01r`
@@ -77,7 +77,7 @@ docker logs -f telegram-bot
 ### Шаг 1: Подключение к серверу
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 # Введите пароль: xZV5uNNlvqd9G01r
 ```
 
@@ -119,10 +119,10 @@ cd /root/ai-calendar-assistant
 cd /Users/fatbookpro/ai-calendar-assistant
 
 # Копируем файлы на сервер
-scp -r app/ root@91.229.8.221:/root/ai-calendar-assistant/
-scp Dockerfile.bot root@91.229.8.221:/root/ai-calendar-assistant/
-scp requirements.txt root@91.229.8.221:/root/ai-calendar-assistant/
-scp .env.example root@91.229.8.221:/root/ai-calendar-assistant/
+scp -r app/ root@95.163.227.26:/root/ai-calendar-assistant/
+scp Dockerfile.bot root@95.163.227.26:/root/ai-calendar-assistant/
+scp requirements.txt root@95.163.227.26:/root/ai-calendar-assistant/
+scp .env.example root@95.163.227.26:/root/ai-calendar-assistant/
 ```
 
 Введите пароль: `xZV5uNNlvqd9G01r` для каждой команды.
@@ -228,7 +228,7 @@ docker logs -f telegram-bot
 ```bash
 #!/bin/bash
 
-SERVER="root@91.229.8.221"
+SERVER="root@95.163.227.26"
 PROJECT_PATH="/root/ai-calendar-assistant"
 
 echo "🚀 Развёртывание AI Calendar Bot на REG.RU..."
@@ -369,7 +369,7 @@ find /root/ai-calendar-assistant/logs -name "*.log" -mtime +7 -delete
 reboot
 
 # Через минуту подключиться снова
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 
 # Проверить что бот запустился
 docker ps
@@ -389,7 +389,7 @@ docker ps
 4. Добавьте A-запись:
    - Имя: `@` (для основного домена) или `bot` (для поддомена)
    - Тип: A
-   - Значение: `91.229.8.221`
+   - Значение: `95.163.227.26`
    - TTL: 3600
 
 ### Шаг 2: Установка Nginx + SSL

@@ -3,14 +3,14 @@
 ## 📋 Информация о сервере
 
 ```
-IP: 91.229.8.221
+IP: 95.163.227.26
 Логин: root
-Пароль: upvzrr3LH4pxsaqs
+Пароль: $SERVER_PASSWORD
 ```
 
 **Подключение:**
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 # Или через веб-консоль: https://www.reg.ru/user/account
 ```
 
@@ -21,7 +21,7 @@ ssh root@91.229.8.221
 ### Запуск бота
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 docker-compose -f docker-compose.simple.yml up -d
 ```
@@ -29,7 +29,7 @@ docker-compose -f docker-compose.simple.yml up -d
 ### Остановка бота
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 docker-compose -f docker-compose.simple.yml down
 ```
@@ -37,7 +37,7 @@ docker-compose -f docker-compose.simple.yml down
 ### Перезапуск бота
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 docker-compose -f docker-compose.simple.yml restart
 ```
@@ -45,7 +45,7 @@ docker-compose -f docker-compose.simple.yml restart
 ### Просмотр логов
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 docker logs -f telegram-bot
 
 # Для выхода нажмите Ctrl+C
@@ -54,7 +54,7 @@ docker logs -f telegram-bot
 ### Проверка статуса
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 docker ps
 ```
 
@@ -112,7 +112,7 @@ docker-compose -f docker-compose.simple.yml up -d --build
 ### Изменить токен Telegram
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 
 # Редактировать .env
@@ -291,7 +291,7 @@ docker-compose -f docker-compose.simple.yml up -d --build
 ### Полное переразвёртывание
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 
 # Остановить всё
 docker stop $(docker ps -aq)
@@ -343,7 +343,7 @@ https://www.reg.ru/user/account
 ### Смена пароля root (рекомендуется)
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 passwd
 # Введите новый пароль дважды
 ```
@@ -404,7 +404,7 @@ ufw enable
 
 ```bash
 # Подключение
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 
 # Запуск
 docker-compose -f /root/ai-calendar-assistant/docker-compose.simple.yml up -d

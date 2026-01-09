@@ -278,7 +278,7 @@ https://этонесамыйдлинныйдомен.рф
 ### Проверка статуса контейнеров
 
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 docker ps
 ```
 
@@ -322,7 +322,7 @@ docker logs telegram-bot-polling 2>&1 | grep "USER_ID" | tail -20
 
 **Решение:**
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 nano .env
 # Обновить YANDEX_GPT_API_KEY и YANDEX_GPT_FOLDER_ID
@@ -438,7 +438,7 @@ curl http://localhost:5232
 ## Контакты для отчетов о багах
 
 - Telegram: @aibroker_bot
-- Логи на сервере: `root@91.229.8.221:/root/ai-calendar-assistant/logs/`
+- Логи на сервере: `root@95.163.227.26:/root/ai-calendar-assistant/logs/`
 - Репозиторий: `/Users/fatbookpro/ai-calendar-assistant`
 
 ---

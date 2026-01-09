@@ -178,7 +178,7 @@ See [TEST_CASES.md](./TEST_CASES.md) for comprehensive test suite covering:
 
 ### Production Environment: ✅ LIVE
 
-**Server**: 91.229.8.221
+**Server**: 95.163.227.26
 **Domain**: https://этонесамыйдлинныйдомен.рф
 **Bot**: @your_bot_name
 **Status**: Running (uptime: 9+ hours)
@@ -343,7 +343,7 @@ Expected: Operations cancelled, nothing changed
 - **Test Cases**: [TEST_CASES.md](./TEST_CASES.md)
 - **Deployment Guide**: [MANUAL_DEPLOY.md](./MANUAL_DEPLOY.md)
 - **Architecture**: See codebase comments
-- **API Docs**: Available at http://91.229.8.221:8000/docs
+- **API Docs**: Available at http://95.163.227.26:8000/docs
 
 ---
 

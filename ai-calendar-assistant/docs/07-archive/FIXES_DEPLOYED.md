@@ -1,7 +1,7 @@
 # ✅ Fixes Deployed - Ready for Testing
 
 **Deployed:** 2025-10-29 21:23:55 UTC
-**Server:** root@91.229.8.221
+**Server:** root@95.163.227.26
 **Container:** telegram-bot-polling
 **Status:** 🟢 RUNNING WITHOUT ERRORS
 
@@ -151,22 +151,22 @@ For each test, report:
 
 ### Watch logs in real-time:
 ```bash
-ssh root@91.229.8.221 "docker logs -f telegram-bot-polling 2>&1" | grep -v getUpdates
+ssh root@95.163.227.26 "docker logs -f telegram-bot-polling 2>&1" | grep -v getUpdates
 ```
 
 ### Check for errors:
 ```bash
-ssh root@91.229.8.221 "docker logs --tail 50 telegram-bot-polling 2>&1 | grep -i error"
+ssh root@95.163.227.26 "docker logs --tail 50 telegram-bot-polling 2>&1 | grep -i error"
 ```
 
 ### Check voice processing:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot-polling 2>&1 | grep 'voice_message\|transcribed' | tail -10"
+ssh root@95.163.227.26 "docker logs telegram-bot-polling 2>&1 | grep 'voice_message\|transcribed' | tail -10"
 ```
 
 ### Check event creation:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot-polling 2>&1 | grep 'event_created\|CREATE' | tail -10"
+ssh root@95.163.227.26 "docker logs telegram-bot-polling 2>&1 | grep 'event_created\|CREATE' | tail -10"
 ```
 
 ---
@@ -248,8 +248,8 @@ docker-compose -f docker-compose.polling.yml restart telegram-bot
 
 ## 📞 Access Info
 
-**Server:** root@91.229.8.221
-**Password:** upvzrr3LH4pxsaqs
+**Server:** root@95.163.227.26
+**Password:** $SERVER_PASSWORD
 **Bot:** @aibroker_bot
 **Container:** telegram-bot-polling
 **Test User:** 2296243 (@nikita_tita)

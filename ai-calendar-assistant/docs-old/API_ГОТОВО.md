@@ -32,7 +32,7 @@
 https://calendar-bot-production-e1ac.up.railway.app/events/
 
 // Стало:
-http://91.229.8.221:8000/api/events/
+http://95.163.227.26:8000/api/events/
 ```
 
 ---
@@ -43,12 +43,12 @@ http://91.229.8.221:8000/api/events/
 
 **Получить события:**
 ```bash
-curl http://91.229.8.221:8000/api/events/USER_ID?start=2025-10-10T00:00:00&end=2025-11-10T00:00:00
+curl http://95.163.227.26:8000/api/events/USER_ID?start=2025-10-10T00:00:00&end=2025-11-10T00:00:00
 ```
 
 **Создать событие:**
 ```bash
-curl -X POST http://91.229.8.221:8000/api/events/USER_ID \
+curl -X POST http://95.163.227.26:8000/api/events/USER_ID \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Встреча",
@@ -61,7 +61,7 @@ curl -X POST http://91.229.8.221:8000/api/events/USER_ID \
 
 **Обновить событие:**
 ```bash
-curl -X PUT http://91.229.8.221:8000/api/events/USER_ID/EVENT_ID \
+curl -X PUT http://95.163.227.26:8000/api/events/USER_ID/EVENT_ID \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Обновлённое название",
@@ -72,14 +72,14 @@ curl -X PUT http://91.229.8.221:8000/api/events/USER_ID/EVENT_ID \
 
 **Удалить событие:**
 ```bash
-curl -X DELETE http://91.229.8.221:8000/api/events/USER_ID/EVENT_ID
+curl -X DELETE http://95.163.227.26:8000/api/events/USER_ID/EVENT_ID
 ```
 
 ### Документация API
 
 FastAPI автоматически создаёт документацию:
-- **Swagger UI:** http://91.229.8.221:8000/docs
-- **ReDoc:** http://91.229.8.221:8000/redoc
+- **Swagger UI:** http://95.163.227.26:8000/docs
+- **ReDoc:** http://95.163.227.26:8000/redoc
 
 ---
 
@@ -97,11 +97,11 @@ radicale       Up (healthy)        0.0.0.0:5232->5232/tcp
 
 ```bash
 # API работает
-$ curl http://91.229.8.221:8000/api/health
+$ curl http://95.163.227.26:8000/api/health
 {"status":"ok","radicale_connected":true}
 
 # Events endpoint работает
-$ curl http://91.229.8.221:8000/api/events/123
+$ curl http://95.163.227.26:8000/api/events/123
 []
 
 # Telegram Bot работает
@@ -120,7 +120,7 @@ Uvicorn running on http://0.0.0.0:8000
 ```
 Telegram Mini App (веб-приложение)
     ↓
-http://91.229.8.221:8000/api/events/{user_id}
+http://95.163.227.26:8000/api/events/{user_id}
     ↓
 FastAPI Router (app/routers/events.py)
     ↓
@@ -158,7 +158,7 @@ const tg = window.Telegram.WebApp;
 const userId = tg.initDataUnsafe?.user?.id;
 
 // Загружаем события ЭТОГО пользователя
-fetch(`http://91.229.8.221:8000/api/events/${userId}`)
+fetch(`http://95.163.227.26:8000/api/events/${userId}`)
 ```
 
 ### 2. Календарь в веб-апп показывает события из бота?
@@ -201,17 +201,17 @@ Web App → API → Radicale (читает) → Показывает событ�
 ### Для тестирования
 
 - **Telegram Bot:** Найдите по токену `8378762774:AAE...`
-- **Веб-приложение:** http://91.229.8.221 (сейчас)
+- **Веб-приложение:** http://95.163.227.26 (сейчас)
 - **Веб-приложение (после DNS):** https://этонесамыйдлинныйдомен.рф
-- **API:** http://91.229.8.221:8000/api/
-- **API Docs:** http://91.229.8.221:8000/docs
-- **Radicale:** http://91.229.8.221:5232
+- **API:** http://95.163.227.26:8000/api/
+- **API Docs:** http://95.163.227.26:8000/docs
+- **Radicale:** http://95.163.227.26:5232
 
 ### Управление
 
 ```bash
 # Подключиться к серверу
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 
 # Посмотреть статус
 cd /root/ai-calendar-assistant
@@ -248,7 +248,7 @@ docker-compose -f docker-compose.hybrid.yml restart
 ## ✅ Итоговая архитектура
 
 ```
-REG.RU VPS (91.229.8.221)
+REG.RU VPS (95.163.227.26)
 │
 ├── Nginx (порт 80, 443)
 │   └── Веб-приложение

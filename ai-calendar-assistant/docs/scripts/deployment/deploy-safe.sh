@@ -9,9 +9,9 @@ echo "🔒 Safe Deployment Script"
 echo "=========================="
 echo ""
 
-SERVER="root@91.229.8.221"
+SERVER="root@95.163.227.26"
 REMOTE_DIR="/root/ai-calendar-assistant"
-PASSWORD="upvzrr3LH4pxsaqs"
+PASSWORD="$SERVER_PASSWORD"
 
 # Colors for output
 RED='\033[0;31m'

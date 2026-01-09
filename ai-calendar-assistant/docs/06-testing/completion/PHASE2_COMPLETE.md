@@ -85,12 +85,12 @@ redis==5.0.1
 3. **Запустить на сервере:**
    ```bash
    # Скопировать новые файлы
-   sshpass -p 'upvzrr3LH4pxsaqs' scp -r \
+   sshpass -p '$SERVER_PASSWORD' scp -r \
      app/services/rate_limiter_redis.py \
      app/services/admin_auth_jwt.py \
      app/services/event_reminders_idempotent.py \
      requirements.txt \
-     root@91.229.8.221:/root/ai-calendar-assistant/
+     root@95.163.227.26:/root/ai-calendar-assistant/
    
    # На сервере: переустановить зависимости
    docker-compose -f docker-compose.secure.yml exec telegram-bot pip install -r requirements.txt

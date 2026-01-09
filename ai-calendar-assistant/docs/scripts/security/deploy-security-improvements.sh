@@ -19,8 +19,8 @@ echo "=========================================="
 echo ""
 
 # Configuration
-SERVER="root@91.229.8.221"
-SERVER_PASS="upvzrr3LH4pxsaqs"
+SERVER="root@95.163.227.26"
+SERVER_PASS="$SERVER_PASSWORD"
 PROJECT_DIR="/root/ai-calendar-assistant"
 
 # Colors

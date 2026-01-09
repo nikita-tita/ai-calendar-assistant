@@ -52,7 +52,7 @@ if not PASSWORD_1 or not PASSWORD_2:
 
 ```bash
 # 1. Загрузка на сервер
-scp app/routers/admin.py root@91.229.8.221:/root/ai-calendar-assistant/app/routers/admin.py
+scp app/routers/admin.py root@95.163.227.26:/root/ai-calendar-assistant/app/routers/admin.py
 
 # 2. Копирование в контейнер
 docker cp /root/ai-calendar-assistant/app/routers/admin.py telegram-bot:/app/app/routers/admin.py

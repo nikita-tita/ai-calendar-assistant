@@ -189,17 +189,17 @@ Tests passed: __ / 10
 
 1. Check bot logs:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot --tail 100"
+ssh root@95.163.227.26 "docker logs telegram-bot --tail 100"
 ```
 
 2. Check specific errors:
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot 2>&1 | grep -i error"
+ssh root@95.163.227.26 "docker logs telegram-bot 2>&1 | grep -i error"
 ```
 
 3. Restart if needed:
 ```bash
-ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && docker-compose -f docker-compose.hybrid.yml restart telegram-bot"
+ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && docker-compose -f docker-compose.hybrid.yml restart telegram-bot"
 ```
 
 ---

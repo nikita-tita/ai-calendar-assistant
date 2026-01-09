@@ -56,7 +56,7 @@
 Интернет
     ↓
 ┌─────────────────────────────────────────┐
-│  REG.RU VPS (91.229.8.221)             │
+│  REG.RU VPS (95.163.227.26)             │
 │                                         │
 │  ┌──────────────────────────────────┐  │
 │  │ Nginx (порты 80, 443)            │  │
@@ -133,13 +133,13 @@
 
 ```bash
 # Статус всех сервисов
-ssh root@91.229.8.221 "docker ps"
+ssh root@95.163.227.26 "docker ps"
 
 # Логи бота
-ssh root@91.229.8.221 "docker logs -f telegram-bot"
+ssh root@95.163.227.26 "docker logs -f telegram-bot"
 
 # Логи Nginx
-ssh root@91.229.8.221 "tail -f /var/log/nginx/access.log"
+ssh root@95.163.227.26 "tail -f /var/log/nginx/access.log"
 
 # Health check API
 curl https://xn--80aiabdqfcqhgchaebm7bp0qg3a.xn--p1ai/api/health

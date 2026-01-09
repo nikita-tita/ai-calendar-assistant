@@ -13,7 +13,7 @@
 **Что я делал:**
 ```bash
 # Копировал в /root/ai-calendar-assistant/webapp_server.html
-scp webapp_server.html root@91.229.8.221:/root/ai-calendar-assistant/
+scp webapp_server.html root@95.163.227.26:/root/ai-calendar-assistant/
 ```
 
 **Проблема:** Это НЕ то место, откуда nginx отдаёт файлы!
@@ -99,7 +99,7 @@ window.deleteEvent = function(id) { ... };
 
 ```bash
 # Правильное место!
-scp webapp_current_prod.html root@91.229.8.221:/var/www/calendar/index.html
+scp webapp_current_prod.html root@95.163.227.26:/var/www/calendar/index.html
 ```
 
 **Результат:** ✅ Файл теперь в правильном месте
@@ -110,13 +110,13 @@ scp webapp_current_prod.html root@91.229.8.221:/var/www/calendar/index.html
 
 ### 1. Версия обновлена ✅
 ```bash
-ssh root@91.229.8.221 "grep 'APP_VERSION' /var/www/calendar/index.html"
+ssh root@95.163.227.26 "grep 'APP_VERSION' /var/www/calendar/index.html"
 → const APP_VERSION = '2025-10-28-17:45';
 ```
 
 ### 2. Функции теперь глобальные ✅
 ```bash
-ssh root@91.229.8.221 "grep 'window.viewEvent\|window.openEdit' /var/www/calendar/index.html"
+ssh root@95.163.227.26 "grep 'window.viewEvent\|window.openEdit' /var/www/calendar/index.html"
 → window.viewEvent = function(id) {
 → window.openEdit = function(id = null) {
 ```
@@ -198,7 +198,7 @@ curl -s https://этонесамыйдлинныйдомен.рф/ | grep APP_VE
 
 Если нужно откатиться:
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cp /var/www/calendar/index.html.backup_20251028_174500 /var/www/calendar/index.html
 ```
 

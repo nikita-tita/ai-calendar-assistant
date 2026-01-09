@@ -13,7 +13,7 @@
 **Статус:** ИСПРАВЛЕНО
 **Проверка:**
 ```bash
-curl http://91.229.8.221:5232
+curl http://95.163.227.26:5232
 # Результат: Connection failed (порт закрыт)
 ```
 
@@ -372,23 +372,23 @@ radicale-calendar Created             -
 ### Проверка Статуса
 ```bash
 # Здоровье API
-curl http://91.229.8.221:8000/health
+curl http://95.163.227.26:8000/health
 
 # Логи бота
-ssh root@91.229.8.221 "docker logs telegram-bot --tail 50"
+ssh root@95.163.227.26 "docker logs telegram-bot --tail 50"
 
 # Список бэкапов
-ssh root@91.229.8.221 "ls -lh /root/backups/calendar-assistant/"
+ssh root@95.163.227.26 "ls -lh /root/backups/calendar-assistant/"
 ```
 
 ### Ручной Бэкап
 ```bash
-ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && ./backup-calendar.sh"
+ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && ./backup-calendar.sh"
 ```
 
 ### Восстановление
 ```bash
-ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && ./restore-from-backup.sh"
+ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && ./restore-from-backup.sh"
 ```
 
 ### Тест Безопасности

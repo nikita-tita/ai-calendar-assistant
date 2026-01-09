@@ -32,7 +32,7 @@
 
 ### Сервер
 - **Хостинг:** REG.RU VPS
-- **IP:** 91.229.8.221
+- **IP:** 95.163.227.26
 - **OS:** Ubuntu 22.04 LTS
 - **Uptime:** Работает стабильно
 
@@ -61,7 +61,7 @@
               │ polling (бот опрашивает Telegram)
               ↓
 ┌─────────────────────────────────────────────────┐
-│  REG.RU VPS (91.229.8.221)                      │
+│  REG.RU VPS (95.163.227.26)                      │
 │                                                  │
 │  ┌────────────────────────────────────────────┐ │
 │  │ Nginx :80 :443 (SSL)                       │ │
@@ -275,10 +275,10 @@
 ### Мониторинг:
 ```bash
 # Статус сервисов
-ssh root@91.229.8.221 "docker ps"
+ssh root@95.163.227.26 "docker ps"
 
 # Логи бота
-ssh root@91.229.8.221 "docker logs -f telegram-bot"
+ssh root@95.163.227.26 "docker logs -f telegram-bot"
 
 # Health check
 curl https://xn--80aiabdqfcqhgchaebm7bp0qg3a.xn--p1ai/api/health

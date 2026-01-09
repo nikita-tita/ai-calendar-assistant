@@ -37,12 +37,17 @@ logs/
 *.sqlite
 *.sql
 
-# Credentials
+# Credentials - NEVER COMMIT!
 credentials/
 *.pem
 *.key
 id_rsa*
 *.crt
+CREDENTIALS.local
+*CREDENTIALS*
+*PASSWORDS*
+*_PASSWORDS_*
+*.secret
 
 # Testing
 .pytest_cache/

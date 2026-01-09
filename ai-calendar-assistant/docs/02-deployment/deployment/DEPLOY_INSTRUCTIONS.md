@@ -21,12 +21,12 @@
 
 ```bash
 # Загрузить на сервер
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   app/services/telegram_handler.py \
-  root@91.229.8.221:/root/ai-calendar-assistant/app/services/
+  root@95.163.227.26:/root/ai-calendar-assistant/app/services/
 
 # Скопировать в контейнер и перезапустить
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker cp /root/ai-calendar-assistant/app/services/telegram_handler.py telegram-bot:/app/app/services/ && \
    docker restart telegram-bot"
 ```
@@ -34,9 +34,9 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 
 ### 2. Обновление WebApp
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   webapp_server.html \
-  root@91.229.8.221:/var/www/calendar/index.html
+  root@95.163.227.26:/var/www/calendar/index.html
 
 # Перезапуск не требуется - статический файл
 ```
@@ -44,9 +44,9 @@ sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
 ### 3. Обновление админ-панели
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
   admin_server.html \
-  root@91.229.8.221:/var/www/calendar/admin_fbc36dd546d7746b862e45a7.html
+  root@95.163.227.26:/var/www/calendar/admin_fbc36dd546d7746b862e45a7.html
 
 # Перезапуск не требуется
 ```
@@ -82,19 +82,19 @@ sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
 
 ### 1. Проверить статус бота
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker ps | grep telegram-bot"
 ```
 
 ### 2. Проверить логи
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker logs --tail 50 telegram-bot"
 ```
 
 ### 3. Проверить аналитику
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker exec telegram-bot cat /var/lib/calendar-bot/analytics_data.json"
 ```
 
@@ -114,7 +114,7 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 
 
 1. **Проверить логи:**
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker logs telegram-bot 2>&1 | tail -50"
 ```
 
@@ -136,7 +136,7 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 
 
 1. **Проверить файл аналитики:**
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker exec telegram-bot cat /var/lib/calendar-bot/analytics_data.json"
 ```
 
@@ -148,7 +148,7 @@ sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 
 
 3. **Создать тестовые данные:**
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker exec telegram-bot python3 -c \"
 from app.services.analytics_service import analytics_service
 from app.models.analytics import ActionType
@@ -164,12 +164,12 @@ print('Done')
 ### Перед критическими обновлениями:
 
 ```bash
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "tar -czf /root/backup-$(date +%Y%m%d-%H%M).tar.gz /var/lib/calendar-bot/"
 
 # Скачать бэкап локально
-sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
-  root@91.229.8.221:/root/backup-*.tar.gz ./backups/
+sshpass -p '$SERVER_PASSWORD' scp -o StrictHostKeyChecking=no \
+  root@95.163.227.26:/root/backup-*.tar.gz ./backups/
 ```
 
 ## Откат изменений
@@ -178,15 +178,15 @@ sshpass -p 'upvzrr3LH4pxsaqs' scp -o StrictHostKeyChecking=no \
 
 ```bash
 # 1. Остановить текущий бот
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker stop telegram-bot"
 
 # 2. Восстановить из бэкапа
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "tar -xzf /root/backup-YYYYMMDD-HHMM.tar.gz -C /"
 
 # 3. Перезапустить
-sshpass -p 'upvzrr3LH4pxsaqs' ssh -o StrictHostKeyChecking=no root@91.229.8.221 \
+sshpass -p '$SERVER_PASSWORD' ssh -o StrictHostKeyChecking=no root@95.163.227.26 \
   "docker start telegram-bot"
 ```
 

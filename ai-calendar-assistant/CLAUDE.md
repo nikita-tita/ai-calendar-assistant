@@ -1,6 +1,28 @@
 # Инструкция для Claude Code
 
+> **Последнее обновление:** 2026-01-09
+> **Проект:** calendar.housler.ru - AI Calendar Assistant
+
 Этот файл содержит инструкции для AI-ассистента по работе с проектом AI Calendar Assistant.
+
+**Общая документация Housler:** [SHARED/](../housler_pervichka/docs/SHARED/)
+
+---
+
+## CREDENTIALS (ВАЖНО!)
+
+**Пароли НЕ хранятся в git!** Все credentials находятся в локальном файле:
+
+```
+../../CREDENTIALS.local
+```
+
+Переменные в этом файле:
+- `$SERVER_PASSWORD` - пароль SSH для сервера
+- `$ADMIN_PRIMARY_PASSWORD` - пароль админки
+- `$ADMIN_SECONDARY_PASSWORD` - второй пароль админки
+
+**Перед деплоем:** прочитай CREDENTIALS.local и подставь значения.
 
 ---
 
@@ -10,9 +32,12 @@
 
 ```
 ОБЯЗАТЕЛЬНО прочитать перед любыми изменениями:
-1. CHANGELOG.md          - что уже сделано, какие версии
-2. DEPLOY.md             - как деплоить, структура сервера
-3. docs/QUICK_INDEX.md   - быстрый поиск по документации
+1. BACKLOG.md                      - текущие задачи и приоритеты (Kanban)
+2. PROJECT_STATUS.md               - снимок состояния проекта
+3. RISKS_AND_BLOCKERS.md           - активные блокеры и риски
+4. CHANGELOG.md                    - что уже сделано, какие версии
+5. DEPLOY.md                       - как деплоить, структура сервера
+6. FULL_CODE_REVIEW_2026-01-09.md  - полный аудит кода (45 проблем)
 ```
 
 ### 2. Структура проекта
@@ -58,6 +83,16 @@
 | `app/services/encrypted_storage.py` | Шифрование данных | При работе с безопасностью |
 | `app/routers/` | API endpoints | При работе с API |
 
+### 4. Проектное управление
+
+| Файл | Описание |
+|------|----------|
+| `BACKLOG.md` | Kanban-доска: все задачи, статусы, DoD |
+| `PROJECT_STATUS.md` | Снимок состояния проекта |
+| `RISKS_AND_BLOCKERS.md` | Активные риски и блокеры |
+| `DECISIONS_LOG.md` | Журнал архитектурных решений |
+| `FULL_CODE_REVIEW_2026-01-09.md` | Полный аудит кода (45 проблем) |
+
 ---
 
 ## ПРАВИЛА РАБОТЫ
@@ -100,7 +135,7 @@
 git add -A && git commit -m "fix: описание" && git push origin main
 
 # 2. На сервере: pull и rebuild
-sshpass -p '***REMOVED***' ssh root@95.163.227.26 '
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 '
   cd /root/ai-calendar-assistant &&
   git pull origin main &&
   docker compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
@@ -115,10 +150,10 @@ sshpass -p '***REMOVED***' ssh root@95.163.227.26 '
 curl http://95.163.227.26:8000/health
 
 # Проверить статус контейнеров
-sshpass -p '***REMOVED***' ssh root@95.163.227.26 'docker ps'
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 'docker ps'
 
 # Проверить логи
-sshpass -p '***REMOVED***' ssh root@95.163.227.26 'docker logs telegram-bot --tail 50'
+sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 'docker logs telegram-bot --tail 50'
 ```
 
 ---
@@ -194,8 +229,8 @@ const APP_VERSION = 'YYYY-MM-DD-vN';  // Пример: 2025-12-04-v2
 ## КОНТАКТЫ И ДОСТУПЫ
 
 - **Сервер:** 95.163.227.26
-- **SSH:** `sshpass -p '***REMOVED***' ssh root@95.163.227.26`
-- **Root пароль:** `***REMOVED***`
+- **SSH:** `sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26`
+- **Root пароль:** `$SERVER_PASSWORD`
 - **Git:** https://github.com/nikita-tita/ai-calendar-assistant
 - **Прод URL:** https://calendar.housler.ru (домен нужно перенастроить на новый IP)
 - **API URL:** http://95.163.227.26:8000
@@ -238,6 +273,6 @@ const APP_VERSION = 'YYYY-MM-DD-vN';  // Пример: 2025-12-04-v2
 
 Новый сервер:
 - **IP:** 95.163.227.26
-- **Пароль root:** ***REMOVED***
+- **Пароль root:** $SERVER_PASSWORD
 - **Reg.ru панель:** https://cloud.reg.ru/panel/servers/
 - **Сервер:** Peach Lutetium (Ubuntu 24.04)

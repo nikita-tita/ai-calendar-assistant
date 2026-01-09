@@ -209,7 +209,7 @@ docker logs telegram-bot-polling 2>&1 | tail -30
 3. 🔴 **Синхронизировать локальный репозиторий**
    ```bash
    # Скачать актуальный config.py с сервера
-   scp root@91.229.8.221:/root/ai-calendar-assistant/app/config.py app/config.py
+   scp root@95.163.227.26:/root/ai-calendar-assistant/app/config.py app/config.py
 
    # Обновить .env с реальными ключами
    cp .env .env.backup
@@ -272,9 +272,9 @@ docker logs telegram-bot-polling 2>&1 | tail -30
 
 ## 📞 Контакты и доступы
 
-**Сервер:** 91.229.8.221
+**Сервер:** 95.163.227.26
 **Telegram Bot:** @your_calendar_bot
-**Radicale:** http://91.229.8.221:5232 (internal only)
+**Radicale:** http://95.163.227.26:5232 (internal only)
 **Backup Location:** /root/backups/
 
 **Восстановленные API ключи:**

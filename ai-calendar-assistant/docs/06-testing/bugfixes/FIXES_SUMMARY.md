@@ -269,11 +269,11 @@ python -m app.main
 ./deploy-property-bot.sh
 
 # Или вручную
-scp app/services/llm_agent_property.py root@91.229.8.221:/root/ai-calendar-assistant/app/services/
-scp app/services/property_handler.py root@91.229.8.221:/root/ai-calendar-assistant/app/services/
+scp app/services/llm_agent_property.py root@95.163.227.26:/root/ai-calendar-assistant/app/services/
+scp app/services/property_handler.py root@95.163.227.26:/root/ai-calendar-assistant/app/services/
 # ... остальные файлы
 
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 docker restart telegram-bot
 ```

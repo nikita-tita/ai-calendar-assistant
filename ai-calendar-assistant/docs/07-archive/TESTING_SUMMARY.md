@@ -151,7 +151,7 @@
 
 ### Deployment
 - **Platform:** Docker Compose
-- **Server:** 91.229.8.221
+- **Server:** 95.163.227.26
 - **Mode:** Polling (без webhook)
 - **Containers:**
   - `telegram-bot-polling` - Telegram бот
@@ -306,15 +306,15 @@ curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
 - Token: `***REDACTED_BOT_TOKEN***`
 
 ### Сервер
-- IP: 91.229.8.221
+- IP: 95.163.227.26
 - User: root
-- Password: upvzrr3LH4pxsaqs
+- Password: $SERVER_PASSWORD
 - Path: /root/ai-calendar-assistant
 
 ### Проверка статуса
 ```bash
 # SSH
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 
 # Docker
 docker ps

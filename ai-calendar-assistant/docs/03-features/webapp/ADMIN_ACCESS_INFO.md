@@ -88,9 +88,9 @@
 ## 🖥️ Сервер REG.RU
 
 ### SSH Доступ
-**Host:** `91.229.8.221`
+**Host:** `95.163.227.26`
 **User:** `root`
-**Password:** `upvzrr3LH4pxsaqs`
+**Password:** `$SERVER_PASSWORD`
 
 ### Основные пути
 
@@ -201,7 +201,7 @@ DEBUG=false
 ### Обновление
 ```bash
 # Локально создать/изменить webapp_server.html
-scp webapp_server.html root@91.229.8.221:/var/www/calendar/index.html
+scp webapp_server.html root@95.163.227.26:/var/www/calendar/index.html
 
 # Нет необходимости в перезапуске - статический файл
 ```
@@ -213,49 +213,49 @@ scp webapp_server.html root@91.229.8.221:/var/www/calendar/index.html
 ### Проверка статуса
 ```bash
 # Все контейнеры
-ssh root@91.229.8.221 "docker ps"
+ssh root@95.163.227.26 "docker ps"
 
 # Логи бота
-ssh root@91.229.8.221 "docker logs --tail 50 telegram-bot"
+ssh root@95.163.227.26 "docker logs --tail 50 telegram-bot"
 
 # Логи Radicale
-ssh root@91.229.8.221 "docker logs --tail 50 radicale"
+ssh root@95.163.227.26 "docker logs --tail 50 radicale"
 
 # Nginx статус
-ssh root@91.229.8.221 "systemctl status nginx"
+ssh root@95.163.227.26 "systemctl status nginx"
 ```
 
 ### Перезапуск сервисов
 ```bash
 # Перезапуск бота
-ssh root@91.229.8.221 "docker restart telegram-bot"
+ssh root@95.163.227.26 "docker restart telegram-bot"
 
 # Перезапуск всех контейнеров
-ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && docker-compose restart"
+ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && docker-compose restart"
 
 # Перезапуск Nginx
-ssh root@91.229.8.221 "systemctl restart nginx"
+ssh root@95.163.227.26 "systemctl restart nginx"
 ```
 
 ### Обновление кода
 ```bash
 # Загрузить файлы
-scp app/services/*.py root@91.229.8.221:/root/ai-calendar-assistant/app/services/
+scp app/services/*.py root@95.163.227.26:/root/ai-calendar-assistant/app/services/
 
 # Скопировать в контейнер и перезапустить
-ssh root@91.229.8.221 "docker cp /root/ai-calendar-assistant/app telegram-bot:/app/ && docker restart telegram-bot"
+ssh root@95.163.227.26 "docker cp /root/ai-calendar-assistant/app telegram-bot:/app/ && docker restart telegram-bot"
 ```
 
 ### Резервное копирование
 ```bash
 # Backup Radicale data
-ssh root@91.229.8.221 "tar -czf /root/radicale-backup-$(date +%Y%m%d).tar.gz /var/lib/calendar-bot/radicale/"
+ssh root@95.163.227.26 "tar -czf /root/radicale-backup-$(date +%Y%m%d).tar.gz /var/lib/calendar-bot/radicale/"
 
 # Backup user preferences
-ssh root@91.229.8.221 "tar -czf /root/prefs-backup-$(date +%Y%m%d).tar.gz /var/lib/calendar-bot/user_preferences.json"
+ssh root@95.163.227.26 "tar -czf /root/prefs-backup-$(date +%Y%m%d).tar.gz /var/lib/calendar-bot/user_preferences.json"
 
 # Download backups
-scp root@91.229.8.221:/root/*-backup-*.tar.gz ./backups/
+scp root@95.163.227.26:/root/*-backup-*.tar.gz ./backups/
 ```
 
 ---
@@ -312,25 +312,25 @@ docker restart telegram-bot
 **Проблема:** Бот не отвечает
 **Решение:**
 ```bash
-ssh root@91.229.8.221 "docker logs telegram-bot | tail -50"
-ssh root@91.229.8.221 "docker restart telegram-bot"
+ssh root@95.163.227.26 "docker logs telegram-bot | tail -50"
+ssh root@95.163.227.26 "docker restart telegram-bot"
 ```
 
 **Проблема:** WebApp не загружается
 **Решение:**
 ```bash
-ssh root@91.229.8.221 "cat /var/log/nginx/error.log | tail -20"
+ssh root@95.163.227.26 "cat /var/log/nginx/error.log | tail -20"
 # Проверить, что файл index.html существует и доступен
-ssh root@91.229.8.221 "ls -la /var/www/calendar/"
+ssh root@95.163.227.26 "ls -la /var/www/calendar/"
 ```
 
 **Проблема:** События не создаются
 **Решение:**
 ```bash
 # Проверить Radicale
-ssh root@91.229.8.221 "docker logs radicale | tail -50"
+ssh root@95.163.227.26 "docker logs radicale | tail -50"
 # Проверить права доступа
-ssh root@91.229.8.221 "ls -la /var/lib/calendar-bot/radicale/"
+ssh root@95.163.227.26 "ls -la /var/lib/calendar-bot/radicale/"
 ```
 
 ---

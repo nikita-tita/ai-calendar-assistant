@@ -240,10 +240,10 @@ COPY app ./app
 ### 1. Проверить файл внутри контейнера:
 
 ```bash
-ssh root@91.229.8.221 'docker exec ai-calendar-assistant cat /app/app/static/index.html | wc -c'
+ssh root@95.163.227.26 'docker exec ai-calendar-assistant cat /app/app/static/index.html | wc -c'
 # Должно быть: 31934
 
-ssh root@91.229.8.221 'docker exec ai-calendar-assistant cat /app/app/static/index.html | grep "new Date()"'
+ssh root@95.163.227.26 'docker exec ai-calendar-assistant cat /app/app/static/index.html | grep "new Date()"'
 # Должно найти строки
 ```
 

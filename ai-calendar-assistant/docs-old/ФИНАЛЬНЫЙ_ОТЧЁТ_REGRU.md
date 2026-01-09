@@ -8,10 +8,10 @@
 ## 📊 Статус системы
 
 ### Сервер
-- **IP:** 91.229.8.221
+- **IP:** 95.163.227.26
 - **Провайдер:** REG.RU VPS
 - **ОС:** Ubuntu 22.04 LTS
-- **Доступ:** root / upvzrr3LH4pxsaqs
+- **Доступ:** root / $SERVER_PASSWORD
 
 ### Контейнеры Docker
 
@@ -41,7 +41,7 @@ d79e2ebbb559   ai-calendar-assistant-telegram-bot   Up 3 hours (healthy)
 
 ### Проверка логов
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 docker logs telegram-bot --tail 50
 ```
 
@@ -58,7 +58,7 @@ HTTP Request: POST https://api.telegram.org/bot.../getUpdates "HTTP/1.1 200 OK"
 ### Статус
 - **Контейнер:** `radicale` - Running, Healthy
 - **Порт:** 5232 (открыт для внешнего доступа)
-- **Веб-интерфейс:** http://91.229.8.221:5232
+- **Веб-интерфейс:** http://95.163.227.26:5232
 - **Учётные данные:** admin / admin123
 
 ### Проверка доступности
@@ -115,7 +115,7 @@ ANTHROPIC_API_KEY=...
 
 #### Проверить статус
 ```bash
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 cd /root/ai-calendar-assistant
 docker ps
 ```
@@ -176,7 +176,7 @@ docker-compose -f docker-compose.full.yml up -d
 ### Если бот не отвечает
 ```bash
 # Проверьте логи
-ssh root@91.229.8.221
+ssh root@95.163.227.26
 docker logs telegram-bot --tail 100
 
 # Проверьте, что контейнер запущен
@@ -188,7 +188,7 @@ docker-compose -f docker-compose.full.yml restart telegram-bot
 ```
 
 ### Подключение календаря к устройствам
-- **URL:** http://91.229.8.221:5232
+- **URL:** http://95.163.227.26:5232
 - **Логин:** admin
 - **Пароль:** admin123
 - **Протокол:** CalDAV
@@ -223,7 +223,7 @@ docker-compose -f docker-compose.full.yml restart telegram-bot
 
 ### Архитектура
 ```
-REG.RU VPS (91.229.8.221)
+REG.RU VPS (95.163.227.26)
 ├── Docker Container: telegram-bot
 │   ├── Python 3.11
 │   ├── python-telegram-bot
@@ -246,7 +246,7 @@ REG.RU VPS (91.229.8.221)
 ### Логи и диагностика
 ```bash
 # Полная диагностика
-ssh root@91.229.8.221 "cd /root/ai-calendar-assistant && \
+ssh root@95.163.227.26 "cd /root/ai-calendar-assistant && \
   echo '=== Docker Status ===' && docker ps && \
   echo '=== Bot Logs ===' && docker logs telegram-bot --tail 20 && \
   echo '=== Radicale Logs ===' && docker logs radicale --tail 20 && \

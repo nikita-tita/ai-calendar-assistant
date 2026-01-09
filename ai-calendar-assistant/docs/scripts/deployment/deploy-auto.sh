@@ -6,9 +6,9 @@
 set -e
 
 # Конфигурация
-SERVER="91.229.8.221"
+SERVER="95.163.227.26"
 USER="root"
-PASSWORD="upvzrr3LH4pxsaqs"
+PASSWORD="$SERVER_PASSWORD"
 PROJECT_PATH="/root/ai-calendar-assistant"
 LOCAL_PROJECT="/Users/fatbookpro/ai-calendar-assistant"
 
@@ -180,8 +180,8 @@ echo "================================================"
 echo "✅ Развёртывание завершено!"
 echo ""
 echo "🔗 Подключение к серверу:"
-echo "  sshpass -p 'xZV5uNNlvqd9G01r' ssh root@91.229.8.221"
+echo "  sshpass -p 'xZV5uNNlvqd9G01r' ssh root@95.163.227.26"
 echo ""
 echo "💡 Для просмотра логов:"
-echo "  sshpass -p 'xZV5uNNlvqd9G01r' ssh root@91.229.8.221 'docker logs -f telegram-bot'"
+echo "  sshpass -p 'xZV5uNNlvqd9G01r' ssh root@95.163.227.26 'docker logs -f telegram-bot'"
 echo ""

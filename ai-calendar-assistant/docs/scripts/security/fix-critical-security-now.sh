@@ -22,8 +22,8 @@ echo "  ⚠️  КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ БЕЗОПАСНО
 echo "==================================================${NC}"
 echo ""
 
-SERVER="root@91.229.8.221"
-SERVER_PASS="upvzrr3LH4pxsaqs"
+SERVER="root@95.163.227.26"
+SERVER_PASS="$SERVER_PASSWORD"
 
 # Function to run commands on server
 run_remote() {
@@ -31,7 +31,7 @@ run_remote() {
 }
 
 echo -e "${YELLOW}[ПРОВЕРКА 1/3] Radicale публичный доступ...${NC}"
-if curl -s -m 5 http://91.229.8.221:5232 > /dev/null 2>&1; then
+if curl -s -m 5 http://95.163.227.26:5232 > /dev/null 2>&1; then
     echo -e "${RED}❌ УЯЗВИМОСТЬ: Radicale доступен публично на порту 5232${NC}"
     echo "   CVSS Score: 9.1 (Critical)"
     echo "   Злоумышленники могут получить доступ ко всем календарям!"
@@ -107,7 +107,7 @@ if [ "$NEED_FIX_RADICALE" = true ]; then
     sleep 10
 
     # Verify
-    if curl -s -m 5 http://91.229.8.221:5232 > /dev/null 2>&1; then
+    if curl -s -m 5 http://95.163.227.26:5232 > /dev/null 2>&1; then
         echo -e "${RED}   ❌ ОШИБКА: Radicale все еще доступен!${NC}"
         echo "   Проверьте docker-compose.yml вручную"
     else
@@ -167,7 +167,7 @@ echo "==========================================${NC}"
 echo ""
 
 echo "🔒 Radicale доступность:"
-if curl -s -m 5 http://91.229.8.221:5232 > /dev/null 2>&1; then
+if curl -s -m 5 http://95.163.227.26:5232 > /dev/null 2>&1; then
     echo -e "   ${RED}❌ ВСЕ ЕЩЕ ДОСТУПЕН (требуется ручное исправление)${NC}"
 else
     echo -e "   ${GREEN}✅ Недоступен публично${NC}"

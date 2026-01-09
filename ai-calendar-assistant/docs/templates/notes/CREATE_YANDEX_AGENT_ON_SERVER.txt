@@ -1,6 +1,6 @@
 #!/bin/bash
 # Команды для создания llm_agent_yandex.py на сервере
-# Подключись к серверу: ssh root@91.229.8.221
+# Подключись к серверу: ssh root@95.163.227.26
 # Затем скопируй и выполни эту команду:
 
 cat > /root/ai-calendar-assistant/app/services/llm_agent_yandex.py << 'ENDOFFILE'

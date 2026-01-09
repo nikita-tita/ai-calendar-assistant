@@ -11,7 +11,7 @@ SSH подключение по паролю заблокировано на с�
 
 1. Перейдите на https://www.reg.ru/user/account
 2. Зайдите в раздел **"Серверы"** → **"VPS"**
-3. Найдите ваш сервер **"Sapphire Palladium"** (91.229.8.221)
+3. Найдите ваш сервер **"Sapphire Palladium"** (95.163.227.26)
 4. Нажмите кнопку **"Консоль"** или **"VNC"**
 5. Введите логин: `root`, пароль: `xZV5uNNlvqd9G01r`
 
@@ -325,10 +325,10 @@ systemctl restart sshd
 
 ```bash
 # Теперь можно подключаться без пароля
-ssh -i ~/.ssh/regru_key root@91.229.8.221
+ssh -i ~/.ssh/regru_key root@95.163.227.26
 
 # И использовать rsync
-rsync -avz -e "ssh -i ~/.ssh/regru_key" /Users/fatbookpro/ai-calendar-assistant/ root@91.229.8.221:/root/ai-calendar-assistant/
+rsync -avz -e "ssh -i ~/.ssh/regru_key" /Users/fatbookpro/ai-calendar-assistant/ root@95.163.227.26:/root/ai-calendar-assistant/
 ```
 
 ---
@@ -355,7 +355,7 @@ jobs:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@master
         with:
-          host: 91.229.8.221
+          host: 95.163.227.26
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |

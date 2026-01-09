@@ -37,14 +37,14 @@ curl -s https://calendar.housler.ru/static/index.html | grep "APP_VERSION"
 ### 2. Проверка логов на ошибки
 
 ```bash
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot --tail 100 2>&1 | grep -iE "error|exception"'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker logs telegram-bot --tail 100 2>&1 | grep -iE "error|exception"'
 # Ожидание: пустой вывод (ошибок нет)
 ```
 
 ### 3. Проверка контейнеров
 
 ```bash
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker ps | grep -E "(telegram-bot|redis|radicale)"'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker ps | grep -E "(telegram-bot|redis|radicale)"'
 # Все 3 контейнера должны быть в статусе "healthy"
 ```
 
@@ -69,7 +69,7 @@ ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker ps | grep -E "(telegram-bot|r
 ### Проверка в логах
 
 ```bash
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot 2>&1 | grep "llm_extract_success" | tail -5'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker logs telegram-bot 2>&1 | grep "llm_extract_success" | tail -5'
 # Ожидание: intent=create, confidence > 0.7
 ```
 
@@ -299,7 +299,7 @@ ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot 2>&1 | grep
 ### Успешная обработка запроса
 
 ```bash
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot 2>&1 | grep -E "(text_message|llm_extract)" | tail -10'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker logs telegram-bot 2>&1 | grep -E "(text_message|llm_extract)" | tail -10'
 ```
 
 Ожидаемый вывод:
@@ -312,7 +312,7 @@ ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot 2>&1 | grep
 ### Проверка ошибок
 
 ```bash
-ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot 2>&1 | grep -iE "error|exception|failed" | tail -10'
+ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker logs telegram-bot 2>&1 | grep -iE "error|exception|failed" | tail -10'
 ```
 
 Ожидание: пустой вывод (ошибок нет)
@@ -407,7 +407,7 @@ fi
 
 # 3. Containers (requires SSH)
 echo -n "3. Containers healthy: "
-CONTAINERS=$(ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker ps --format "{{.Names}}: {{.Status}}" | grep -E "(telegram-bot|redis|radicale)"' 2>/dev/null)
+CONTAINERS=$(ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker ps --format "{{.Names}}: {{.Status}}" | grep -E "(telegram-bot|redis|radicale)"' 2>/dev/null)
 if [[ "$CONTAINERS" == *"healthy"*"healthy"*"healthy"* ]]; then
     echo "✅ PASSED"
 else
@@ -416,7 +416,7 @@ fi
 
 # 4. No errors in logs
 echo -n "4. No errors in logs: "
-ERRORS=$(ssh -i ~/.ssh/id_housler root@91.229.8.221 'docker logs telegram-bot --since 1h 2>&1 | grep -ciE "error|exception"' 2>/dev/null)
+ERRORS=$(ssh -i ~/.ssh/id_housler root@95.163.227.26 'docker logs telegram-bot --since 1h 2>&1 | grep -ciE "error|exception"' 2>/dev/null)
 if [[ "$ERRORS" == "0" ]]; then
     echo "✅ PASSED"
 else

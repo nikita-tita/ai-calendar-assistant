@@ -19,7 +19,7 @@
 
 ```bash
 # Проверка сервера
-curl http://91.229.8.221:8000/health
+curl http://95.163.227.26:8000/health
 → {"status":"ok","version":"0.1.0"} ✅
 
 # Проверка FastAPI
@@ -248,7 +248,7 @@ Event deleted successfully
 **Файл:** `webapp_working.html` → `webapp_server.html` на сервере
 
 ```bash
-scp webapp_working.html root@91.229.8.221:/root/ai-calendar-assistant/webapp_server.html
+scp webapp_working.html root@95.163.227.26:/root/ai-calendar-assistant/webapp_server.html
 ```
 
 **Версия:** `2025-10-28-17:30`
@@ -261,7 +261,7 @@ scp webapp_working.html root@91.229.8.221:/root/ai-calendar-assistant/webapp_ser
 
 ```bash
 # Проверить версию
-ssh root@91.229.8.221 "grep 'APP_VERSION' /root/ai-calendar-assistant/webapp_server.html"
+ssh root@95.163.227.26 "grep 'APP_VERSION' /root/ai-calendar-assistant/webapp_server.html"
 → const APP_VERSION = '2025-10-28-17:30'; ✅
 ```
 

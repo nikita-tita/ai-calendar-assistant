@@ -217,11 +217,11 @@ res = await fetch(`/api/events/${userId}/${id}`, {
 mkdir -p app/middleware
 
 # 2. Загрузка файлов на сервер
-scp app/middleware/* root@91.229.8.221:/root/ai-calendar-assistant/app/middleware/
-scp app/main.py root@91.229.8.221:/root/ai-calendar-assistant/app/
-scp app/routers/events.py root@91.229.8.221:/root/ai-calendar-assistant/app/routers/
-scp app/routers/health.py root@91.229.8.221:/root/ai-calendar-assistant/app/routers/
-scp webapp_current_prod.html root@91.229.8.221:/var/www/calendar/index.html
+scp app/middleware/* root@95.163.227.26:/root/ai-calendar-assistant/app/middleware/
+scp app/main.py root@95.163.227.26:/root/ai-calendar-assistant/app/
+scp app/routers/events.py root@95.163.227.26:/root/ai-calendar-assistant/app/routers/
+scp app/routers/health.py root@95.163.227.26:/root/ai-calendar-assistant/app/routers/
+scp webapp_current_prod.html root@95.163.227.26:/var/www/calendar/index.html
 
 # 3. Остановка контейнера
 docker stop telegram-bot
