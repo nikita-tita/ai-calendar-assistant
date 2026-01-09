@@ -3,6 +3,7 @@
 from typing import Optional, List
 from datetime import datetime, timedelta
 import asyncio
+import threading
 import time
 import caldav
 from caldav.elements import dav
@@ -52,7 +53,7 @@ class RadicaleService:
 
         # Calendar cache: user_id -> (calendar, timestamp)
         self._calendar_cache: dict = {}
-        self._cache_lock = asyncio.Lock()  # For async-safe cache access
+        self._cache_lock = threading.Lock()  # For thread-safe cache access (used in asyncio.to_thread)
 
     def _get_user_calendar_name(self, user_id: str) -> str:
         """Generate calendar name for user based on Telegram ID."""
@@ -102,12 +103,13 @@ class RadicaleService:
         """
         now = time.time()
 
-        # Check cache first
-        if user_id in self._calendar_cache:
-            cached_cal, cached_time = self._calendar_cache[user_id]
-            if now - cached_time < self.CACHE_TTL_SECONDS:
-                logger.debug("calendar_cache_hit", user_id=user_id)
-                return cached_cal
+        # Check cache first (thread-safe)
+        with self._cache_lock:
+            if user_id in self._calendar_cache:
+                cached_cal, cached_time = self._calendar_cache[user_id]
+                if now - cached_time < self.CACHE_TTL_SECONDS:
+                    logger.debug("calendar_cache_hit", user_id=user_id)
+                    return cached_cal
 
         _cal_start = time.perf_counter()
         try:
@@ -162,26 +164,28 @@ class RadicaleService:
             return None
 
     def _cache_calendar(self, user_id: str, calendar):
-        """Cache calendar for user with LRU-like eviction."""
-        # Evict old entries if at limit
-        if len(self._calendar_cache) >= self.MAX_CACHED_CALENDARS:
-            # Remove oldest 10% of entries
-            entries = sorted(self._calendar_cache.items(), key=lambda x: x[1][1])
-            to_remove = len(entries) // 10 or 1
-            for key, _ in entries[:to_remove]:
-                del self._calendar_cache[key]
-            logger.debug("calendar_cache_evicted", removed=to_remove)
+        """Cache calendar for user with LRU-like eviction (thread-safe)."""
+        with self._cache_lock:
+            # Evict old entries if at limit
+            if len(self._calendar_cache) >= self.MAX_CACHED_CALENDARS:
+                # Remove oldest 10% of entries
+                entries = sorted(self._calendar_cache.items(), key=lambda x: x[1][1])
+                to_remove = len(entries) // 10 or 1
+                for key, _ in entries[:to_remove]:
+                    del self._calendar_cache[key]
+                logger.debug("calendar_cache_evicted", removed=to_remove)
 
-        self._calendar_cache[user_id] = (calendar, time.time())
+            self._calendar_cache[user_id] = (calendar, time.time())
 
     def invalidate_cache(self, user_id: Optional[str] = None):
-        """Invalidate calendar cache for user or all users."""
-        if user_id:
-            self._calendar_cache.pop(user_id, None)
-        else:
-            self._calendar_cache.clear()
-            self._principal = None
-        logger.debug("calendar_cache_invalidated", user_id=user_id)
+        """Invalidate calendar cache for user or all users (thread-safe)."""
+        with self._cache_lock:
+            if user_id:
+                self._calendar_cache.pop(user_id, None)
+            else:
+                self._calendar_cache.clear()
+                self._principal = None
+            logger.debug("calendar_cache_invalidated", user_id=user_id)
 
     def _create_event_sync(self, user_id: str, event: EventDTO) -> Optional[str]:
         """
@@ -283,11 +287,15 @@ class RadicaleService:
         """
         try:
             # Run blocking CalDAV operations in thread pool
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._create_event_sync,
                 user_id,
                 event
             )
+            # Invalidate cache after successful create (BIZ-003)
+            if result:
+                self.invalidate_cache(user_id)
+            return result
         except Exception as e:
             logger.error("event_create_error", user_id=user_id, error=str(e), exc_info=True)
             # Log calendar error to analytics
@@ -575,12 +583,16 @@ class RadicaleService:
         """
         try:
             # Run blocking CalDAV operations in thread pool
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._update_event_sync,
                 user_id,
                 event_uid,
                 updated_event
             )
+            # Invalidate cache after successful update (BIZ-003)
+            if result:
+                self.invalidate_cache(user_id)
+            return result
         except Exception as e:
             logger.error("event_update_error", user_id=user_id, error=str(e), exc_info=True)
             # Log calendar error to analytics
@@ -631,11 +643,15 @@ class RadicaleService:
         """
         try:
             # Run blocking CalDAV operations in thread pool
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._delete_event_sync,
                 user_id,
                 event_uid
             )
+            # Invalidate cache after successful delete (BIZ-003)
+            if result:
+                self.invalidate_cache(user_id)
+            return result
         except Exception as e:
             logger.error("event_delete_error", user_id=user_id, error=str(e), exc_info=True)
             # Log calendar error to analytics

@@ -9,7 +9,7 @@ import structlog
 from app.config import settings
 from app.routers import telegram, events, admin, admin_v2, logs, todos
 from app.utils.logger import setup_logging
-from app.middleware import TelegramAuthMiddleware
+from app.middleware import TelegramAuthMiddleware, SecurityHeadersMiddleware, CSRFProtectionMiddleware
 
 
 # Setup logging
@@ -44,6 +44,18 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Telegram-Init-Data"],
 )
+
+# Add security headers middleware (SEC-005)
+# Adds X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, etc.
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    enable_hsts=not settings.debug,  # HSTS only in production
+    enable_csp=False  # CSP disabled by default - can break inline scripts
+)
+
+# Add CSRF protection middleware (SEC-004)
+# Validates Origin header for state-changing requests to admin endpoints
+app.add_middleware(CSRFProtectionMiddleware)
 
 # Add Telegram WebApp authentication middleware
 # This validates all /api/events/* requests using HMAC signature

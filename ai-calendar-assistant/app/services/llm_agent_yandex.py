@@ -61,6 +61,11 @@ class LLMAgentYandex:
         "не в моих возможностях",
     ]
 
+    # Token limits (BIZ-002: prevent excessive API costs)
+    # YandexGPT charges per token, limit input to prevent abuse
+    MAX_INPUT_CHARS = 4000  # ~1000 tokens (1 token ≈ 4 chars in Russian)
+    MAX_INPUT_TOKENS = 1500  # Hard limit for API request
+
     def __init__(self):
         """Initialize LLM agent with Yandex GPT client."""
         self.api_key = settings.yandex_gpt_api_key
@@ -541,6 +546,16 @@ intent="create" когда:
             EventDTO(intent="create", title="Встреча с Иваном", ...)
         """
         logger.info("llm_extract_start_yandex", user_text=user_text, user_id=user_id, language=language)
+
+        # BIZ-002: Enforce input token limit to prevent excessive API costs
+        if len(user_text) > self.MAX_INPUT_CHARS:
+            logger.warning(
+                "llm_input_truncated",
+                original_length=len(user_text),
+                truncated_to=self.MAX_INPUT_CHARS,
+                user_id=user_id
+            )
+            user_text = user_text[:self.MAX_INPUT_CHARS]
 
         # FIRST: Try to detect schedule format pattern before calling LLM
         schedule_dto = self._detect_schedule_format(user_text, timezone, conversation_history)

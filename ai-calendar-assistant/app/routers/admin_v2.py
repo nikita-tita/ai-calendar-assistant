@@ -150,7 +150,7 @@ async def login(
             value=access_token,
             httponly=True,
             secure=True,
-            samesite="lax",
+            samesite="strict",
             max_age=3600,  # 1 hour
             path="/"
         )
@@ -160,7 +160,7 @@ async def login(
             value=refresh_token,
             httponly=True,
             secure=True,
-            samesite="lax",
+            samesite="strict",
             max_age=604800,  # 7 days
             path="/"
         )

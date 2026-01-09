@@ -6,6 +6,58 @@
 
 ---
 
+## [2026-01-09] - Security & Stability Sprint
+
+### Added
+
+**Security Middleware:**
+- `app/middleware/security_headers.py` — SecurityHeadersMiddleware (SEC-005)
+  - X-Content-Type-Options: nosniff
+  - X-Frame-Options: SAMEORIGIN
+  - X-XSS-Protection: 1; mode=block
+  - Referrer-Policy: strict-origin-when-cross-origin
+  - Permissions-Policy (camera, microphone, etc)
+  - Strict-Transport-Security (production only)
+
+- `app/middleware/csrf_protection.py` — CSRFProtectionMiddleware (SEC-004)
+  - Origin header validation для /api/admin/* endpoints
+  - SameSite=Strict на admin cookies
+
+**XSS Protection (SEC-003):**
+- `safeId()` функция в index.html — валидация и escape ID в onclick handlers
+- WebApp version: v984
+
+**Token Limit (BIZ-002):**
+- MAX_INPUT_CHARS=4000 в llm_agent_yandex.py
+- Input truncation с warning log
+
+### Fixed
+
+**Race Condition (BIZ-001):**
+- `asyncio.Lock()` → `threading.Lock()` в calendar_radicale.py
+- Lock добавлен в `_get_user_calendar`, `_cache_calendar`, `invalidate_cache`
+
+**Cache Invalidation (BIZ-003):**
+- `invalidate_cache(user_id)` после create_event()
+- `invalidate_cache(user_id)` после update_event()
+- `invalidate_cache(user_id)` после delete_event()
+
+### Summary
+
+| Задача | Приоритет | Статус |
+|--------|-----------|--------|
+| SEC-003: XSS в onclick | Blocker | ✅ Done |
+| SEC-004: CSRF защита | Blocker | ✅ Done |
+| SEC-005: Security headers | Blocker | ✅ Done |
+| BIZ-001: Race condition | Blocker | ✅ Done |
+| BIZ-002: Token limit | Blocker | ✅ Done |
+| BIZ-003: Cache invalidation | High | ✅ Done |
+
+**Файлов создано:** 2
+**Файлов изменено:** 6
+
+---
+
 ## [2025-12-30] - Code Review Cleanup (Final)
 
 ### Removed
@@ -1325,7 +1377,7 @@ SMOKE_TEST_CHAT_ID=2296243 ./scripts/monitoring/smoke_test.sh
 ### Deployment
 ```bash
 # Единственный способ деплоя
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+ssh -i ~/.ssh/id_housler root@95.163.227.26 '
   cd /root/ai-calendar-assistant/ai-calendar-assistant &&
   git pull origin main &&
   docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
@@ -1394,7 +1446,7 @@ ssh -i ~/.ssh/id_housler root@91.229.8.221 '
 ### Deployment
 ```bash
 # Новый деплой (одна команда)
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
+ssh -i ~/.ssh/id_housler root@95.163.227.26 '
   cd /root/ai-calendar-assistant/ai-calendar-assistant &&
   git pull origin main &&
   docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
@@ -1429,7 +1481,7 @@ ssh -i ~/.ssh/id_housler root@91.229.8.221 '
 
 Используйте `deploy_sync.sh` для корректного деплоя:
 ```bash
-ssh root@91.229.8.221 '/root/ai-calendar-assistant/deploy_sync.sh'
+ssh root@95.163.227.26 '/root/ai-calendar-assistant/deploy_sync.sh'
 ```
 
 ---

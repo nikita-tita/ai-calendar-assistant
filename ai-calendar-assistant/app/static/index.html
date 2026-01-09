@@ -115,7 +115,7 @@
 
     <script>
         // Version: 2025-12-05-v1 - Design System alignment (gray palette, Inter font, reduced border-radius)
-        const APP_VERSION = '2025-12-05-v1';
+        const APP_VERSION = '2026-01-09-v1';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -262,6 +262,19 @@
                     .replace(/'/g, '&#39;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
+            }
+
+            // SEC-003: Safe ID escaping for onclick handlers
+            // Validates UUID format and escapes for use in JS strings
+            function safeId(id) {
+                if (!id) return '';
+                const str = String(id);
+                // UUID format validation (basic check for safety)
+                if (!/^[\w-]+$/.test(str)) {
+                    console.warn('Invalid ID format:', str);
+                    return '';
+                }
+                return escapeAttr(str);
             }
 
             function toDateInputValue(d) {
@@ -757,7 +770,7 @@
                                 <div class="flex items-center justify-between mb-3">
                                     <h1 class="text-2xl font-bold">${state.activeTab === 'events' ? t.myEvents : t.myTodos}</h1>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-xs hint-color px-2 py-1 rounded tertiary-bg">v983</span>
+                                        <span class="text-xs hint-color px-2 py-1 rounded tertiary-bg">v984</span>
                                         <button onclick="openSettings()" class="tertiary-bg w-8 h-8 rounded-xl flex items-center justify-center">
                                             <span class="text-lg">⚙️</span>
                                         </button>
@@ -823,7 +836,7 @@
                                                 ${fmtDate(dayDate)} ${isToday ? '• Сегодня' : ''} — ${dayEvents.length > 0 ? (dayEvents.length + ' ' + (dayEvents.length === 1 ? 'событие' : 'событий')) : 'событий нет'}
                                             </div>
                                             ${dayEvents.map(e => `
-                                                <div onclick="viewEvent('${e.id}')" class="event-card secondary-bg p-4 mb-2 rounded-lg cursor-pointer">
+                                                <div onclick="viewEvent('${safeId(e.id)}')" class="event-card secondary-bg p-4 mb-2 rounded-lg cursor-pointer">
                                                     <div class="font-medium text-base mb-1">${escapeHtml(e.title)}</div>
                                                     <div class="hint-color text-sm">
                                                         ${fmtTime(new Date(e.start))} — ${fmtTime(new Date(e.end))}
@@ -856,10 +869,10 @@
                                                 <div class="text-sm hint-color font-medium mb-2 px-2">${t.active} (${state.todos.filter(todo => !todo.completed).length})</div>
                                                 ${state.todos.filter(todo => !todo.completed).map(todo => `
                                                     <div class="secondary-bg p-4 mb-2 rounded-lg flex items-start gap-3">
-                                                        <button onclick="event.stopPropagation(); toggleTodo('${todo.id}')" class="tertiary-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                                        <button onclick="event.stopPropagation(); toggleTodo('${safeId(todo.id)}')" class="tertiary-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
                                                             <span class="text-xs opacity-0">✓</span>
                                                         </button>
-                                                        <div class="flex-1 cursor-pointer" onclick="editTodo('${todo.id}')">
+                                                        <div class="flex-1 cursor-pointer" onclick="editTodo('${safeId(todo.id)}')">
                                                             <div class="font-medium">${escapeHtml(todo.title)}</div>
                                                             ${todo.due_date ? `<div class="text-xs hint-color mt-1">📅 ${new Date(todo.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
                                                         </div>
@@ -873,10 +886,10 @@
                                                 <div class="text-sm hint-color font-medium mb-2 px-2">${t.completed} (${state.todos.filter(todo => todo.completed).length})</div>
                                                 ${state.todos.filter(todo => todo.completed).map(todo => `
                                                     <div class="secondary-bg p-4 mb-2 rounded-lg flex items-start gap-3 opacity-60">
-                                                        <button onclick="event.stopPropagation(); toggleTodo('${todo.id}')" class="button-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                                        <button onclick="event.stopPropagation(); toggleTodo('${safeId(todo.id)}')" class="button-bg w-6 h-6 rounded-lg flex-shrink-0 flex items-center justify-center">
                                                             <span class="text-xs">✓</span>
                                                         </button>
-                                                        <div class="flex-1 cursor-pointer" onclick="editTodo('${todo.id}')">
+                                                        <div class="flex-1 cursor-pointer" onclick="editTodo('${safeId(todo.id)}')">
                                                             <div class="font-medium line-through">${escapeHtml(todo.title)}</div>
                                                             ${todo.due_date ? `<div class="text-xs hint-color mt-1">📅 ${new Date(todo.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
                                                         </div>
@@ -1027,7 +1040,7 @@
                                             Создать
                                         </button>
                                     ` : `
-                                        <button onclick="deleteTodo('${todo.id}')" class="button-danger flex-1 py-3 rounded-lg font-medium">
+                                        <button onclick="deleteTodo('${safeId(todo.id)}')" class="button-danger flex-1 py-3 rounded-lg font-medium">
                                             Удалить
                                         </button>
                                         <button onclick="
