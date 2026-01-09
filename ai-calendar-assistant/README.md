@@ -148,22 +148,24 @@ curl http://localhost:8000/health
 git add -A && git commit -m "fix: описание" && git push origin main
 
 # 2. На сервере: pull и rebuild
-ssh -i ~/.ssh/id_housler root@91.229.8.221 '
-  cd /root/ai-calendar-assistant/ai-calendar-assistant &&
+ssh root@95.163.227.26 '
+  cd /root/ai-calendar-assistant &&
   git pull origin main &&
-  docker-compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
-  docker-compose -f docker-compose.secure.yml up -d telegram-bot
+  docker compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
+  docker compose -f docker-compose.secure.yml up -d telegram-bot
 '
 ```
+
+> **Note:** Используйте SSH-ключи для авторизации. Настройка: `~/.ssh/config`
 
 ### Проверка деплоя
 
 ```bash
-# Версия WebApp
-curl -s https://calendar.housler.ru/static/index.html | grep "APP_VERSION"
-
 # Health check
-curl https://calendar.housler.ru/health
+curl http://95.163.227.26:8000/health
+
+# Статус контейнеров
+ssh root@95.163.227.26 'docker ps'
 ```
 
 ---
@@ -193,10 +195,13 @@ curl https://calendar.housler.ru/health
 
 ## Production
 
-- **Сервер:** 91.229.8.221 (REG.RU, Москва)
-- **Домен:** calendar.housler.ru
-- **SSL:** Let's Encrypt (auto-renewal)
+- **Сервер:** 95.163.227.26 (REG.RU Cloud VPS, Москва)
+- **SSH:** Используйте SSH-ключи (см. `~/.ssh/config`)
+- **API URL:** http://95.163.227.26:8000
+- **Домен:** calendar.housler.ru (нужно перенастроить DNS на новый IP)
 - **Git:** https://github.com/nikita-tita/ai-calendar-assistant
+
+> **Security:** Credentials хранятся в 1Password. Никогда не коммитьте пароли в репозиторий.
 
 ---
 
@@ -206,4 +211,4 @@ MIT License
 
 ---
 
-**Последнее обновление:** 2025-12-04
+**Последнее обновление:** 2026-01-09
