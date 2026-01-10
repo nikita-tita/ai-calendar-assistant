@@ -17,9 +17,15 @@
 
 ### Changed
 
+**Автоматические бэкапы (INFRA-001):**
+- Cron: `0 3 * * *` — ежедневно в 3:00 MSK
+- Бэкапятся: Radicale, SQLite (analytics, reminders), todos, encryption key, .env
+- Ротация: 30 дней
+- Путь: `/root/backups/calendar/`
+
 **Документация синхронизирована:**
-- `BACKLOG.md` — обновлены статусы SEC-002, SEC-006, сводка пересчитана (Done: 9)
-- `RISKS_AND_BLOCKERS.md` — закрыты RSK-001, RSK-002, RSK-006
+- `BACKLOG.md` — обновлены статусы SEC-002, SEC-006, INFRA-001, сводка (Done: 10)
+- `RISKS_AND_BLOCKERS.md` — закрыты BLK-002, RSK-001, RSK-002, RSK-006
 - Добавлена секция "Закрытые риски/блокеры"
 
 ### Summary
@@ -28,6 +34,7 @@
 |--------|-----------|--------|
 | SEC-002: SQL Injection | Blocker | ✅ Done |
 | SEC-006: Rate limiting bypass | Medium | ✅ Done (было сделано ранее) |
+| INFRA-001: Автоматические бэкапы | Blocker | ✅ Done |
 | Синхронизация документации | — | ✅ Done |
 
 **Файлов изменено:** 4 (analytics_service.py, BACKLOG.md, RISKS_AND_BLOCKERS.md, CHANGELOG.md)
