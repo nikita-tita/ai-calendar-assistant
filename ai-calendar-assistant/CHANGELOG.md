@@ -8,6 +8,23 @@
 
 ## [2026-01-10] - Security Sprint: Git Cleanup & SQL Injection Fix
 
+### Added
+
+**API Integration Tests (TEST-001):**
+- `tests/integration/test_api_events.py` — 15 тестов для Events API
+  - Health check, CRUD operations, auth checks, validation
+  - EventCreateRequest/UpdateRequest validation
+  - Cache cleanup tests
+- `tests/integration/test_api_todos.py` — 18 тестов для Todos API
+  - Health check, CRUD operations, auth checks
+  - Priority handling, partial updates
+  - TodoCreateRequest/UpdateRequest validation
+- `tests/integration/test_api_admin.py` — 30 тестов для Admin API v1/v2
+  - Admin v1: 3-password auth, stats, users, dialog, events, todos, timeline, actions, errors
+  - Admin v2: login/2FA, logout, me, stats, users, audit-logs, LLM costs, user metrics
+  - Security tests: rate limiting, auth requirements
+  - Query parameter validation
+
 ### Security
 
 **Git History Cleanup (SEC-001):**
@@ -44,9 +61,10 @@
 | SEC-002: SQL Injection | Blocker | ✅ Done |
 | SEC-006: Rate limiting bypass | Medium | ✅ Done (было сделано ранее) |
 | INFRA-001: Автоматические бэкапы | Blocker | ✅ Done |
+| TEST-001: API integration tests | Blocker | ✅ Done |
 | Синхронизация документации | — | ✅ Done |
 
-**Blocker'ов закрыто сегодня:** 4 (SEC-001, SEC-002, INFRA-001, BLK-001, BLK-002)
+**Blocker'ов закрыто сегодня:** 5 (SEC-001, SEC-002, INFRA-001, TEST-001, BLK-001, BLK-002)
 
 ---
 

@@ -27,11 +27,11 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 
 | Приоритет | Всего | Done | In Progress | Todo | Backlog |
 |-----------|-------|------|-------------|------|---------|
-| **Blocker (P0)** | 10 | 7 | 0 | 3 | 0 |
+| **Blocker (P0)** | 10 | 8 | 0 | 2 | 0 |
 | **High (P1)** | 13 | 3 | 0 | 10 | 0 |
 | **Medium (P2)** | 19 | 1 | 0 | 0 | 18 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **11** | **0** | **13** | **21** |
+| **Итого** | **45** | **12** | **0** | **12** | **21** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -46,6 +46,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ SEC-002: SQL Injection — все f-string SQL заменены на параметризованные запросы
 - ✅ SEC-006: Rate limiting bypass — distributed rate limiting через Redis
 - ✅ INFRA-001: Автоматические бэкапы — cron настроен, бэкапы создаются в 3:00
+- ✅ TEST-001: API тесты — 60 тестов для events, todos, admin v1/v2 endpoints
 
 ---
 
@@ -332,27 +333,29 @@ def _get_user_calendar(self, user_id: str):
 
 ## TEST-001: Тесты для API endpoints
 
-- **Статус:** `todo`
+- **Статус:** `done` ✅
 - **Приоритет:** Blocker
 - **Категория:** Тестирование
 - **Файл:** `tests/integration/test_api_*.py`
 - **Риск:** Regression в production
+- **Выполнено:** 2026-01-10
 
 **Цель:** Покрыть тестами критические API endpoints.
 
 **Контекст:** API endpoints (events, todos, admin) имеют 0% покрытия.
 
 **Результат:**
-- 100% coverage для API routers
-- ~50 новых тестов
+- Тесты для events, todos, admin v1, admin v2 API
+- ~60 новых тестов
+- Покрытие: health check, CRUD, validation, auth checks, error responses
 
 **DoD:**
-- [ ] test_api_events.py: CRUD operations
-- [ ] test_api_todos.py: CRUD operations
-- [ ] test_api_admin.py: auth, dashboard
-- [ ] Тесты auth middleware
-- [ ] Тесты error responses
-- [ ] CI запускает тесты
+- [x] test_api_events.py: CRUD operations, validation, cache tests
+- [x] test_api_todos.py: CRUD operations, priority handling
+- [x] test_api_admin.py: v1 (3-password) + v2 (login/2FA) endpoints
+- [x] Тесты auth middleware (401 checks)
+- [x] Тесты error responses (422 validation)
+- [ ] CI запускает тесты (отложено)
 
 **Зависимости:** Нет
 **Сложность:** L (2-3 дня)
