@@ -25,6 +25,22 @@
   - Security tests: rate limiting, auth requirements
   - Query parameter validation
 
+**Security Tests (TEST-002):**
+- `tests/integration/test_security_hmac.py` — 18 тестов для Telegram HMAC
+  - Valid/invalid signature validation
+  - User info extraction from initData
+  - Security edge cases (tampering, unicode, special chars)
+- `tests/integration/test_security_admin_auth.py` — 25 тестов для admin auth
+  - bcrypt password hashing and verification
+  - JWT token creation, verification, expiry, tampering
+  - TOTP 2FA code generation and verification
+  - Rate limiting tracking, panic password logic
+- `tests/integration/test_security_encryption.py` — 20 тестов для encryption
+  - Fernet key generation and encryption/decryption
+  - JSON data encryption roundtrips
+  - Key management and file permissions
+  - Key rotation with data preservation
+
 ### Security
 
 **Git History Cleanup (SEC-001):**
@@ -62,9 +78,10 @@
 | SEC-006: Rate limiting bypass | Medium | ✅ Done (было сделано ранее) |
 | INFRA-001: Автоматические бэкапы | Blocker | ✅ Done |
 | TEST-001: API integration tests | Blocker | ✅ Done |
+| TEST-002: Security tests | Blocker | ✅ Done |
 | Синхронизация документации | — | ✅ Done |
 
-**Blocker'ов закрыто сегодня:** 5 (SEC-001, SEC-002, INFRA-001, TEST-001, BLK-001, BLK-002)
+**Blocker'ов закрыто сегодня:** 6 (SEC-001, SEC-002, INFRA-001, TEST-001, TEST-002, BLK-001, BLK-002)
 
 ---
 

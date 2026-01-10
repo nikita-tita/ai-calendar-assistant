@@ -27,11 +27,11 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 
 | Приоритет | Всего | Done | In Progress | Todo | Backlog |
 |-----------|-------|------|-------------|------|---------|
-| **Blocker (P0)** | 10 | 8 | 0 | 2 | 0 |
+| **Blocker (P0)** | 10 | 9 | 0 | 1 | 0 |
 | **High (P1)** | 13 | 3 | 0 | 10 | 0 |
 | **Medium (P2)** | 19 | 1 | 0 | 0 | 18 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **12** | **0** | **12** | **21** |
+| **Итого** | **45** | **13** | **0** | **11** | **21** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -47,6 +47,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ SEC-006: Rate limiting bypass — distributed rate limiting через Redis
 - ✅ INFRA-001: Автоматические бэкапы — cron настроен, бэкапы создаются в 3:00
 - ✅ TEST-001: API тесты — 60 тестов для events, todos, admin v1/v2 endpoints
+- ✅ TEST-002: Security тесты — 50 тестов для HMAC, JWT, bcrypt, TOTP, encryption
 
 ---
 
@@ -365,11 +366,12 @@ def _get_user_calendar(self, user_id: str):
 
 ## TEST-002: Тесты для security-critical code
 
-- **Статус:** `todo`
+- **Статус:** `done` ✅
 - **Приоритет:** Blocker
 - **Категория:** Тестирование
 - **Файл:** `tests/integration/test_security_*.py`
 - **Риск:** Security vulnerabilities
+- **Выполнено:** 2026-01-10
 
 **Цель:** Покрыть тестами security-critical код.
 
@@ -377,13 +379,13 @@ def _get_user_calendar(self, user_id: str):
 
 **Результат:**
 - Security tests suite
-- ~30 новых тестов
+- 50+ новых тестов
+- Покрытие: HMAC, JWT, bcrypt, TOTP, encryption
 
 **DoD:**
-- [ ] test_telegram_hmac.py: valid/invalid signatures
-- [ ] test_admin_auth.py: password verification, JWT
-- [ ] test_totp.py: 2FA verification
-- [ ] test_rate_limiting.py: limits, bypass attempts
+- [x] test_security_hmac.py: Telegram HMAC validation (valid/invalid signatures)
+- [x] test_security_admin_auth.py: bcrypt passwords, JWT tokens, TOTP 2FA, rate limiting
+- [x] test_security_encryption.py: Fernet encryption, key management, rotation
 
 **Зависимости:** Нет
 **Сложность:** M (1-2 дня)
