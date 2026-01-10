@@ -1,8 +1,8 @@
 # Бэклог проекта: AI Calendar Assistant
 
-**Последнее обновление:** 2026-01-09
+**Последнее обновление:** 2026-01-10
 **Источник:** FULL_CODE_REVIEW_2026-01-09.md (Principal Engineer Review)
-**Версия бэклога:** 2.0
+**Версия бэклога:** 2.1
 
 ---
 
@@ -27,19 +27,23 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 
 | Приоритет | Всего | Done | In Progress | Todo | Backlog |
 |-----------|-------|------|-------------|------|---------|
-| **Blocker (P0)** | 10 | 3 | 0 | 7 | 0 |
+| **Blocker (P0)** | 10 | 5 | 0 | 5 | 0 |
 | **High (P1)** | 13 | 3 | 0 | 10 | 0 |
-| **Medium (P2)** | 19 | 0 | 0 | 0 | 19 |
+| **Medium (P2)** | 19 | 1 | 0 | 0 | 18 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **6** | **0** | **17** | **22** |
+| **Итого** | **45** | **9** | **0** | **15** | **21** |
 
-### Выполнено сегодня (2026-01-09)
+### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
 - ✅ SEC-004: CSRF защита — добавлен CSRFProtectionMiddleware + SameSite=Strict cookies
 - ✅ SEC-005: Security headers — добавлен SecurityHeadersMiddleware
 - ✅ BIZ-001: Race condition в cache — добавлен threading.Lock()
 - ✅ BIZ-002: Token limit для LLM — добавлен MAX_INPUT_CHARS=4000
 - ✅ BIZ-003: Cache invalidation — добавлен invalidate_cache() после mutations
+
+### Выполнено (2026-01-10)
+- ✅ SEC-002: SQL Injection — все f-string SQL заменены на параметризованные запросы
+- ✅ SEC-006: Rate limiting bypass — distributed rate limiting через Redis
 
 ---
 
@@ -70,7 +74,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - [ ] Redis password — новый
 - [ ] Admin passwords — новые
 - [ ] Encryption key — новый (данные перешифрованы)
-- [ ] gitleaks добавлен в pre-commit
+- [x] gitleaks добавлен в pre-commit (2026-01-10: .gitleaks.toml + .pre-commit-config.yaml)
 - [ ] Бот работает с новыми credentials
 
 **Зависимости:** Нет
@@ -81,23 +85,25 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 
 ## SEC-002: Исправить SQL Injection
 
-- **Статус:** `todo`
+- **Статус:** `done` ✅
 - **Приоритет:** Blocker
 - **Категория:** Безопасность
-- **Файл:** `app/services/analytics_service.py:437-458, 783-787`
+- **Файл:** `app/services/analytics_service.py:436-462`
 - **Риск:** Утечка данных всех пользователей
+- **Выполнено:** 2026-01-10
 
 **Цель:** Устранить SQL Injection уязвимости.
 
-**Контекст:** f-strings используются для SQL запросов вместо параметризованных.
+**Контекст:** f-strings использовались для SQL запросов вместо параметризованных.
 
 **Результат:**
 - Все SQL запросы параметризованы
-- Нет string interpolation в SQL
+- event_types и msg_types используют `?` placeholders
+- Значения передаются через параметры execute()
 
 **DoD:**
-- [ ] Все f-string SQL заменены на `?` placeholders
-- [ ] Audit всех SQL в проекте (grep)
+- [x] Все f-string SQL заменены на `?` placeholders
+- [x] Audit всех SQL в проекте (grep) — чисто
 - [ ] Unit test с SQL injection payloads
 - [ ] sqlmap scan чист
 
@@ -749,10 +755,16 @@ def _get_user_calendar(self, user_id: str):
 - **Сложность:** S
 
 ## SEC-006: Rate limiting bypass via IP spoofing
-- **Статус:** `backlog`
-- **Файл:** `admin_auth_service.py:213-253`
-- **Описание:** X-Forwarded-For можно подделать
+- **Статус:** `done` ✅
+- **Файл:** `admin_auth_service.py:63-294`
+- **Описание:** Distributed rate limiting через Redis, fallback на in-memory
+- **Выполнено:** 2026-01-10
 - **Сложность:** S
+
+**Результат:**
+- Redis используется для distributed rate limiting
+- Fallback на threading.Lock() + dict при недоступности Redis
+- IP получается из request напрямую (не из X-Forwarded-For)
 
 ## SEC-007: JWT refresh token binding
 - **Статус:** `backlog`

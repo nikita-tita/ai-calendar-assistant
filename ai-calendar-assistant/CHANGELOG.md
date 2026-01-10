@@ -6,6 +6,34 @@
 
 ---
 
+## [2026-01-10] - SQL Injection Fix & Documentation Sync
+
+### Fixed
+
+**SQL Injection (SEC-002):**
+- `app/services/analytics_service.py:436-462` — все f-string SQL заменены на параметризованные запросы
+- `event_types` и `msg_types` теперь используют `?` placeholders
+- Значения передаются через параметры `execute()`
+
+### Changed
+
+**Документация синхронизирована:**
+- `BACKLOG.md` — обновлены статусы SEC-002, SEC-006, сводка пересчитана (Done: 9)
+- `RISKS_AND_BLOCKERS.md` — закрыты RSK-001, RSK-002, RSK-006
+- Добавлена секция "Закрытые риски/блокеры"
+
+### Summary
+
+| Задача | Приоритет | Статус |
+|--------|-----------|--------|
+| SEC-002: SQL Injection | Blocker | ✅ Done |
+| SEC-006: Rate limiting bypass | Medium | ✅ Done (было сделано ранее) |
+| Синхронизация документации | — | ✅ Done |
+
+**Файлов изменено:** 4 (analytics_service.py, BACKLOG.md, RISKS_AND_BLOCKERS.md, CHANGELOG.md)
+
+---
+
 ## [2026-01-09] - Security & Stability Sprint
 
 ### Added

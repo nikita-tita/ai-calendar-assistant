@@ -433,28 +433,32 @@ class AnalyticsService:
                 (week_start,)
             ).fetchone()[0]
 
-            # Events
-            event_types = "('event_create', 'event_update', 'event_delete')"
+            # Events (SEC-002: parameterized queries to prevent SQL injection)
+            event_types = ['event_create', 'event_update', 'event_delete']
+            event_placeholders = ','.join('?' * len(event_types))
             total_events = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND is_test = 0'
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN ({event_placeholders}) AND is_test = 0',
+                event_types
             ).fetchone()[0]
             events_today = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ? AND is_test = 0',
-                (today_start,)
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN ({event_placeholders}) AND timestamp >= ? AND is_test = 0',
+                (*event_types, today_start)
             ).fetchone()[0]
             events_week = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {event_types} AND timestamp >= ? AND is_test = 0',
-                (week_start,)
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN ({event_placeholders}) AND timestamp >= ? AND is_test = 0',
+                (*event_types, week_start)
             ).fetchone()[0]
 
-            # Messages
-            msg_types = "('text_message', 'voice_message')"
+            # Messages (SEC-002: parameterized queries to prevent SQL injection)
+            msg_types = ['text_message', 'voice_message']
+            msg_placeholders = ','.join('?' * len(msg_types))
             total_messages = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types} AND is_test = 0'
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN ({msg_placeholders}) AND is_test = 0',
+                msg_types
             ).fetchone()[0]
             messages_today = conn.execute(
-                f'SELECT COUNT(*) FROM actions WHERE action_type IN {msg_types} AND timestamp >= ? AND is_test = 0',
-                (today_start,)
+                f'SELECT COUNT(*) FROM actions WHERE action_type IN ({msg_placeholders}) AND timestamp >= ? AND is_test = 0',
+                (*msg_types, today_start)
             ).fetchone()[0]
 
             # Errors
