@@ -11,18 +11,15 @@
 
 ## CREDENTIALS (ВАЖНО!)
 
-**Пароли НЕ хранятся в git!** Все credentials находятся в локальном файле:
+**Пароли НЕ хранятся в git!** Все credentials в 1Password.
 
-```
-../../CREDENTIALS.local
-```
+| Секрет | 1Password Entry |
+|--------|-----------------|
+| Server Root Password | `Housler Server Root` |
+| Telegram Bot Token | `Housler Calendar Bot` |
+| Yandex GPT API Key | `Housler Yandex GPT` |
 
-Переменные в этом файле:
-- `$SERVER_PASSWORD` - пароль SSH для сервера
-- `$ADMIN_PRIMARY_PASSWORD` - пароль админки
-- `$ADMIN_SECONDARY_PASSWORD` - второй пароль админки
-
-**Перед деплоем:** прочитай CREDENTIALS.local и подставь значения.
+**SSH доступ:** Используй SSH-ключи (см. `~/.ssh/config`), НЕ пароли.
 
 ---
 
@@ -134,14 +131,16 @@
 # 1. Локально: коммит и пуш
 git add -A && git commit -m "fix: описание" && git push origin main
 
-# 2. На сервере: pull и rebuild
-sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 '
+# 2. На сервере: pull и rebuild (через SSH-ключ)
+ssh root@95.163.227.26 '
   cd /root/ai-calendar-assistant &&
   git pull origin main &&
   docker compose -f docker-compose.secure.yml build --no-cache telegram-bot &&
   docker compose -f docker-compose.secure.yml up -d telegram-bot
 '
 ```
+
+> **Note:** Используйте SSH-ключи для авторизации. Настройка: `~/.ssh/config`
 
 ### Проверка деплоя
 
@@ -150,10 +149,10 @@ sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 '
 curl http://95.163.227.26:8000/health
 
 # Проверить статус контейнеров
-sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 'docker ps'
+ssh root@95.163.227.26 'docker ps'
 
 # Проверить логи
-sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26 'docker logs telegram-bot --tail 50'
+ssh root@95.163.227.26 'docker logs telegram-bot --tail 50'
 ```
 
 ---
@@ -229,12 +228,14 @@ const APP_VERSION = 'YYYY-MM-DD-vN';  // Пример: 2025-12-04-v2
 ## КОНТАКТЫ И ДОСТУПЫ
 
 - **Сервер:** 95.163.227.26
-- **SSH:** `sshpass -p '$SERVER_PASSWORD' ssh root@95.163.227.26`
-- **Root пароль:** `$SERVER_PASSWORD`
+- **SSH:** `ssh root@95.163.227.26` (через SSH-ключ)
+- **Root пароль:** 1Password: `Housler Server Root`
 - **Git:** https://github.com/nikita-tita/ai-calendar-assistant
-- **Прод URL:** https://calendar.housler.ru (домен нужно перенастроить на новый IP)
+- **Прод URL:** https://calendar.housler.ru
 - **API URL:** http://95.163.227.26:8000
 - **Рабочая директория на сервере:** `/root/ai-calendar-assistant/`
+
+> **Security:** Никогда не коммитьте пароли в git. Все credentials в 1Password.
 
 ---
 
@@ -273,6 +274,10 @@ const APP_VERSION = 'YYYY-MM-DD-vN';  // Пример: 2025-12-04-v2
 
 Новый сервер:
 - **IP:** 95.163.227.26
-- **Пароль root:** $SERVER_PASSWORD
+- **SSH:** Используйте SSH-ключи (1Password: `Housler Server Root`)
 - **Reg.ru панель:** https://cloud.reg.ru/panel/servers/
 - **Сервер:** Peach Lutetium (Ubuntu 24.04)
+
+---
+
+**Последнее обновление:** 2026-01-09
