@@ -35,7 +35,7 @@ cd /root/ai-calendar-assistant
 
 # Создание .env файла
 cat > .env << 'ENVEOF'
-TELEGRAM_BOT_TOKEN=***REMOVED***
+TELEGRAM_BOT_TOKEN=8378762774:AAEYXYVmx84pgp2_sn_U7RXYTgfNJMY-Klk
 OPENAI_API_KEY=sk-proj-your-openai-key-here
 ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
 RADICALE_URL=https://calendar-bot-production-e1ac.up.railway.app

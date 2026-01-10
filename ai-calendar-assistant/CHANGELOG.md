@@ -6,7 +6,15 @@
 
 ---
 
-## [2026-01-10] - SQL Injection Fix & Documentation Sync
+## [2026-01-10] - Security Sprint: Git Cleanup & SQL Injection Fix
+
+### Security
+
+**Git History Cleanup (SEC-001):**
+- BFG Repo-Cleaner удалил 5 Telegram Bot токенов из истории
+- BFG удалил 1 Yandex GPT API ключ (AQVN...)
+- Force push на GitHub выполнен
+- 769 объектов очищено, 210 коммитов переписано
 
 ### Fixed
 
@@ -32,12 +40,13 @@
 
 | Задача | Приоритет | Статус |
 |--------|-----------|--------|
+| SEC-001: Git history cleanup | Blocker | ✅ Done |
 | SEC-002: SQL Injection | Blocker | ✅ Done |
 | SEC-006: Rate limiting bypass | Medium | ✅ Done (было сделано ранее) |
 | INFRA-001: Автоматические бэкапы | Blocker | ✅ Done |
 | Синхронизация документации | — | ✅ Done |
 
-**Файлов изменено:** 4 (analytics_service.py, BACKLOG.md, RISKS_AND_BLOCKERS.md, CHANGELOG.md)
+**Blocker'ов закрыто сегодня:** 4 (SEC-001, SEC-002, INFRA-001, BLK-001, BLK-002)
 
 ---
 

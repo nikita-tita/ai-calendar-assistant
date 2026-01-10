@@ -53,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/nikita-tita/ai-calendar-bot/main/in
 
 Скрипт запросит:
 
-1. **TELEGRAM_BOT_TOKEN**: `***REMOVED***`
+1. **TELEGRAM_BOT_TOKEN**: `8378762774:AAEYXYVmx84pgp2_sn_U7RXYTgfNJMY-Klk`
 2. **OPENAI_API_KEY**: твой ключ OpenAI
 3. **RADICALE_URL**: `https://calendar-bot-production-e1ac.up.railway.app`
 

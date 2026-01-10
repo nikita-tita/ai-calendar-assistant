@@ -43,7 +43,7 @@ def _score_price_context(self, listing: Dict[str, Any], client_profile: Dict[str
 ### Property Bot (@aipropertyfinder_bot)
 - **Container**: property-bot
 - **Status**: Up 2 minutes (polling normally)
-- **Token**: ***REMOVED***
+- **Token**: 7964619356:AAGXqaiVnsUfYpOSi45KP2LnSFCIrL-NIN8
 - **Link**: https://t.me/aipropertyfinder_bot
 - **Polling**: Every 10 seconds (working)
 

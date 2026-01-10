@@ -37,7 +37,7 @@ property-bot (Property Search Bot)  ← NEW!
 ### 2. Property Bot (NEW!)
 - **Bot Username**: @aipropertyfinder_bot
 - **Container**: `property-bot`
-- **Token**: `***REMOVED***`
+- **Token**: `7964619356:AAGXqaiVnsUfYpOSi45KP2LnSFCIrL-NIN8`
 - **Link**: https://t.me/aipropertyfinder_bot
 - **Status**: ✅ Running
 - **Purpose**: Property search & recommendations

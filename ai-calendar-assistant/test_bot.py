@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
 # Bot token
-TOKEN = "***REMOVED***"
+TOKEN = "8378762774:AAEYXYVmx84pgp2_sn_U7RXYTgfNJMY-Klk"
 
 # Setup logging
 logging.basicConfig(

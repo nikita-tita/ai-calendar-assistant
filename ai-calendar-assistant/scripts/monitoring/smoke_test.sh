@@ -11,7 +11,7 @@
 set -e
 
 # ===== CONFIGURATION =====
-TELEGRAM_BOT_TOKEN="***REMOVED***"
+TELEGRAM_BOT_TOKEN="8107613087:AAHaS8Yatp80tG8jQZeBLYUat1KB_BRB2qI"
 # Chat ID will be detected on first message or set manually
 TELEGRAM_CHAT_ID="${SMOKE_TEST_CHAT_ID:-}"
 

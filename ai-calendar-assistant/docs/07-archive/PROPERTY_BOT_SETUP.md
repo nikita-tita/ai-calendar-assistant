@@ -4,7 +4,7 @@
 
 Property search functionality has been moved to a separate Telegram bot:
 - **Bot Username**: @aipropertyfinder_bot
-- **Bot Token**: `***REMOVED***`
+- **Bot Token**: `7964619356:AAGXqaiVnsUfYpOSi45KP2LnSFCIrL-NIN8`
 - **Link**: https://t.me/aipropertyfinder_bot
 
 ## Architecture
