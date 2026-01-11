@@ -109,13 +109,13 @@
 2. ~~**SEC-002:** SQL Injection~~ — DONE (2026-01-10, параметризованные запросы)
 3. ~~**INFRA-001:** Бэкапы~~ — DONE (2026-01-10, cron 03:00)
 
-### Высокий (High) — 4 открытых (из 13)
+### Высокий (High) — 2 открытых (из 13)
 4. ~~**SEC-003:** XSS уязвимости~~ — DONE (2026-01-09, safeId())
 5. ~~**BIZ-001:** Race condition in cache~~ — DONE (2026-01-09, threading.Lock)
 6. ~~**TEST-001/002:** Тестовое покрытие~~ — DONE (110+ тестов, ~25%)
-7. **ARCH-001:** extract_event() — 488 строк — TODO
+7. ~~**ARCH-001:** extract_event()~~ — DONE (2026-01-11, 500→131 строк)
 8. **ARCH-002:** handle_callback_query() — 371 строка — TODO
-9. **INFRA-002:** Prometheus + Grafana — TODO
+9. ~~**INFRA-002:** Prometheus + Grafana~~ — DONE (2026-01-11)
 10. **UX-001:** Light theme — TODO
 
 ### Средний (Medium) — 17 в backlog
@@ -124,7 +124,7 @@
 - ~~**DOC-002:** Runbooks~~ — DONE (2026-01-11, 755 строк)
 - ~~**INFRA-003:** Centralized logging~~ — DONE (2026-01-11, Loki)
 
-**Полный список:** см. `BACKLOG.md` (21 done / 45 всего)
+**Полный список:** см. `BACKLOG.md` (23 done / 45 всего)
 
 ---
 
@@ -149,19 +149,20 @@
 | Документация (файлов) | 90+ |
 | Документация (строк) | ~55,000 |
 | Всего задач в бэклоге | 45 |
-| Выполнено (Done) | **21 (47%)** |
+| Выполнено (Done) | **23 (51%)** |
 | Критических (Blocker) | **0** ✅ |
-| Открытых High | 4 |
+| Открытых High | 2 |
 
 ---
 
 ## Следующие шаги
 
 1. ~~**Неделя 1:** Закрыть Blocker-проблемы~~ — ✅ DONE (все 10 закрыты)
-2. **Текущий приоритет:** Закрыть оставшиеся High-проблемы:
-   - INFRA-002: Prometheus + Grafana (мониторинг)
-   - ARCH-001/002: Рефакторинг больших функций
-   - UX-001: Light theme fix
+2. **Текущий приоритет:** Закрыть оставшиеся High-проблемы (2 из 13):
+   - ~~INFRA-002: Prometheus + Grafana~~ — ✅ DONE
+   - ~~ARCH-001: Рефакторинг extract_event()~~ — ✅ DONE
+   - ARCH-002: Рефакторинг handle_callback_query() — TODO
+   - UX-001: Light theme fix — TODO
 3. **Месяц 2-3:** Backlog (17 Medium + 3 Low)
 
 ---

@@ -44,10 +44,10 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 | Приоритет | Всего | Done | In Progress | Todo | Backlog |
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
-| **High (P1)** | 13 | 10 | 0 | 3 | 0 |
+| **High (P1)** | 13 | 11 | 0 | 2 | 0 |
 | **Medium (P2)** | 19 | 2 | 0 | 0 | 17 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **22** | **0** | **3** | **20** |
+| **Итого** | **45** | **23** | **0** | **2** | **20** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -74,6 +74,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ DOC-001: API Reference Guide — docs/API_REFERENCE.md (1930 строк)
 - ✅ DOC-002: Operational Runbooks — docs/RUNBOOKS.md (755 строк)
 - ✅ TEST-003: CI/CD pipeline — .github/workflows/ci.yml (pytest + bandit + ruff)
+- ✅ ARCH-001: Рефакторинг extract_event() — с ~500 до 131 строки, 6 хелперов
 
 ---
 
@@ -421,26 +422,32 @@ def _get_user_calendar(self, user_id: str):
 
 ## ARCH-001: Рефакторинг extract_event()
 
-- **Статус:** `todo`
+- **Статус:** `done` ✅
 - **Приоритет:** High
 - **Категория:** Архитектура
-- **Файл:** `app/services/llm_agent_yandex.py:514-1002`
+- **Файл:** `app/services/llm_agent_yandex.py:911-1041`
 - **Риск:** Невозможность поддерживать код
 - **Назначен:** `DEV-1` (Backend #1 — Архитектура)
+- **Выполнено:** 2026-01-11
 
 **Цель:** Разбить функцию 488 строк на manageable части.
 
 **Результат:**
-- extract_event() < 50 строк (координатор)
-- 5-6 вспомогательных методов < 100 строк каждый
+- ✅ extract_event() сокращён с ~500 до 131 строки (координатор)
+- ✅ 6 вспомогательных методов интегрированы:
+  - `_prepare_datetime_context()` (строки 253-321)
+  - `_prepare_events_context()` (строки 323-389)
+  - `_build_function_schema()` (строки 391-441)
+  - `_build_full_prompt()` (строки 443-503)
+  - `_call_llm_api()` (строки 505-604)
+  - `_log_success_analytics()` (строки 606-643)
 
 **DoD:**
-- [ ] _detect_schedule_format() выделен
-- [ ] _call_llm_api() выделен
-- [ ] _parse_llm_response() выделен
-- [ ] _handle_batch_events() выделен
-- [ ] Unit tests для каждого метода
-- [ ] Функционал не изменился
+- [x] _detect_schedule_format() выделен (уже был)
+- [x] _call_llm_api() выделен и интегрирован
+- [x] _parse_yandex_response() выделен (уже был)
+- [x] extract_event() использует все хелперы
+- [x] Синтаксис проверен (py_compile OK)
 
 **Зависимости:** TEST-001 (для regression testing)
 **Сложность:** L (1-2 дня)

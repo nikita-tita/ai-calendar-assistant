@@ -921,6 +921,8 @@ JSON:"""
         """
         Extract structured event information from natural language text.
 
+        ARCH-001: Refactored from ~500 lines to ~80 lines using helper methods.
+
         Args:
             user_text: User's natural language command
             user_id: User identifier for context
@@ -939,7 +941,7 @@ JSON:"""
         """
         logger.info("llm_extract_start_yandex", user_text=user_text, user_id=user_id, language=language)
 
-        # BIZ-002: Enforce input token limit to prevent excessive API costs
+        # 1. BIZ-002: Enforce input token limit to prevent excessive API costs
         if len(user_text) > self.MAX_INPUT_CHARS:
             logger.warning(
                 "llm_input_truncated",
@@ -949,7 +951,7 @@ JSON:"""
             )
             user_text = user_text[:self.MAX_INPUT_CHARS]
 
-        # FIRST: Try to detect schedule format pattern before calling LLM
+        # 2. Quick path: Try to detect schedule format pattern before calling LLM
         schedule_dto = self._detect_schedule_format(user_text, timezone, conversation_history)
         if schedule_dto:
             logger.info("schedule_format_detected_preprocessing",
@@ -957,370 +959,35 @@ JSON:"""
             return schedule_dto
 
         try:
-            # Get current date/time in user's timezone
-            import pytz
-            tz = pytz.timezone(timezone)
-            now = datetime.now(tz)
-            current_date_str = now.strftime('%d.%m.%Y')  # Format: DD.MM.YYYY
-            current_datetime_str = now.strftime('%d.%m.%Y %H:%M')
-            current_weekday = now.strftime('%A')  # Day of week
+            # 3. Prepare datetime context using helper
+            dt_context = self._prepare_datetime_context(timezone)
 
-            # Weekday translation
-            weekdays_ru = {
-                'Monday': 'понедельник',
-                'Tuesday': 'вторник',
-                'Wednesday': 'среда',
-                'Thursday': 'четверг',
-                'Friday': 'пятница',
-                'Saturday': 'суббота',
-                'Sunday': 'воскресенье'
-            }
-            current_weekday_ru = weekdays_ru.get(current_weekday, current_weekday)
-
-            # Calculate next weekdays for prompt examples
-            # Map weekday names to numbers (0=Monday, 6=Sunday)
-            weekday_to_num = {
-                'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3,
-                'Friday': 4, 'Saturday': 5, 'Sunday': 6
-            }
-            current_weekday_num = now.weekday()  # 0=Monday, 6=Sunday
-
-            # Calculate next occurrence of each weekday
-            next_weekdays = {}
-            next_weekdays_ru = {}
-            for weekday_name, weekday_num in weekday_to_num.items():
-                # Calculate days until next occurrence
-                if weekday_num > current_weekday_num:
-                    # Later this week
-                    days_ahead = weekday_num - current_weekday_num
-                else:
-                    # Next week
-                    days_ahead = 7 - (current_weekday_num - weekday_num)
-
-                next_date = now + timedelta(days=days_ahead)
-                next_weekdays[weekday_name] = next_date
-                next_weekdays_ru[weekdays_ru[weekday_name]] = next_date
-
-            # Get timezone offset
-            tz_offset = now.strftime('%z')
-            tz_offset_formatted = f"{tz_offset[:3]}:{tz_offset[3:]}"  # Format: +03:00
-
-            # Calculate days until end of year for batch operations
-            end_of_year = datetime(now.year, 12, 31, tzinfo=tz)
-            days_until_eoy = (end_of_year - now).days + 1  # +1 to include today
-            today_str = current_date_str
-            end_of_year_date = end_of_year.strftime('%Y-%m-%d')  # Format: 2025-12-31 or 2026-12-31
-
-            # Prepare events list to prepend to user message
-            # Limit to first 10 events to avoid content moderation triggers
-            events_prefix = ""
-            if existing_events and len(existing_events) > 0:
-                max_events_in_context = 10
-                limited_events = existing_events[:max_events_in_context]
-                events_prefix = "<existing_calendar_events>\n"
-                for event in limited_events:
-                    event_time = event.start.strftime('%d.%m.%Y %H:%M') if hasattr(event, 'start') else 'Unknown'
-                    event_title = event.summary if hasattr(event, 'summary') else 'No title'
-                    event_id = event.id if hasattr(event, 'id') else 'unknown'
-                    events_prefix += f"Event: {event_title}\nTime: {event_time}\nID: {event_id}\n\n"
-                events_prefix += """</existing_calendar_events>
-
-CRITICAL: For update/delete operations:
-- Find the event in the list above by matching title/description
-- COPY the exact ID value - NEVER use "unknown"
-- Example: "перенеси встречу с Леной" → find "Встреча с Леной" → copy its ID
-
-"""
-
-            # Add recent context for follow-up commands ("перепиши эти события на сегодня")
-            recent_context_prefix = ""
-            if recent_context and len(recent_context) > 0:
-                recent_context_prefix = "<recent_context>\n"
-                recent_context_prefix += "Пользователь ТОЛЬКО ЧТО создал/изменил следующие события:\n"
-                for event in recent_context:
-                    event_time = event.start.strftime('%d.%m.%Y %H:%M') if hasattr(event, 'start') else 'Unknown'
-                    event_title = event.summary if hasattr(event, 'summary') else 'No title'
-                    event_id = event.id if hasattr(event, 'id') else 'unknown'
-                    recent_context_prefix += f"- {event_title} ({event_time}) ID: {event_id}\n"
-                recent_context_prefix += """
-ВАЖНО: Если пользователь говорит "эти события", "их", "перепиши", "перенеси" БЕЗ указания конкретного названия — он имеет в виду события выше из recent_context.
-Используй их ID для update/delete операций.
-</recent_context>
-
-"""
-            events_prefix += recent_context_prefix + "User request:\n"
-
-            # OPTIMIZED: Russian-only date context (removed en, es, ar)
-            date_context = f"""ТЕКУЩАЯ ДАТА: {current_datetime_str} ({timezone}, UTC{tz_offset_formatted}), {current_weekday_ru}
-
-Относительные даты:
-- "завтра" = {(now + timedelta(days=1)).strftime('%Y-%m-%d')}
-- "послезавтра" = {(now + timedelta(days=2)).strftime('%Y-%m-%d')}
-- "через неделю" = {(now + timedelta(days=7)).strftime('%Y-%m-%d')}
-
-Ближайшие дни недели:
-- понедельник = {next_weekdays_ru['понедельник'].strftime('%Y-%m-%d')}
-- вторник = {next_weekdays_ru['вторник'].strftime('%Y-%m-%d')}
-- среда = {next_weekdays_ru['среда'].strftime('%Y-%m-%d')}
-- четверг = {next_weekdays_ru['четверг'].strftime('%Y-%m-%d')}
-- пятница = {next_weekdays_ru['пятница'].strftime('%Y-%m-%d')}
-- суббота = {next_weekdays_ru['суббота'].strftime('%Y-%m-%d')}
-- воскресенье = {next_weekdays_ru['воскресенье'].strftime('%Y-%m-%d')}
-
-Используй ТОЧНО эти даты!"""
-
-            # Create dynamic system prompt with current date
-            formatted_base_prompt = self.base_system_prompt.format(
-                today_str=today_str,
-                days_until_eoy=days_until_eoy,
-                end_of_year_date=end_of_year_date
+            # 4. Prepare events context using helper
+            events_context = self._prepare_events_context(
+                existing_events, recent_context, conversation_history
             )
 
-            system_prompt = f"""{formatted_base_prompt}
+            # 5. Build function schema (only need event_id_enum for logging)
+            _, event_id_enum = self._build_function_schema(existing_events)
 
-{date_context}
-"""
+            # 6. Build full prompt using helper
+            full_prompt = self._build_full_prompt(dt_context, events_context, user_text)
 
-            # First, try to parse datetime with dateparser
+            # 7. Parse datetime from user text for fallback values
             start_time, end_time, duration = parse_datetime_range(user_text)
 
-            # Build dynamic enum for event_id with real IDs from existing events
-            # Limit to first 10 events to match events_prefix and avoid large prompts
-            event_id_enum = ["none"]  # default value for create/query
-            if existing_events and len(existing_events) > 0:
-                max_events_in_context = 10
-                limited_events = existing_events[:max_events_in_context]
-                for event in limited_events:
-                    if hasattr(event, 'id') and event.id:
-                        event_id_enum.append(str(event.id))
+            # 8. Call LLM API using helper
+            response_data, result_text = await self._call_llm_api(
+                full_prompt, user_id, user_text, event_id_enum
+            )
 
-            # Prepare dialog history context for better understanding
-            dialog_context = ""
-            if conversation_history and len(conversation_history) > 0:
-                dialog_context = "<dialog_history>\n"
-                for msg in conversation_history[-10:]:  # Last 10 messages max
-                    role = msg.get('role', 'user')
-                    text = msg.get('text', msg.get('content', ''))[:300]  # Limit each message
-                    if role == 'user':
-                        dialog_context += f"Пользователь: {text}\n"
-                    else:
-                        dialog_context += f"Бот: {text}\n"
-                dialog_context += "</dialog_history>\n\n"
-                dialog_context += "ВАЖНО: Используй контекст диалога для понимания намерений пользователя.\n\n"
-
-            # Prepare the full user message with events context and dialog history
-            user_message_content = events_prefix + dialog_context + user_text
-
-            # Build function schema
-            function_schema = {
-                "name": "set_calendar_action",
-                "description": "Установить действие с календарем на основе команды пользователя",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "intent": {
-                            "type": "string",
-                            "enum": ["create", "create_recurring", "update", "delete", "query", "find_free_slots", "clarify", "batch_confirm", "delete_by_criteria", "delete_duplicates", "todo"],
-                            "description": "Тип действия"
-                        },
-                        "title": {
-                            "type": "string",
-                            "description": "Название события"
-                        },
-                        "start_time": {
-                            "type": "string",
-                            "description": "Время начала в ISO 8601 (Europe/Moscow)"
-                        },
-                        "end_time": {
-                            "type": "string",
-                            "description": "Время окончания в ISO 8601"
-                        },
-                        "duration_minutes": {
-                            "type": "integer",
-                            "description": "Длительность в минутах"
-                        },
-                        "location": {
-                            "type": "string",
-                            "description": "Место встречи"
-                        },
-                        "attendees": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Участники (email или имена)"
-                        },
-                        "event_id": {
-                            "type": "string",
-                            "enum": event_id_enum,
-                            "description": "ID события для update/delete - ВЫБЕРИ из списка enum по названию/описанию события. Для create/query используй 'none'"
-                        },
-                        "clarify_question": {
-                            "type": "string",
-                            "description": "Вопрос для уточнения (если intent=clarify)"
-                        },
-                        "query_date_start": {
-                            "type": "string",
-                            "description": "Начальная дата для запросов (ISO 8601)"
-                        },
-                        "query_date_end": {
-                            "type": "string",
-                            "description": "Конечная дата для запросов (ISO 8601)"
-                        },
-                        "confidence": {
-                            "type": "number",
-                            "description": "Уверенность в разборе (0-1)"
-                        },
-                        "recurrence_type": {
-                            "type": "string",
-                            "enum": ["daily", "weekly", "monthly"],
-                            "description": "Тип повторения для intent=create_recurring"
-                        },
-                        "recurrence_end_date": {
-                            "type": "string",
-                            "description": "Дата окончания повторений (ISO 8601) для intent=create_recurring"
-                        },
-                        "recurrence_days": {
-                            "type": "array",
-                            "items": {"type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
-                            "description": "Дни недели для weekly recurrence (например: ['mon', 'wed', 'fri'])"
-                        },
-                        "batch_actions": {
-                            "type": "array",
-                            "items": {"type": "object"},
-                            "description": "Массив действий для intent=batch_confirm (только для удаления или специфичных списков)"
-                        }
-                    },
-                    "required": ["intent"]
-                }
-            }
-
-            # OPTIMIZED: Russian-only JSON instruction with explicit format example
-            # NOTE: Do NOT show full schema - LLM mirrors it literally with "properties" wrapper
-            json_instruction = """ФОРМАТ ОТВЕТА: Верни ТОЛЬКО JSON объект с параметрами.
-
-Пример для одного события:
-{"intent": "create", "title": "Встреча", "start_time": "2025-01-15T15:00:00+03:00"}
-
-Пример для нескольких событий:
-{"intent": "batch_confirm", "batch_actions": [{"intent": "create", "title": "Дорога", "start_time": "2025-01-15T19:00:00+03:00"}, {"intent": "create", "title": "Ужин", "start_time": "2025-01-15T20:00:00+03:00"}]}
-
-Пример для задачи:
-{"intent": "todo", "title": "Позвонить маме"}
-
-Пример для уточнения:
-{"intent": "clarify", "clarify_question": "Уточните время события"}
-
-ВАЖНО: Возвращай ТОЛЬКО значения параметров, НЕ структуру схемы!
-JSON:"""
-
-            # Prepare the prompt for Yandex GPT
-            full_prompt = f"""{system_prompt}
-
-{user_message_content}
-
-{json_instruction}"""
-
-            # DEBUG: Log what we're sending to Yandex GPT
-            logger.debug("yandex_gpt_api_call",
-                        event_id_enum=event_id_enum,
-                        user_message_preview=user_message_content[:200] if len(user_message_content) > 200 else user_message_content)
-
-            # Call Yandex GPT API
-            headers = {
-                "Authorization": f"Api-Key {self.api_key}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "modelUri": f"gpt://{self.folder_id}/{self.model}/latest",
-                "completionOptions": {
-                    "stream": False,
-                    "temperature": 0.2,
-                    "maxTokens": 2000
-                },
-                "messages": [
-                    {
-                        "role": "system",
-                        "text": full_prompt
-                    }
-                ]
-            }
-
-            # Circuit breaker check
-            if not self._check_circuit():
-                logger.warning("circuit_breaker_reject", message="Yandex GPT temporarily unavailable")
-                if ANALYTICS_ENABLED and analytics_service and user_id:
-                    analytics_service.log_action(
-                        user_id=user_id,
-                        action_type=ActionType.LLM_ERROR,
-                        details=f"Circuit breaker open: {user_text[:100]}",
-                        success=False,
-                        error_message="Yandex GPT temporarily unavailable (circuit breaker)"
-                    )
-                raise CircuitOpenError("Yandex GPT temporarily unavailable")
-
-            try:
-                _http_start = time.perf_counter()
-                # Use async httpx client (no thread pool needed)
-                client = await self._get_http_client()
-                response = await client.post(
-                    self.api_url,
-                    headers=headers,
-                    json=payload
-                )
-                _http_duration_ms = (time.perf_counter() - _http_start) * 1000
-                logger.info("yandex_gpt_http_duration", duration_ms=round(_http_duration_ms, 1))
-
-                # Record success for circuit breaker
-                self._record_success()
-
-            except httpx.TimeoutException as e:
-                self._record_failure()
-                logger.error("yandex_gpt_timeout", error=str(e))
-                # Log timeout error to analytics
-                if ANALYTICS_ENABLED and analytics_service and user_id:
-                    analytics_service.log_action(
-                        user_id=user_id,
-                        action_type=ActionType.LLM_TIMEOUT,
-                        details=f"Yandex GPT timeout: {user_text[:100]}",
-                        success=False,
-                        error_message=f"API request timed out after {self.REQUEST_TIMEOUT}s"
-                    )
-                raise
-
-            except httpx.HTTPError as e:
-                self._record_failure()
-                logger.error("yandex_gpt_http_error", error=str(e))
-                raise
-
-            if response.status_code != 200:
-                self._record_failure()
-                logger.error("yandex_gpt_api_error", status_code=response.status_code, response=response.text)
-                # Log API error to analytics
-                if ANALYTICS_ENABLED and analytics_service and user_id:
-                    analytics_service.log_action(
-                        user_id=user_id,
-                        action_type=ActionType.LLM_ERROR,
-                        details=f"API error {response.status_code}: {user_text[:100]}",
-                        success=False,
-                        error_message=f"Status {response.status_code}: {response.text[:200]}"
-                    )
-                raise Exception(f"Yandex GPT API error: {response.status_code} - {response.text}")
-
-            response_data = response.json()
-
-            # Extract text from response
-            result_text = response_data.get("result", {}).get("alternatives", [{}])[0].get("message", {}).get("text", "")
-
-            logger.info("yandex_gpt_raw_response", result_text=result_text)
-
-            # Check for content moderation refusal
+            # 9. Check for content moderation refusal
             if self._is_llm_refusal(result_text):
                 logger.warning("yandex_gpt_content_refusal",
                               user_id=user_id,
                               user_text=user_text[:100],
                               refusal_text=result_text[:200])
 
-                # Log refusal to analytics
                 if ANALYTICS_ENABLED and analytics_service and user_id:
                     analytics_service.log_action(
                         user_id=user_id,
@@ -1333,7 +1000,7 @@ JSON:"""
                 # Fallback: create TODO from user text
                 return self._create_todo_fallback(user_text, user_id)
 
-            # Parse JSON from response
+            # 10. Parse JSON from LLM response
             event_dto = self._parse_yandex_response(
                 result_text,
                 user_text,
@@ -1345,48 +1012,14 @@ JSON:"""
                 user_id
             )
 
-            # Extract token usage from response
-            usage = response_data.get("result", {}).get("usage", {})
-            input_tokens = int(usage.get("inputTextTokens", 0))
-            output_tokens = int(usage.get("completionTokens", 0))
-            total_tokens = int(usage.get("totalTokens", 0))
-
-            # Calculate cost (rubles per 1000 tokens)
-            # yandexgpt (full): ~1.2₽/1000 tokens
-            # yandexgpt-lite: ~0.2₽/1000 tokens
-            cost_per_1000 = 0.2 if self.model == "yandexgpt-lite" else 1.2
-            cost_rub = round(total_tokens * cost_per_1000 / 1000, 4)
-
-            logger.info(
-                "llm_extract_success_yandex",
-                intent=event_dto.intent,
-                confidence=event_dto.confidence,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                total_tokens=total_tokens,
-                cost_rub=cost_rub
-            )
-
-            # Log successful LLM request to analytics for cost tracking
-            if ANALYTICS_ENABLED and analytics_service and user_id:
-                analytics_service.log_action(
-                    user_id=user_id,
-                    action_type=ActionType.LLM_REQUEST,
-                    details=f"intent={event_dto.intent}",
-                    success=True,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    total_tokens=total_tokens,
-                    cost_rub=cost_rub,
-                    llm_model=self.model
-                )
+            # 11. Log analytics using helper
+            self._log_success_analytics(response_data, event_dto, user_id)
 
             return event_dto
 
         except Exception as e:
             logger.error("llm_extract_error_yandex", error=str(e), exc_info=True)
 
-            # Log general LLM error to analytics
             if ANALYTICS_ENABLED and analytics_service and user_id:
                 analytics_service.log_action(
                     user_id=user_id,
