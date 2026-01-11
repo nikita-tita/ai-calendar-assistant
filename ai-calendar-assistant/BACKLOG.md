@@ -45,9 +45,9 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
 | **High (P1)** | 13 | 13 | 0 | 0 | 0 |
-| **Medium (P2)** | 19 | 4 | 0 | 0 | 15 |
+| **Medium (P2)** | 19 | 5 | 0 | 0 | 14 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **27** | **0** | **0** | **18** |
+| **Итого** | **45** | **28** | **0** | **0** | **17** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -71,6 +71,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ SEC-007: JWT refresh token binding — fingerprint (IP+UA hash) в refresh tokens
 - ✅ SEC-008: auth_date validation — replay attack protection (5 min TTL, clock skew tolerance)
 - ✅ SEC-009: JWT key paths — absolute paths + env var override + directory validation
+- ✅ SEC-010: user_id validation — regex validation (positive integer), 10 тестов
 - ✅ INFRA-002: Prometheus + Grafana — /metrics endpoint, все targets up
 - ✅ INFRA-003: Централизованное логирование — Loki + Promtail с 30-day retention
 - ✅ DOC-001: API Reference Guide — docs/API_REFERENCE.md (1930 строк)
@@ -961,11 +962,22 @@ def log_action(self, ...):
 - [x] Keys in .gitignored location (data/)
 
 ## SEC-010: Input validation на user_id
-- **Статус:** `backlog`
+- **Статус:** `done` ✅
 - **Назначен:** `DEV-5` (Security — Безопасность)
-- **Файл:** `events.py:86-92`
-- **Описание:** user_id не валидируется как numeric
+- **Файл:** `events.py:20-57`, `todos.py` (import)
+- **Выполнено:** 2026-01-11
 - **Сложность:** S
+
+**Результат:**
+- `validate_user_id()` function с regex `^[1-9]\d{0,19}$`
+- Применено к 9 endpoints (4 events + 5 todos)
+- Отклоняет: пустые, нулевые, отрицательные, с буквами, path traversal, спецсимволы
+- 10 тестов в TestUserIdValidation
+
+**DoD:**
+- [x] Regex валидация (positive integer, 1-20 digits)
+- [x] Применено ко всем endpoints с user_id
+- [x] Тесты: valid, empty, zero, negative, letters, path traversal, special chars
 
 ## INFRA-004: Non-root Docker containers
 - **Статус:** `backlog`

@@ -224,3 +224,145 @@ class TestEventsCache:
 
         # Cache should be cleaned up
         assert len(_webapp_open_cache) <= _CACHE_MAX_SIZE
+
+
+class TestUserIdValidation:
+    """SEC-010: Test user_id input validation."""
+
+    def test_valid_user_id_numeric(self):
+        """SEC-010: Test that valid numeric user_id is accepted."""
+        from app.routers.events import validate_user_id
+
+        # Valid Telegram user IDs (positive integers)
+        valid_ids = [
+            "1",
+            "123456789",
+            "9876543210",
+            "12345678901234567890",  # Max 20 digits
+        ]
+
+        for user_id in valid_ids:
+            result = validate_user_id(user_id)
+            assert result == user_id, f"Valid user_id {user_id} should be accepted"
+
+    def test_invalid_user_id_empty(self):
+        """SEC-010: Test that empty user_id is rejected."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_id("")
+
+        assert exc_info.value.status_code == 400
+
+    def test_invalid_user_id_zero(self):
+        """SEC-010: Test that zero user_id is rejected."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_id("0")
+
+        assert exc_info.value.status_code == 400
+
+    def test_invalid_user_id_negative(self):
+        """SEC-010: Test that negative user_id is rejected."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_id("-123456789")
+
+        assert exc_info.value.status_code == 400
+
+    def test_invalid_user_id_letters(self):
+        """SEC-010: Test that user_id with letters is rejected."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        invalid_ids = [
+            "abc",
+            "123abc",
+            "abc123",
+            "user_123",
+        ]
+
+        for user_id in invalid_ids:
+            with pytest.raises(HTTPException) as exc_info:
+                validate_user_id(user_id)
+            assert exc_info.value.status_code == 400
+
+    def test_invalid_user_id_path_traversal(self):
+        """SEC-010: Test that path traversal attempts are rejected."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        path_traversal_attempts = [
+            "../admin",
+            "..%2Fadmin",
+            "123/../admin",
+            "123/../../etc/passwd",
+        ]
+
+        for user_id in path_traversal_attempts:
+            with pytest.raises(HTTPException) as exc_info:
+                validate_user_id(user_id)
+            assert exc_info.value.status_code == 400
+
+    def test_invalid_user_id_special_chars(self):
+        """SEC-010: Test that special characters are rejected."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        special_char_ids = [
+            "123;456",
+            "123'456",
+            "123\"456",
+            "123<script>",
+            "123&456",
+            "123=456",
+            "123 456",
+        ]
+
+        for user_id in special_char_ids:
+            with pytest.raises(HTTPException) as exc_info:
+                validate_user_id(user_id)
+            assert exc_info.value.status_code == 400
+
+    def test_invalid_user_id_leading_zeros(self):
+        """SEC-010: Test that leading zeros are rejected (not a valid positive integer)."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_id("0123456789")  # Leading zero
+
+        assert exc_info.value.status_code == 400
+
+    def test_invalid_user_id_too_long(self):
+        """SEC-010: Test that user_id with more than 20 digits is rejected."""
+        from app.routers.events import validate_user_id
+        from fastapi import HTTPException
+
+        # 21 digits - too long
+        with pytest.raises(HTTPException) as exc_info:
+            validate_user_id("123456789012345678901")
+
+        assert exc_info.value.status_code == 400
+
+    def test_user_id_validation_pattern(self):
+        """SEC-010: Test the regex pattern directly."""
+        from app.routers.events import _USER_ID_PATTERN
+
+        # Should match
+        assert _USER_ID_PATTERN.match("1")
+        assert _USER_ID_PATTERN.match("123456789")
+        assert _USER_ID_PATTERN.match("12345678901234567890")
+
+        # Should not match
+        assert not _USER_ID_PATTERN.match("")
+        assert not _USER_ID_PATTERN.match("0")
+        assert not _USER_ID_PATTERN.match("01")
+        assert not _USER_ID_PATTERN.match("-1")
+        assert not _USER_ID_PATTERN.match("abc")
+        assert not _USER_ID_PATTERN.match("123456789012345678901")  # 21 digits

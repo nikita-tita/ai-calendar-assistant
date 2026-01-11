@@ -1,5 +1,6 @@
 """Events API router for web application."""
 
+import re
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -15,6 +16,45 @@ from app.middleware.telegram_auth import verify_telegram_webapp_auth_full
 logger = structlog.get_logger()
 
 router = APIRouter()
+
+# SEC-010: Telegram user_id validation pattern (positive integer, 1-20 digits)
+_USER_ID_PATTERN = re.compile(r'^[1-9]\d{0,19}$')
+
+
+def validate_user_id(user_id: str) -> str:
+    """
+    SEC-010: Validate that user_id is a valid Telegram user ID.
+
+    Telegram user IDs are positive integers (typically 9-10 digits).
+    This prevents path traversal, injection, and other attacks.
+
+    Args:
+        user_id: The user ID string to validate
+
+    Returns:
+        The validated user_id string
+
+    Raises:
+        HTTPException: 400 if user_id is invalid
+    """
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="user_id is required"
+        )
+
+    if not _USER_ID_PATTERN.match(user_id):
+        logger.warning(
+            "invalid_user_id_format",
+            user_id=user_id[:50],  # Truncate for logging
+            message="user_id must be a positive integer"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid user_id format: must be a positive integer"
+        )
+
+    return user_id
 
 # Rate limiting for webapp_open logging - only log once per user per 5 minutes
 _webapp_open_cache: Dict[str, datetime] = {}
@@ -97,6 +137,9 @@ async def get_user_events(
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
@@ -168,6 +211,9 @@ async def create_event(request: Request, user_id: str, event: EventCreateRequest
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
@@ -267,6 +313,9 @@ async def update_event_with_user(request: Request, user_id: str, event_id: str, 
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
@@ -352,6 +401,9 @@ async def delete_event_with_user(request: Request, user_id: str, event_id: str):
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id

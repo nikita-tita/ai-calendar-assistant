@@ -8,6 +8,7 @@ import structlog
 
 from app.services.todos_service import todos_service
 from app.schemas.todos import Todo, TodoDTO, TodoPriority, TodoIntentType
+from app.routers.events import validate_user_id  # SEC-010: Shared validation
 
 logger = structlog.get_logger()
 
@@ -57,6 +58,9 @@ async def get_user_todos(
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
@@ -108,6 +112,9 @@ async def create_todo(request: Request, user_id: str, todo: TodoCreateRequest):
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
@@ -174,6 +181,9 @@ async def update_todo(request: Request, user_id: str, todo_id: str, todo: TodoUp
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
@@ -240,6 +250,9 @@ async def toggle_todo(request: Request, user_id: str, todo_id: str):
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
@@ -295,6 +308,9 @@ async def delete_todo(request: Request, user_id: str, todo_id: str):
 
     Note: user_id is validated by TelegramAuthMiddleware via HMAC signature.
     """
+    # SEC-010: Validate user_id format before processing
+    validate_user_id(user_id)
+
     try:
         # Get validated user_id from middleware
         authenticated_user_id = request.state.telegram_user_id
