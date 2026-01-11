@@ -70,7 +70,17 @@ services:
     image: redis:7-alpine
     container_name: calendar-redis
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD}
+    # INFRA-005: AOF persistence for better durability
+    # --appendonly yes: Enable AOF logging
+    # --appendfsync everysec: Sync to disk every second (balance of performance/durability)
+    # --save 60 1: Also keep RDB snapshots as backup
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --save 60 1
+      --loglevel warning
+      --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
     networks:

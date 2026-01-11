@@ -45,9 +45,9 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
 | **High (P1)** | 13 | 13 | 0 | 0 | 0 |
-| **Medium (P2)** | 19 | 6 | 0 | 0 | 13 |
+| **Medium (P2)** | 19 | 7 | 0 | 0 | 12 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **29** | **0** | **0** | **16** |
+| **Итого** | **45** | **30** | **0** | **0** | **15** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -73,6 +73,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ SEC-009: JWT key paths — absolute paths + env var override + directory validation
 - ✅ SEC-010: user_id validation — regex validation (positive integer), 10 тестов
 - ✅ INFRA-004: Non-root containers — appuser (UID 1000), credentials read-only
+- ✅ INFRA-005: Redis AOF persistence — appendonly yes, appendfsync everysec
 - ✅ INFRA-002: Prometheus + Grafana — /metrics endpoint, все targets up
 - ✅ INFRA-003: Централизованное логирование — Loki + Promtail с 30-day retention
 - ✅ DOC-001: API Reference Guide — docs/API_REFERENCE.md (1930 строк)
@@ -1001,11 +1002,22 @@ def log_action(self, ...):
 - [x] Документация о permissions в docker-compose
 
 ## INFRA-005: Redis AOF persistence
-- **Статус:** `backlog`
+- **Статус:** `done` ✅
 - **Назначен:** `DEV-4` (DevOps — Инфраструктура)
-- **Файл:** `docker-compose.secure.yml`
-- **Описание:** Только RDB snapshots, нет AOF
+- **Файл:** `docker-compose.secure.yml:73-83`
+- **Выполнено:** 2026-01-12
 - **Сложность:** S
+
+**Результат:**
+- `--appendonly yes` — включён AOF logging
+- `--appendfsync everysec` — sync каждую секунду (баланс производительности/надёжности)
+- `--save 60 1` — RDB snapshots сохранены как backup
+- Максимальная потеря данных: 1 секунда
+
+**DoD:**
+- [x] AOF persistence включён
+- [x] fsync каждую секунду
+- [x] RDB snapshots как backup
 
 ## INFRA-006: Deep health check
 - **Статус:** `backlog`
