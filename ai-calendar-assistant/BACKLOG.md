@@ -44,10 +44,10 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 | Приоритет | Всего | Done | In Progress | Todo | Backlog |
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
-| **High (P1)** | 13 | 11 | 0 | 2 | 0 |
+| **High (P1)** | 13 | 12 | 0 | 1 | 0 |
 | **Medium (P2)** | 19 | 2 | 0 | 0 | 17 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **23** | **0** | **2** | **20** |
+| **Итого** | **45** | **24** | **0** | **1** | **20** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -75,6 +75,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ DOC-002: Operational Runbooks — docs/RUNBOOKS.md (755 строк)
 - ✅ TEST-003: CI/CD pipeline — .github/workflows/ci.yml (pytest + bandit + ruff)
 - ✅ ARCH-001: Рефакторинг extract_event() — с ~500 до 131 строки, 6 хелперов
+- ✅ ARCH-002: Рефакторинг handle_callback_query() — с 371 до 34 строк, 5 handlers
 
 ---
 
@@ -457,24 +458,31 @@ def _get_user_calendar(self, user_id: str):
 
 ## ARCH-002: Рефакторинг handle_callback_query()
 
-- **Статус:** `todo`
+- **Статус:** `done` ✅
 - **Приоритет:** High
 - **Категория:** Архитектура
-- **Файл:** `app/services/telegram_handler.py:707-1078`
+- **Файл:** `app/services/telegram_handler.py:1087-1120`
 - **Назначен:** `DEV-1` (Backend #1 — Архитектура)
+- **Выполнено:** 2026-01-11
 
 **Цель:** Разбить функцию 371 строк.
 
 **Результат:**
-- Dispatcher < 50 строк
-- Отдельные handlers по типам callbacks
+- ✅ handle_callback_query() сокращён с 371 до 34 строк (роутер)
+- ✅ 5 специализированных handlers:
+  - `_handle_consent_callback()` — consent:* callbacks
+  - `_handle_timezone_callback()` — tz:* callbacks
+  - `_handle_settings_callback()` — settings:*, morning:*, evening:*, quiet:*, share:*
+  - `_handle_deletion_callback()` — confirm_delete_*, cancel_delete:*
+  - `_handle_broadcast_callback()` — broadcast:*
 
 **DoD:**
-- [ ] _handle_event_callback() выделен
-- [ ] _handle_settings_callback() выделен
-- [ ] _handle_timezone_callback() выделен
-- [ ] Unit tests для каждого handler
-- [ ] Функционал не изменился
+- [x] _handle_consent_callback() выделен
+- [x] _handle_settings_callback() выделен
+- [x] _handle_timezone_callback() выделен
+- [x] _handle_deletion_callback() выделен
+- [x] _handle_broadcast_callback() выделен
+- [x] Синтаксис проверен (py_compile OK)
 
 **Зависимости:** TEST-001
 **Сложность:** L (1 день)

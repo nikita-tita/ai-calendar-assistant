@@ -704,141 +704,142 @@ Housler.ru сделал подборку сервисов, которые пом
         """Handle /settings command."""
         await self._send_settings_menu(update, user_id)
 
-    async def handle_callback_query(self, update: Update) -> None:
-        """Handle callback queries from inline buttons."""
-        query = update.callback_query
-        if not query:
-            return
+    # ========== Callback Query Handlers (ARCH-002) ==========
 
-        await query.answer()
+    async def _handle_consent_callback(
+        self, query, update: Update, user_id: str, data: str
+    ) -> bool:
+        """
+        Handle consent:* callbacks.
+        Returns True if handled, False otherwise.
+        """
+        if not data.startswith("consent:"):
+            return False
 
-        user_id = str(update.effective_user.id)
-        data = query.data
+        parts = data.split(":")
+        consent_type = parts[1]  # "advertising" or "privacy"
+        answer = parts[2]  # "yes" or "no"
 
-        # Handle consent callbacks
-        if data.startswith("consent:"):
-            parts = data.split(":")
-            consent_type = parts[1]  # "advertising" or "privacy"
-            answer = parts[2]  # "yes" or "no"
+        if answer == "yes":
+            if consent_type == "advertising":
+                user_preferences.set_advertising_consent(user_id, True)
+                logger.info("advertising_consent_given", user_id=user_id)
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.CONSENT_ADVERTISING_ACCEPTED,
+                            details="Согласие на рекламу принято",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_consent_log_failed", error=str(e))
+                await query.edit_message_text("✅ Согласие на получение рекламы принято")
+                await self._ask_privacy_consent(update, user_id)
 
-            if answer == "yes":
-                # User gave consent
-                if consent_type == "advertising":
-                    user_preferences.set_advertising_consent(user_id, True)
-                    logger.info("advertising_consent_given", user_id=user_id)
-                    # Log consent to analytics
-                    if ANALYTICS_ENABLED and analytics_service:
-                        try:
-                            from app.models.analytics import ActionType
-                            analytics_service.log_action(
-                                user_id=user_id,
-                                action_type=ActionType.CONSENT_ADVERTISING_ACCEPTED,
-                                details="Согласие на рекламу принято",
-                                success=True,
-                                username=update.effective_user.username if update.effective_user else None,
-                                first_name=update.effective_user.first_name if update.effective_user else None,
-                                last_name=update.effective_user.last_name if update.effective_user else None
-                            )
-                        except Exception as e:
-                            logger.warning("analytics_consent_log_failed", error=str(e))
-                    await query.edit_message_text("✅ Согласие на получение рекламы принято")
+            elif consent_type == "privacy":
+                user_preferences.set_privacy_consent(user_id, True)
+                logger.info("privacy_consent_given", user_id=user_id)
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.CONSENT_PRIVACY_ACCEPTED,
+                            details="Согласие на обработку данных принято",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_consent_log_failed", error=str(e))
+                await query.edit_message_text("✅ Согласие на обработку данных принято")
+                await self._send_welcome_message(query.message, user_id)
+        else:
+            # User declined
+            if consent_type == "advertising":
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.CONSENT_ADVERTISING_DECLINED,
+                            details="Согласие на рекламу отклонено",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_consent_log_failed", error=str(e))
+                await query.edit_message_text(
+                    "❌ Без согласия на получение рекламы продолжить невозможно.\n\nПопробуйте снова:"
+                )
+                await self._ask_advertising_consent(update, user_id)
 
-                    # Now ask for privacy consent
-                    await self._ask_privacy_consent(update, user_id)
+            elif consent_type == "privacy":
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.CONSENT_PRIVACY_DECLINED,
+                            details="Согласие на обработку данных отклонено",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_consent_log_failed", error=str(e))
+                await query.edit_message_text(
+                    "❌ Без согласия на обработку данных продолжить невозможно.\n\nПопробуйте снова:"
+                )
+                await self._ask_privacy_consent(update, user_id)
 
-                elif consent_type == "privacy":
-                    user_preferences.set_privacy_consent(user_id, True)
-                    logger.info("privacy_consent_given", user_id=user_id)
-                    # Log consent to analytics
-                    if ANALYTICS_ENABLED and analytics_service:
-                        try:
-                            from app.models.analytics import ActionType
-                            analytics_service.log_action(
-                                user_id=user_id,
-                                action_type=ActionType.CONSENT_PRIVACY_ACCEPTED,
-                                details="Согласие на обработку данных принято",
-                                success=True,
-                                username=update.effective_user.username if update.effective_user else None,
-                                first_name=update.effective_user.first_name if update.effective_user else None,
-                                last_name=update.effective_user.last_name if update.effective_user else None
-                            )
-                        except Exception as e:
-                            logger.warning("analytics_consent_log_failed", error=str(e))
-                    await query.edit_message_text("✅ Согласие на обработку данных принято")
+        return True
 
-                    # Send welcome message directly via helper
-                    await self._send_welcome_message(query.message, user_id)
+    async def _handle_timezone_callback(
+        self, query, user_id: str, data: str
+    ) -> bool:
+        """
+        Handle tz:* callbacks.
+        Returns True if handled, False otherwise.
+        """
+        if not data.startswith("tz:"):
+            return False
 
-            else:
-                # User declined
-                if consent_type == "advertising":
-                    # Log decline to analytics
-                    if ANALYTICS_ENABLED and analytics_service:
-                        try:
-                            from app.models.analytics import ActionType
-                            analytics_service.log_action(
-                                user_id=user_id,
-                                action_type=ActionType.CONSENT_ADVERTISING_DECLINED,
-                                details="Согласие на рекламу отклонено",
-                                success=True,
-                                username=update.effective_user.username if update.effective_user else None,
-                                first_name=update.effective_user.first_name if update.effective_user else None,
-                                last_name=update.effective_user.last_name if update.effective_user else None
-                            )
-                        except Exception as e:
-                            logger.warning("analytics_consent_log_failed", error=str(e))
-                    await query.edit_message_text(
-                        "❌ Без согласия на получение рекламы продолжить невозможно.\n\nПопробуйте снова:"
-                    )
-                    # Ask again
-                    await self._ask_advertising_consent(update, user_id)
+        timezone = data[3:]  # Remove "tz:" prefix
+        try:
+            import pytz
+            pytz.timezone(timezone)  # Validate timezone
+            user_preferences.set_timezone(user_id, timezone)
+            city = timezone.split('/')[-1].replace('_', ' ')
+            await query.edit_message_text(f"✅ Часовой пояс обновлен: {city}")
+            logger.info("timezone_set", user_id=user_id, timezone=timezone)
+        except Exception as e:
+            logger.error("timezone_set_error", user_id=user_id, error=str(e))
+            await query.edit_message_text("Ошибка при установке пояса")
 
-                elif consent_type == "privacy":
-                    # Log decline to analytics
-                    if ANALYTICS_ENABLED and analytics_service:
-                        try:
-                            from app.models.analytics import ActionType
-                            analytics_service.log_action(
-                                user_id=user_id,
-                                action_type=ActionType.CONSENT_PRIVACY_DECLINED,
-                                details="Согласие на обработку данных отклонено",
-                                success=True,
-                                username=update.effective_user.username if update.effective_user else None,
-                                first_name=update.effective_user.first_name if update.effective_user else None,
-                                last_name=update.effective_user.last_name if update.effective_user else None
-                            )
-                        except Exception as e:
-                            logger.warning("analytics_consent_log_failed", error=str(e))
-                    await query.edit_message_text(
-                        "❌ Без согласия на обработку данных продолжить невозможно.\n\nПопробуйте снова:"
-                    )
-                    # Ask again
-                    await self._ask_privacy_consent(update, user_id)
+        return True
 
-        # Handle timezone selection
-        elif data.startswith("tz:"):
-            timezone = data[3:]  # Remove "tz:" prefix
-            try:
-                import pytz
-                pytz.timezone(timezone)  # Validate timezone
-                user_preferences.set_timezone(user_id, timezone)
-
-                # Extract city name from timezone
-                city = timezone.split('/')[-1].replace('_', ' ')
-                await query.edit_message_text(f"✅ Часовой пояс обновлен: {city}")
-
-                logger.info("timezone_set", user_id=user_id, timezone=timezone)
-            except Exception as e:
-                logger.error("timezone_set_error", user_id=user_id, error=str(e))
-                await query.edit_message_text("Ошибка при установке пояса")
-
-        # Handle settings callbacks
-        elif data == "settings:morning_toggle":
-            # Show morning summary submenu
+    async def _handle_settings_callback(
+        self, query, update: Update, user_id: str, data: str
+    ) -> bool:
+        """
+        Handle settings:*, morning:*, evening:*, quiet:*, share:* callbacks.
+        Returns True if handled, False otherwise.
+        """
+        # Morning summary toggle
+        if data == "settings:morning_toggle":
             current_enabled = user_preferences.get_morning_summary_enabled(user_id)
             current_time = user_preferences.get_morning_summary_time(user_id)
             status_text = "включена" if current_enabled else "выключена"
-
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(
                     f"{'✅ Выключить' if current_enabled else '❌ Включить'}",
@@ -847,33 +848,33 @@ Housler.ru сделал подборку сервисов, которые пом
                 [InlineKeyboardButton(f"🕐 Изменить время (сейчас: {current_time})", callback_data="morning:change_time")],
                 [InlineKeyboardButton("« Назад к настройкам", callback_data="settings:back")],
             ])
-
             await query.edit_message_text(
                 f"🌅 Утренняя сводка\n\nСейчас: {status_text}, в {current_time}\n\nКороткий план на день: встречи, окна, важные напоминания.",
                 reply_markup=keyboard
             )
+            return True
 
         elif data == "morning:toggle":
             current = user_preferences.get_morning_summary_enabled(user_id)
             user_preferences.set_morning_summary_enabled(user_id, not current)
             status = "включена" if not current else "выключена"
             await query.edit_message_text(f"✅ Утренняя сводка {status}")
+            return True
 
         elif data == "morning:change_time":
             await query.edit_message_text(
                 "🕐 Изменить время утренней сводки\n\nНапишите время в формате ЧЧ:ММ\nНапример: 07:30"
             )
-            # Store state for next message
             if user_id not in self.conversation_history:
                 self.conversation_history[user_id] = []
             self.conversation_history[user_id] = [{"role": "system", "content": "awaiting_morning_time"}]
+            return True
 
+        # Evening digest toggle
         elif data == "settings:evening_toggle":
-            # Show evening digest submenu
             current_enabled = user_preferences.get_evening_digest_enabled(user_id)
             current_time = user_preferences.get_evening_digest_time(user_id)
             status_text = "включен" if current_enabled else "выключен"
-
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(
                     f"{'✅ Выключить' if current_enabled else '❌ Включить'}",
@@ -882,42 +883,39 @@ Housler.ru сделал подборку сервисов, которые пом
                 [InlineKeyboardButton(f"🕐 Изменить время (сейчас: {current_time})", callback_data="evening:change_time")],
                 [InlineKeyboardButton("« Назад к настройкам", callback_data="settings:back")],
             ])
-
             await query.edit_message_text(
                 f"🌆 Вечерний дайджест\n\nСейчас: {status_text}, в {current_time}\n\nКороткий итог дня. Без лишних слов.",
                 reply_markup=keyboard
             )
+            return True
 
         elif data == "evening:toggle":
             current = user_preferences.get_evening_digest_enabled(user_id)
             user_preferences.set_evening_digest_enabled(user_id, not current)
             status = "включен" if not current else "выключен"
             await query.edit_message_text(f"✅ Вечерний дайджест {status}")
+            return True
 
         elif data == "evening:change_time":
             await query.edit_message_text(
                 "🕐 Изменить время вечернего дайджеста\n\nНапишите время в формате ЧЧ:ММ\nНапример: 20:00"
             )
-            # Store state for next message
             if user_id not in self.conversation_history:
                 self.conversation_history[user_id] = []
             self.conversation_history[user_id] = [{"role": "system", "content": "awaiting_evening_time"}]
+            return True
 
-        # Handle share callbacks (from settings or services menu)
+        # Share menu
         elif data in ("settings:share", "share:menu"):
             try:
                 stats = referral_service.get_referral_stats(user_id)
                 link = stats['referral_link']
                 total = stats['total_referred']
-
-                # Invite text for copying
                 invite_text = (
                     "Попробуй AI-календарь! Веду все дела голосом - "
                     "просто говорю боту что запланировать.\n\n"
                     f"Присоединяйся: {link}"
                 )
-
-                # Message to user
                 message = f"""<b>Поделиться с друзьями</b>
 
 Приглашение (нажми чтобы скопировать):
@@ -926,21 +924,15 @@ Housler.ru сделал подборку сервисов, которые пом
 
 <b>Твоя статистика:</b>
 Присоединились по ссылке: {total}"""
-
                 keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Переслать друзьям",
-                                         switch_inline_query=invite_text)],
+                    [InlineKeyboardButton("Переслать друзьям", switch_inline_query=invite_text)],
                     [InlineKeyboardButton("« Назад", callback_data="settings:back")]
                 ])
-
-                await query.edit_message_text(
-                    message,
-                    parse_mode="HTML",
-                    reply_markup=keyboard
-                )
+                await query.edit_message_text(message, parse_mode="HTML", reply_markup=keyboard)
             except Exception as e:
                 logger.error("share_callback_failed", user_id=user_id, error=str(e))
                 await query.edit_message_text("Не удалось получить ссылку. Попробуйте позже.")
+            return True
 
         elif data == "settings:help":
             help_text = """❓ Справка и примеры команд
@@ -955,9 +947,9 @@ Housler.ru сделал подборку сервисов, которые пом
 
 Можете писать текстом или голосом."""
             await query.edit_message_text(help_text)
+            return True
 
         elif data == "settings:timezone":
-            # Show timezone selection
             current_tz = user_preferences.get_timezone(user_id)
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🏛 Москва (UTC+3)", callback_data="tz:Europe/Moscow")],
@@ -973,6 +965,7 @@ Housler.ru сделал подборку сервисов, которые пом
                 f"⏰ Часовой пояс\n\nСейчас: {current_tz}\n\nВыберите ваш часовой пояс, чтобы напоминания приходили вовремя.",
                 reply_markup=keyboard
             )
+            return True
 
         elif data == "settings:quiet_hours":
             quiet_start, quiet_end = user_preferences.get_quiet_hours(user_id)
@@ -985,6 +978,7 @@ Housler.ru сделал подборку сервисов, которые пом
                 f"🌙 Тихие часы\n\nСейчас: {quiet_start}–{quiet_end}\n\nВ это время я не присылаю уведомления.",
                 reply_markup=keyboard
             )
+            return True
 
         elif data == "quiet:change_start":
             quiet_start, quiet_end = user_preferences.get_quiet_hours(user_id)
@@ -994,6 +988,7 @@ Housler.ru сделал подборку сервисов, которые пом
             if user_id not in self.conversation_history:
                 self.conversation_history[user_id] = []
             self.conversation_history[user_id] = [{"role": "system", "content": "awaiting_quiet_start"}]
+            return True
 
         elif data == "quiet:change_end":
             quiet_start, quiet_end = user_preferences.get_quiet_hours(user_id)
@@ -1003,21 +998,27 @@ Housler.ru сделал подборку сервисов, которые пом
             if user_id not in self.conversation_history:
                 self.conversation_history[user_id] = []
             self.conversation_history[user_id] = [{"role": "system", "content": "awaiting_quiet_end"}]
+            return True
 
         elif data == "settings:back":
-            # Return to main settings menu
             await self._send_settings_menu(update, user_id, query=query)
+            return True
 
-        # ARCHIVED - services:property_search callback removed (independent microservice)
+        return False
 
-        # Handle deletion confirmation
-        elif data.startswith("confirm_delete_"):
-            # Answer callback immediately to prevent "Время истекло"
+    async def _handle_deletion_callback(
+        self, query, user_id: str, data: str
+    ) -> bool:
+        """
+        Handle confirm_delete_* and cancel_delete:* callbacks.
+        Returns True if handled, False otherwise.
+        """
+        if data.startswith("confirm_delete_"):
             await query.answer("Удаляю...")
 
             if user_id not in self.conversation_history or len(self.conversation_history[user_id]) == 0:
                 await query.edit_message_text("Время истекло. Попробуйте ещё раз.")
-                return
+                return True
 
             last_msg = self.conversation_history[user_id][-1]
             pending_action = last_msg.get("content")
@@ -1030,51 +1031,93 @@ Housler.ru сделал подборку сервисов, которые пом
                 action_name = "событий"
             else:
                 await query.edit_message_text("Неверная команда.")
-                return
+                return True
 
-            # Show progress
             await query.edit_message_text(f"⏳ Удаляю {len(event_ids)} {action_name}...")
 
-            # Delete events
             deleted_count = 0
             for event_id in event_ids:
                 success = await calendar_service.delete_event(user_id, event_id)
                 if success:
                     deleted_count += 1
 
-            self.conversation_history[user_id] = []  # Clear history
+            self.conversation_history[user_id] = []
             await query.edit_message_text(f"✅ Удалено {action_name}: {deleted_count}")
+            return True
 
-        # Handle deletion cancellation
         elif data.startswith("cancel_delete:"):
             await query.answer()
-            self.conversation_history[user_id] = []  # Clear history
+            self.conversation_history[user_id] = []
             await query.edit_message_text("Отменено.")
+            return True
 
-        # Handle broadcast button (triggers /start)
-        elif data == "broadcast:start":
-            await query.answer()
+        return False
 
-            # Remove button from message to prevent duplicate clicks
-            try:
-                await query.edit_message_reply_markup(reply_markup=None)
-            except Exception:
-                pass  # Message may have been already edited
+    async def _handle_broadcast_callback(
+        self, query, update: Update, user_id: str, data: str
+    ) -> bool:
+        """
+        Handle broadcast:* callbacks.
+        Returns True if handled, False otherwise.
+        """
+        if data != "broadcast:start":
+            return False
 
-            # Check consents (same logic as /start)
-            advertising_consent = user_preferences.get_advertising_consent(user_id)
-            privacy_consent = user_preferences.get_privacy_consent(user_id)
+        await query.answer()
 
-            if not advertising_consent:
-                await self._ask_advertising_consent(update, user_id)
-                return
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
 
-            if not privacy_consent:
-                await self._ask_privacy_consent(update, user_id)
-                return
+        advertising_consent = user_preferences.get_advertising_consent(user_id)
+        privacy_consent = user_preferences.get_privacy_consent(user_id)
 
-            # Send welcome message via query.message (not update.message which is None)
-            await self._send_welcome_message(query.message, user_id)
+        if not advertising_consent:
+            await self._ask_advertising_consent(update, user_id)
+            return True
+
+        if not privacy_consent:
+            await self._ask_privacy_consent(update, user_id)
+            return True
+
+        await self._send_welcome_message(query.message, user_id)
+        return True
+
+    async def handle_callback_query(self, update: Update) -> None:
+        """
+        Handle callback queries from inline buttons.
+
+        ARCH-002: Refactored from ~371 lines to ~30 lines using helper methods.
+        Routes callbacks to specialized handlers based on prefix.
+        """
+        query = update.callback_query
+        if not query:
+            return
+
+        await query.answer()
+
+        user_id = str(update.effective_user.id)
+        data = query.data
+
+        # Route to specialized handlers (each returns True if handled)
+        if await self._handle_consent_callback(query, update, user_id, data):
+            return
+
+        if await self._handle_timezone_callback(query, user_id, data):
+            return
+
+        if await self._handle_settings_callback(query, update, user_id, data):
+            return
+
+        if await self._handle_deletion_callback(query, user_id, data):
+            return
+
+        if await self._handle_broadcast_callback(query, update, user_id, data):
+            return
+
+        # Unknown callback - log for debugging
+        logger.warning("unknown_callback_query", user_id=user_id, data=data)
 
     def _get_user_timezone(self, update: Update) -> str:
         """Get user timezone from stored preferences or default to Moscow."""
