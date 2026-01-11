@@ -22,10 +22,12 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    # INFRA-004: Container runs as non-root user (UID 1000)
+    # Ensure host directories are writable: chown -R 1000:1000 logs data credentials
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
-      - ./credentials:/app/credentials
+      - ./credentials:/app/credentials:ro  # Read-only for credentials
       - bot-data:/var/lib/calendar-bot
     depends_on:
       redis:

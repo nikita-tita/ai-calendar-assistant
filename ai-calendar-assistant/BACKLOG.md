@@ -45,9 +45,9 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
 | **High (P1)** | 13 | 13 | 0 | 0 | 0 |
-| **Medium (P2)** | 19 | 5 | 0 | 0 | 14 |
+| **Medium (P2)** | 19 | 6 | 0 | 0 | 13 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **28** | **0** | **0** | **17** |
+| **Итого** | **45** | **29** | **0** | **0** | **16** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -72,6 +72,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ SEC-008: auth_date validation — replay attack protection (5 min TTL, clock skew tolerance)
 - ✅ SEC-009: JWT key paths — absolute paths + env var override + directory validation
 - ✅ SEC-010: user_id validation — regex validation (positive integer), 10 тестов
+- ✅ INFRA-004: Non-root containers — appuser (UID 1000), credentials read-only
 - ✅ INFRA-002: Prometheus + Grafana — /metrics endpoint, все targets up
 - ✅ INFRA-003: Централизованное логирование — Loki + Promtail с 30-day retention
 - ✅ DOC-001: API Reference Guide — docs/API_REFERENCE.md (1930 строк)
@@ -980,11 +981,24 @@ def log_action(self, ...):
 - [x] Тесты: valid, empty, zero, negative, letters, path traversal, special chars
 
 ## INFRA-004: Non-root Docker containers
-- **Статус:** `backlog`
+- **Статус:** `done` ✅
 - **Назначен:** `DEV-4` (DevOps — Инфраструктура)
-- **Файл:** `Dockerfile.bot`
-- **Описание:** Containers run as root
+- **Файл:** `Dockerfile.bot`, `docker-compose.secure.yml`
+- **Выполнено:** 2026-01-11
 - **Сложность:** S
+
+**Результат:**
+- Создан non-root user `appuser` (UID 1000, GID 1000)
+- Все файлы приложения owned by appuser
+- `USER appuser` в конце Dockerfile
+- Credentials volume mount как read-only (:ro)
+- Комментарий о chown для host directories
+
+**DoD:**
+- [x] Non-root user создан в Dockerfile
+- [x] Приложение запускается от appuser
+- [x] Credentials read-only
+- [x] Документация о permissions в docker-compose
 
 ## INFRA-005: Redis AOF persistence
 - **Статус:** `backlog`

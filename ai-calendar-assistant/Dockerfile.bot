@@ -1,4 +1,5 @@
 # Dockerfile for Telegram Bot (polling mode)
+# INFRA-004: Runs as non-root user for security
 
 FROM python:3.11-slim
 
@@ -16,14 +17,27 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# INFRA-004: Create non-root user for security
+# Using UID 1000 which is common and avoids permission issues
+RUN groupadd --gid 1000 appgroup && \
+    useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
+
+# Create directories for volumes with correct ownership
+# These directories will be mounted as volumes in docker-compose
+RUN mkdir -p /app/logs /app/data /app/credentials /var/lib/calendar-bot && \
+    chown -R appuser:appgroup /app /var/lib/calendar-bot
+
 # Copy application code
-COPY app ./app
-COPY scripts ./scripts
-COPY run_polling.py .
-COPY start.sh .
+COPY --chown=appuser:appgroup app ./app
+COPY --chown=appuser:appgroup scripts ./scripts
+COPY --chown=appuser:appgroup run_polling.py .
+COPY --chown=appuser:appgroup start.sh .
 
 # Make start script executable
 RUN chmod +x start.sh
+
+# INFRA-004: Switch to non-root user
+USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
