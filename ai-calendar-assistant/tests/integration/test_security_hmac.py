@@ -416,7 +416,7 @@ class TestHMACSecurityEdgeCases:
 
         params = {
             "user": json.dumps(user_data, ensure_ascii=False),
-            "auth_date": "1704067200"
+            "auth_date": str(int(time.time()))  # Fresh auth_date for SEC-008
         }
 
         data_check_arr = [f"{k}={v}" for k, v in sorted(params.items())]
@@ -453,7 +453,7 @@ class TestHMACSecurityEdgeCases:
 
         params = {
             "user": json.dumps(user_data),
-            "auth_date": "1704067200",
+            "auth_date": str(int(time.time())),  # Fresh auth_date for SEC-008
             "start_param": "ref=123&campaign=test"
         }
 

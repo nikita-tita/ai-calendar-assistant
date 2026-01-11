@@ -45,9 +45,9 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
 | **High (P1)** | 13 | 13 | 0 | 0 | 0 |
-| **Medium (P2)** | 19 | 2 | 0 | 0 | 17 |
+| **Medium (P2)** | 19 | 3 | 0 | 0 | 16 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **25** | **0** | **0** | **20** |
+| **Итого** | **45** | **26** | **0** | **0** | **19** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -69,6 +69,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 
 ### Выполнено (2026-01-11)
 - ✅ SEC-007: JWT refresh token binding — fingerprint (IP+UA hash) в refresh tokens
+- ✅ SEC-008: auth_date validation — replay attack protection (5 min TTL, clock skew tolerance)
 - ✅ INFRA-002: Prometheus + Grafana — /metrics endpoint, все targets up
 - ✅ INFRA-003: Централизованное логирование — Loki + Promtail с 30-day retention
 - ✅ DOC-001: API Reference Guide — docs/API_REFERENCE.md (1930 строк)
@@ -921,11 +922,22 @@ def log_action(self, ...):
 - [x] Тест: refresh с другого IP отклоняется
 
 ## SEC-008: auth_date validation в Telegram HMAC
-- **Статус:** `backlog`
+- **Статус:** `done` ✅
 - **Назначен:** `DEV-5` (Security — Безопасность)
-- **Файл:** `telegram_auth.py:17-68`
-- **Описание:** auth_date не проверяется на свежесть
+- **Файл:** `telegram_auth.py:56-80`
+- **Выполнено:** 2026-01-11
 - **Сложность:** S
+
+**Результат:**
+- Проверка auth_date на свежесть (max 5 минут)
+- Защита от replay атак
+- Толерантность к clock skew (60 сек в будущее)
+- 4 теста в test_security_hmac.py
+
+**DoD:**
+- [x] auth_date проверяется на устаревание (>300 сек)
+- [x] auth_date проверяется на будущее (>60 сек)
+- [x] Тесты: old_auth_date_rejected, fresh_accepted, future_rejected, clock_skew_tolerated
 
 ## SEC-009: Hardcoded encryption key paths
 - **Статус:** `backlog`
