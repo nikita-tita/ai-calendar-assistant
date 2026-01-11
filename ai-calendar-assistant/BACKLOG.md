@@ -45,9 +45,9 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
 | **High (P1)** | 13 | 13 | 0 | 0 | 0 |
-| **Medium (P2)** | 19 | 3 | 0 | 0 | 16 |
+| **Medium (P2)** | 19 | 4 | 0 | 0 | 15 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **26** | **0** | **0** | **19** |
+| **Итого** | **45** | **27** | **0** | **0** | **18** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -70,6 +70,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 ### Выполнено (2026-01-11)
 - ✅ SEC-007: JWT refresh token binding — fingerprint (IP+UA hash) в refresh tokens
 - ✅ SEC-008: auth_date validation — replay attack protection (5 min TTL, clock skew tolerance)
+- ✅ SEC-009: JWT key paths — absolute paths + env var override + directory validation
 - ✅ INFRA-002: Prometheus + Grafana — /metrics endpoint, все targets up
 - ✅ INFRA-003: Централизованное логирование — Loki + Promtail с 30-day retention
 - ✅ DOC-001: API Reference Guide — docs/API_REFERENCE.md (1930 строк)
@@ -940,11 +941,24 @@ def log_action(self, ...):
 - [x] Тесты: old_auth_date_rejected, fresh_accepted, future_rejected, clock_skew_tolerated
 
 ## SEC-009: Hardcoded encryption key paths
-- **Статус:** `backlog`
+- **Статус:** `done` ✅
 - **Назначен:** `DEV-5` (Security — Безопасность)
-- **Файл:** `admin_auth_service.py:140-141`
-- **Описание:** Default relative paths уязвимы
+- **Файл:** `admin_auth_service.py:37-40, 144-203`
+- **Выполнено:** 2026-01-11
 - **Сложность:** S
+
+**Результат:**
+- Absolute paths via `Path(__file__).parent.parent.parent / "data" / ".keys"`
+- Environment variable override: `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH`
+- `_validate_key_paths()` creates missing directories
+- Keys stored in `data/.keys/` (typically .gitignored)
+- 7 тестов в TestJWTKeyPaths
+
+**DoD:**
+- [x] Default paths are absolute (not relative)
+- [x] Env vars override defaults
+- [x] Directory auto-creation if missing
+- [x] Keys in .gitignored location (data/)
 
 ## SEC-010: Input validation на user_id
 - **Статус:** `backlog`

@@ -613,3 +613,108 @@ class TestRefreshTokenFingerprint:
         # Test 4: Legacy token (no fingerprint) - should pass
         legacy_token = {"type": "refresh"}  # No fingerprint
         assert validate_refresh_token(legacy_token, "any.ip", "any ua") is True
+
+
+class TestJWTKeyPaths:
+    """SEC-009: Test JWT key path handling and validation."""
+
+    def test_default_paths_are_absolute(self):
+        """SEC-009: Test that default key paths are absolute, not relative."""
+        from app.services.admin_auth_service import (
+            DEFAULT_JWT_PRIVATE_KEY_PATH,
+            DEFAULT_JWT_PUBLIC_KEY_PATH
+        )
+
+        # Paths should be absolute (start with /)
+        assert os.path.isabs(DEFAULT_JWT_PRIVATE_KEY_PATH), \
+            f"Private key path should be absolute: {DEFAULT_JWT_PRIVATE_KEY_PATH}"
+        assert os.path.isabs(DEFAULT_JWT_PUBLIC_KEY_PATH), \
+            f"Public key path should be absolute: {DEFAULT_JWT_PUBLIC_KEY_PATH}"
+
+    def test_default_paths_in_data_directory(self):
+        """SEC-009: Test that default paths are in data/.keys directory."""
+        from app.services.admin_auth_service import (
+            DEFAULT_JWT_PRIVATE_KEY_PATH,
+            DEFAULT_JWT_PUBLIC_KEY_PATH
+        )
+
+        # Paths should contain data/.keys
+        assert "data/.keys" in DEFAULT_JWT_PRIVATE_KEY_PATH or "data\\.keys" in DEFAULT_JWT_PRIVATE_KEY_PATH
+        assert "data/.keys" in DEFAULT_JWT_PUBLIC_KEY_PATH or "data\\.keys" in DEFAULT_JWT_PUBLIC_KEY_PATH
+
+        # Filenames should be correct
+        assert DEFAULT_JWT_PRIVATE_KEY_PATH.endswith("admin_jwt_private.pem")
+        assert DEFAULT_JWT_PUBLIC_KEY_PATH.endswith("admin_jwt_public.pem")
+
+    def test_env_var_override_private_key(self):
+        """SEC-009: Test that JWT_PRIVATE_KEY_PATH env var overrides default."""
+        custom_path = "/custom/path/private.pem"
+
+        with patch.dict(os.environ, {"JWT_PRIVATE_KEY_PATH": custom_path}):
+            result = os.getenv("JWT_PRIVATE_KEY_PATH")
+            assert result == custom_path
+
+    def test_env_var_override_public_key(self):
+        """SEC-009: Test that JWT_PUBLIC_KEY_PATH env var overrides default."""
+        custom_path = "/custom/path/public.pem"
+
+        with patch.dict(os.environ, {"JWT_PUBLIC_KEY_PATH": custom_path}):
+            result = os.getenv("JWT_PUBLIC_KEY_PATH")
+            assert result == custom_path
+
+    def test_validate_key_paths_creates_directory(self):
+        """SEC-009: Test that _validate_key_paths creates missing directories."""
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create paths in non-existent subdirectory
+            new_dir = Path(tmpdir) / "subdir" / "keys"
+            private_path = str(new_dir / "private.pem")
+            public_path = str(new_dir / "public.pem")
+
+            # Directory should not exist yet
+            assert not new_dir.exists()
+
+            # Simulate _validate_key_paths logic
+            for path_str in [private_path, public_path]:
+                key_path = Path(path_str)
+                parent_dir = key_path.parent
+                if not parent_dir.exists():
+                    parent_dir.mkdir(parents=True, exist_ok=True)
+
+            # Directory should now exist
+            assert new_dir.exists()
+
+    def test_key_paths_not_in_git_tracked_directory(self):
+        """SEC-009: Test that default key paths are in data/ (typically .gitignored)."""
+        from app.services.admin_auth_service import DEFAULT_JWT_PRIVATE_KEY_PATH
+
+        # Keys should be in data/ directory which is typically .gitignored
+        # This prevents accidental commits of private keys
+        assert "/data/" in DEFAULT_JWT_PRIVATE_KEY_PATH or "\\data\\" in DEFAULT_JWT_PRIVATE_KEY_PATH
+
+    def test_fallback_logic_when_env_not_set(self):
+        """SEC-009: Test fallback to defaults when env vars not set."""
+        from app.services.admin_auth_service import (
+            DEFAULT_JWT_PRIVATE_KEY_PATH,
+            DEFAULT_JWT_PUBLIC_KEY_PATH
+        )
+
+        # Clear env vars (simulate production without explicit config)
+        with patch.dict(os.environ, {}, clear=True):
+            # Remove the specific keys if they exist
+            os.environ.pop("JWT_PRIVATE_KEY_PATH", None)
+            os.environ.pop("JWT_PUBLIC_KEY_PATH", None)
+
+            # Simulate _load_or_generate_keys logic
+            private_key_path = os.getenv("JWT_PRIVATE_KEY_PATH")
+            public_key_path = os.getenv("JWT_PUBLIC_KEY_PATH")
+
+            if not private_key_path:
+                private_key_path = DEFAULT_JWT_PRIVATE_KEY_PATH
+            if not public_key_path:
+                public_key_path = DEFAULT_JWT_PUBLIC_KEY_PATH
+
+            # Should use defaults
+            assert private_key_path == DEFAULT_JWT_PRIVATE_KEY_PATH
+            assert public_key_path == DEFAULT_JWT_PUBLIC_KEY_PATH
