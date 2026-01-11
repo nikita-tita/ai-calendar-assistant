@@ -61,20 +61,20 @@ services:
       - APP_ENV=production
       - DEBUG=False
       - RADICALE_URL=http://radicale:5232
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
 
   # Redis for rate limiting and session storage
   redis:
     image: redis:7-alpine
     container_name: calendar-redis
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
     networks:
       - calendar-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
