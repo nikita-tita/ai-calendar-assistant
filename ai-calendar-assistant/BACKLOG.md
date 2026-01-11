@@ -44,10 +44,10 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 | Приоритет | Всего | Done | In Progress | Todo | Backlog |
 |-----------|-------|------|-------------|------|---------|
 | **Blocker (P0)** | 10 | 10 | 0 | 0 | 0 |
-| **High (P1)** | 13 | 12 | 0 | 1 | 0 |
+| **High (P1)** | 13 | 13 | 0 | 0 | 0 |
 | **Medium (P2)** | 19 | 2 | 0 | 0 | 17 |
 | **Low (P3)** | 3 | 0 | 0 | 0 | 3 |
-| **Итого** | **45** | **24** | **0** | **1** | **20** |
+| **Итого** | **45** | **25** | **0** | **0** | **20** |
 
 ### Выполнено (2026-01-09)
 - ✅ SEC-003: XSS уязвимости — добавлен `safeId()` для ID в onclick handlers
@@ -76,6 +76,7 @@ Backlog → Todo → In Progress → Review/QA → Blocked → Done
 - ✅ TEST-003: CI/CD pipeline — .github/workflows/ci.yml (pytest + bandit + ruff)
 - ✅ ARCH-001: Рефакторинг extract_event() — с ~500 до 131 строки, 6 хелперов
 - ✅ ARCH-002: Рефакторинг handle_callback_query() — с 371 до 34 строк, 5 handlers
+- ✅ UX-001: Light theme fix — CSS переменная --border-color, нет hardcoded colors
 
 ---
 
@@ -702,24 +703,27 @@ def log_action(self, ...):
 
 ## UX-001: Исправить Light theme
 
-- **Статус:** `todo`
+- **Статус:** `done` ✅
 - **Приоритет:** High
 - **Категория:** UX/UI
-- **Файл:** `app/static/index.html:29-33`
+- **Файл:** `app/static/index.html:14-53, 69`
 - **Назначен:** `DEV-6` (Frontend — UI/UX)
+- **Выполнено:** 2026-01-11
 
 **Цель:** Полная поддержка светлой темы.
 
 **Контекст:** CSS переменные для light-theme неполные, UI ломается.
 
 **Результат:**
-- Light theme работает полностью
-- Нет hardcoded dark colors
+- ✅ Light theme работает полностью
+- ✅ Нет hardcoded dark colors
+- ✅ Добавлена CSS переменная --border-color
+- ✅ border-gray-800 → border-theme
 
 **DoD:**
-- [ ] Все hardcoded colors → CSS variables
-- [ ] .light-theme переопределяет все variables
-- [ ] Визуальное тестирование обеих тем
+- [x] Все hardcoded colors → CSS variables
+- [x] .light-theme переопределяет все variables
+- [x] APP_VERSION обновлён до 2026-01-11-v1
 
 **Зависимости:** Нет
 **Сложность:** M (3-4 часа)

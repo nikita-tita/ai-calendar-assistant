@@ -28,6 +28,7 @@
             --calendar-hover: rgba(255,255,255,0.1);
             --spinner-border: rgba(255,255,255,0.3);
             --spinner-top: #ffffff;
+            --border-color: #262626;
         }
 
         /* Light theme overrides */
@@ -48,6 +49,7 @@
             --calendar-hover: rgba(0,0,0,0.08);
             --spinner-border: rgba(0,0,0,0.2);
             --spinner-top: #3b82f6;
+            --border-color: #e5e5e5;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -64,6 +66,7 @@
         .button-bg { background: var(--button-bg); color: var(--button-text); }
         .button-danger { background: var(--button-danger-bg); color: var(--button-danger-text); }
         .hint-color { color: var(--tg-theme-hint-color, var(--text-hint)); }
+        .border-theme { border-color: var(--border-color); }
 
         .modal { position: fixed; inset: 0; background: var(--modal-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000; }
         .spinner { border: 3px solid var(--spinner-border); border-top: 3px solid var(--spinner-top); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
@@ -149,7 +152,7 @@
 
     <script>
         // Version: 2025-12-05-v1 - Design System alignment (gray palette, Inter font, reduced border-radius)
-        const APP_VERSION = '2026-01-10-v1';
+        const APP_VERSION = '2026-01-11-v1';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -804,7 +807,7 @@
                                 <div class="flex items-center justify-between mb-3">
                                     <h1 class="text-2xl font-bold">${state.activeTab === 'events' ? t.myEvents : t.myTodos}</h1>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-xs hint-color px-2 py-1 rounded tertiary-bg">v985</span>
+                                        <span class="text-xs hint-color px-2 py-1 rounded tertiary-bg">v986</span>
                                         <button onclick="openSettings()" class="tertiary-bg w-8 h-8 rounded-xl flex items-center justify-center">
                                             <span class="text-lg">⚙️</span>
                                         </button>
@@ -823,7 +826,7 @@
                             </div>
 
                             ${state.showCalendar && state.activeTab === 'events' ? `
-                                <div class="secondary-bg p-4 border-t border-gray-800">
+                                <div class="secondary-bg p-4 border-t border-theme">
                                     <div class="flex items-center justify-between mb-4">
                                         <button onclick="prevMonth()" class="tertiary-bg w-10 h-10 rounded-xl">←</button>
                                         <div class="font-semibold">${t.months[state.currentMonth.getMonth()]} ${state.currentMonth.getFullYear()}</div>
