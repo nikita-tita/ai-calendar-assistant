@@ -62,6 +62,7 @@
 | RSK-004 | Regression при изменениях | Высокая | Среднее | TEST-001/002 задачи | QA | Открыт |
 | RSK-005 | Memory exhaustion | Средняя | Среднее | PERF-001/002 задачи | Backend | Открыт |
 | RSK-006 | Data corruption при concurrent access | — | — | BIZ-001 ✅ | Backend | ✅ Закрыт |
+| RSK-007 | Double-booking при create/update событий | — | — | BIZ-004 ✅ | Backend | ✅ Закрыт |
 
 ---
 
@@ -143,16 +144,17 @@
 
 **Описание:** webapp_cache не очищается, conversation_history растёт. При длительной работе память может закончиться.
 
-**Вероятность:** Средняя (зависит от нагрузки)
+**Вероятность:** Низкая (после PERF-001)
 **Влияние:** Среднее (сервис падает)
 
 **Митигация:**
 - [x] Проблема идентифицирована (PERF-001/002)
-- [ ] Cache cleanup включён
-- [ ] Memory profiling
-- [ ] Alerting на memory usage
+- [x] webapp_cache cleanup включён (PERF-001 ✅)
+- [ ] PERF-002: SQLite concurrent writes
+- [ ] Memory profiling (отложено)
+- [ ] Alerting на memory usage (отложено)
 
-**Связанные задачи:** PERF-001, PERF-002
+**Связанные задачи:** PERF-001 ✅, PERF-002
 **Владелец:** Backend
 **Целевая дата закрытия:** 2026-01-15
 
@@ -175,6 +177,25 @@
 
 ---
 
+### RSK-007: Double-booking при create/update событий
+
+**Статус:** ✅ ЗАКРЫТ (2026-01-10)
+
+**Описание:** При создании или переносе события на занятое время не было проверки конфликтов.
+
+**Митигация выполнена:**
+- [x] Проблема идентифицирована (BIZ-004)
+- [x] `_find_conflicts()` метод добавлен в RadicaleService
+- [x] `_create_event_sync()` проверяет конфликты, логирует warning
+- [x] `_update_event_sync()` проверяет конфликты с exclude_uid
+- [x] Unit-тесты в `tests/unit/test_conflict_detection.py`
+
+**Связанная задача:** BIZ-004 ✅
+**Владелец:** Backend
+**Дата закрытия:** 2026-01-10
+
+---
+
 ## Закрытые риски/блокеры
 
 | ID | Описание | Дата закрытия | Задача |
@@ -184,6 +205,7 @@
 | RSK-001 | SQL Injection в analytics_service.py | 2026-01-10 | SEC-002 |
 | RSK-002 | XSS через event title | 2026-01-09 | SEC-003 |
 | RSK-006 | Race condition в calendar cache | 2026-01-09 | BIZ-001 |
+| RSK-007 | Double-booking при create/update событий | 2026-01-10 | BIZ-004 |
 
 ---
 

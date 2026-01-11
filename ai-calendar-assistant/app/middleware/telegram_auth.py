@@ -3,6 +3,7 @@
 import hmac
 import hashlib
 import json
+import time
 from typing import Optional
 from urllib.parse import parse_qsl
 from fastapi import Request, HTTPException, status
@@ -52,6 +53,32 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[dict
 
         # Verify hash matches
         if calculated_hash == received_hash:
+            # SEC-008: Validate auth_date freshness (replay attack protection)
+            auth_date = int(parsed.get('auth_date', 0))
+            now = int(time.time())
+
+            # Reject if auth_date is in the future (with 60s tolerance for clock skew)
+            if auth_date > now + 60:
+                logger.warning(
+                    "telegram_auth_future_date",
+                    message="auth_date is in the future (possible clock manipulation)",
+                    auth_date=auth_date,
+                    server_time=now,
+                    diff_seconds=auth_date - now
+                )
+                return None
+
+            # Reject if auth_date is too old (more than 5 minutes)
+            if now - auth_date > 300:
+                logger.warning(
+                    "telegram_auth_expired",
+                    message="auth_date is too old (possible replay attack)",
+                    auth_date=auth_date,
+                    server_time=now,
+                    age_seconds=now - auth_date
+                )
+                return None
+
             logger.info("telegram_auth_valid", message="Valid Telegram initData")
             return parsed
         else:

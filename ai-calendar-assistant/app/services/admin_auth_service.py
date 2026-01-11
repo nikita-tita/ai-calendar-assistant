@@ -4,6 +4,7 @@ import os
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional, Tuple
 import structlog
 import bcrypt
@@ -32,6 +33,11 @@ logger = structlog.get_logger()
 
 # SEC-006: Redis key prefix for rate limiting
 RATE_LIMIT_KEY_PREFIX = "admin_rate_limit:"
+
+# SEC-009: Default absolute paths for JWT keys (fallback when env vars not set)
+_DEFAULT_KEYS_DIR = Path(__file__).parent.parent.parent / "data" / ".keys"
+DEFAULT_JWT_PRIVATE_KEY_PATH = str(_DEFAULT_KEYS_DIR / "admin_jwt_private.pem")
+DEFAULT_JWT_PUBLIC_KEY_PATH = str(_DEFAULT_KEYS_DIR / "admin_jwt_public.pem")
 
 
 class AdminAuthService:
@@ -136,10 +142,30 @@ class AdminAuthService:
             conn.close()
     
     def _load_or_generate_keys(self):
-        """Load RSA keys from files or generate new ones."""
-        private_key_path = os.getenv("JWT_PRIVATE_KEY_PATH", ".keys/admin_jwt_private.pem")
-        public_key_path = os.getenv("JWT_PUBLIC_KEY_PATH", ".keys/admin_jwt_public.pem")
-        
+        """Load RSA keys from files or generate new ones.
+
+        SEC-009: Uses environment variables for key paths with absolute path fallback.
+        """
+        # SEC-009: Get paths from environment with absolute path fallback
+        private_key_path = os.getenv("JWT_PRIVATE_KEY_PATH")
+        public_key_path = os.getenv("JWT_PUBLIC_KEY_PATH")
+
+        # Log whether using env or fallback paths
+        if private_key_path:
+            logger.info("jwt_key_path_from_env", key_type="private", path=private_key_path)
+        else:
+            private_key_path = DEFAULT_JWT_PRIVATE_KEY_PATH
+            logger.info("jwt_key_path_fallback", key_type="private", path=private_key_path)
+
+        if public_key_path:
+            logger.info("jwt_key_path_from_env", key_type="public", path=public_key_path)
+        else:
+            public_key_path = DEFAULT_JWT_PUBLIC_KEY_PATH
+            logger.info("jwt_key_path_fallback", key_type="public", path=public_key_path)
+
+        # SEC-009: Validate and create key directory if needed
+        self._validate_key_paths(private_key_path, public_key_path)
+
         try:
             # Try to load existing keys
             with open(private_key_path, "rb") as f:
@@ -148,19 +174,33 @@ class AdminAuthService:
                     password=None,
                     backend=default_backend()
                 )
-            
+
             with open(public_key_path, "rb") as f:
                 self.public_key = serialization.load_pem_public_key(
                     f.read(),
                     backend=default_backend()
                 )
-            
-            logger.info("jwt_keys_loaded_from_files")
-        
+
+            logger.info("jwt_keys_loaded_from_files",
+                       private_path=private_key_path,
+                       public_path=public_key_path)
+
         except FileNotFoundError:
             # Generate new keys
             logger.info("jwt_keys_not_found_generating_new")
             self._generate_keys(private_key_path, public_key_path)
+
+    def _validate_key_paths(self, private_path: str, public_path: str):
+        """SEC-009: Validate that required key directories exist, create if needed."""
+        for path_str, key_type in [(private_path, "private"), (public_path, "public")]:
+            key_path = Path(path_str)
+            parent_dir = key_path.parent
+
+            if not parent_dir.exists():
+                parent_dir.mkdir(parents=True, exist_ok=True)
+                logger.info("jwt_key_directory_created",
+                           key_type=key_type,
+                           path=str(parent_dir))
     
     def _generate_keys(self, private_path: str, public_path: str):
         """Generate new RSA key pair."""
@@ -202,6 +242,15 @@ class AdminAuthService:
         
         logger.info("jwt_keys_generated_and_saved", private_path=private_path)
     
+    def _create_fingerprint(self, ip: str, user_agent: str) -> str:
+        """
+        SEC-007: Create a fingerprint hash from IP and User-Agent.
+
+        Used for refresh token binding to prevent token theft.
+        """
+        data = f"{ip}:{user_agent}"
+        return hashlib.sha256(data.encode()).hexdigest()[:16]
+
     def _hash_password(self, password: str) -> str:
         """Hash password with bcrypt."""
         return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
@@ -579,7 +628,7 @@ class AdminAuthService:
             self.access_token_expiration if token_type == "access"
             else self.refresh_token_expiration
         )
-        
+
         payload = {
             "type": token_type,
             "user_id": user.id,
@@ -591,7 +640,16 @@ class AdminAuthService:
             "exp": now + expiration,
             "iat": now
         }
-        
+
+        # SEC-007: Add fingerprint to refresh tokens for binding validation
+        if token_type == "refresh":
+            payload["fingerprint"] = self._create_fingerprint(ip_address, user_agent)
+            logger.debug(
+                "refresh_token_fingerprint_created",
+                user_id=user.id,
+                fingerprint=payload["fingerprint"]
+            )
+
         return jwt.encode(payload, self.private_key, algorithm="RS256")
     
     def verify_token(
@@ -603,7 +661,7 @@ class AdminAuthService:
     ) -> Optional[dict]:
         """
         Verify JWT token.
-        
+
         Returns:
             Token payload if valid, None otherwise
         """
@@ -613,33 +671,58 @@ class AdminAuthService:
                 self.public_key,
                 algorithms=["RS256"]
             )
-            
+
             # Check token type
             if payload.get("type") != token_type:
                 logger.warning("jwt_wrong_token_type", expected=token_type, got=payload.get("type"))
                 return None
-            
+
             # Check IP address binding
             if payload.get("ip") != ip_address:
                 logger.warning("jwt_ip_mismatch", token_ip=payload.get("ip"), request_ip=ip_address)
                 return None
-            
+
             # Check User-Agent fingerprint
             ua_hash = hashlib.sha256(user_agent.encode()).hexdigest()
             if payload.get("ua_hash") != ua_hash:
                 logger.warning("jwt_ua_mismatch")
                 return None
-            
+
+            # SEC-007: Check fingerprint for refresh tokens
+            if token_type == "refresh":
+                token_fingerprint = payload.get("fingerprint")
+                # Backward compatibility: if old token without fingerprint - accept it
+                if token_fingerprint:
+                    current_fingerprint = self._create_fingerprint(ip_address, user_agent)
+                    if token_fingerprint != current_fingerprint:
+                        logger.warning(
+                            "refresh_token_fingerprint_mismatch",
+                            token_fingerprint=token_fingerprint,
+                            current_fingerprint=current_fingerprint,
+                            ip=ip_address
+                        )
+                        return None
+                    logger.debug(
+                        "refresh_token_fingerprint_valid",
+                        fingerprint=token_fingerprint
+                    )
+                else:
+                    logger.info(
+                        "refresh_token_legacy_no_fingerprint",
+                        user_id=payload.get("user_id"),
+                        message="Accepting legacy token without fingerprint"
+                    )
+
             return payload
-        
+
         except jwt.ExpiredSignatureError:
             logger.info("jwt_token_expired")
             return None
-        
+
         except jwt.InvalidTokenError as e:
             logger.warning("jwt_invalid_token", error=str(e))
             return None
-        
+
         except Exception as e:
             logger.error("jwt_verification_error", error=str(e), exc_info=True)
             return None

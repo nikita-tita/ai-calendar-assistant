@@ -1,9 +1,11 @@
 """Analytics service with SQLite storage for reliable multi-process access."""
 
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from collections import defaultdict
+from functools import wraps
 from pathlib import Path
 import structlog
 
@@ -17,6 +19,46 @@ from app.services.encrypted_storage import EncryptedStorage
 from app.utils.test_detection import is_test_user
 
 logger = structlog.get_logger()
+
+
+def retry_on_locked(max_retries: int = 5, base_delay: float = 0.1):
+    """
+    Decorator for retrying SQLite operations on database lock errors.
+
+    Uses exponential backoff: delay = base_delay * (2 ** attempt)
+    Example with defaults: 0.1s, 0.2s, 0.4s, 0.8s, 1.6s
+
+    Args:
+        max_retries: Maximum number of retry attempts (default: 5)
+        base_delay: Initial delay in seconds (default: 0.1)
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_error = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    error_msg = str(e).lower()
+                    if ("locked" in error_msg or "busy" in error_msg) and attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(
+                            "sqlite_locked_retry",
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                            delay=delay,
+                            error=str(e),
+                            func=func.__name__
+                        )
+                        time.sleep(delay)
+                        last_error = e
+                    else:
+                        raise
+            # Final attempt after all retries exhausted
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 class AnalyticsService:
@@ -229,6 +271,7 @@ class AnalyticsService:
         except Exception as e:
             logger.error("encrypted_actions_migration_error", error=str(e), exc_info=True)
 
+    @retry_on_locked()
     def ensure_user(
         self,
         user_id: str,
@@ -262,6 +305,7 @@ class AnalyticsService:
         finally:
             conn.close()
 
+    @retry_on_locked()
     def deactivate_user(self, user_id: str):
         """Mark user as inactive (e.g., blocked bot)."""
         conn = self._get_connection()
@@ -286,6 +330,7 @@ class AnalyticsService:
         finally:
             conn.close()
 
+    @retry_on_locked()
     def toggle_user_hidden(self, user_id: str) -> bool:
         """
         Toggle user's hidden status in admin dashboard.
@@ -319,6 +364,7 @@ class AnalyticsService:
         finally:
             conn.close()
 
+    @retry_on_locked()
     def log_action(
         self,
         user_id: str,
@@ -973,6 +1019,7 @@ class AnalyticsService:
         finally:
             conn.close()
 
+    @retry_on_locked()
     def clear_test_data(self) -> int:
         """Remove test data. Returns count of removed actions."""
         conn = self._get_connection()
@@ -1439,6 +1486,7 @@ class AnalyticsService:
         finally:
             conn.close()
 
+    @retry_on_locked()
     def migrate_from_json(self, json_data: Dict, daily_reminder_users: Dict[str, int]):
         """
         Migrate data from old JSON format to SQLite.

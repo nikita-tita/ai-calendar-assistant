@@ -11,7 +11,7 @@ import structlog
 from app.config import settings
 from app.routers import telegram, events, admin, admin_v2, logs, todos
 from app.utils.logger import setup_logging
-from app.middleware import TelegramAuthMiddleware, SecurityHeadersMiddleware, CSRFProtectionMiddleware
+from app.middleware import TelegramAuthMiddleware, SecurityHeadersMiddleware, CSRFProtectionMiddleware, PrometheusMiddleware
 
 
 # Setup logging
@@ -68,6 +68,10 @@ app.add_middleware(CSRFProtectionMiddleware)
 # Add Telegram WebApp authentication middleware
 # This validates all /api/events/* requests using HMAC signature
 app.add_middleware(TelegramAuthMiddleware)
+
+# INFRA-002: Add Prometheus metrics middleware
+# Instruments all HTTP requests with timing and count metrics
+app.add_middleware(PrometheusMiddleware)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

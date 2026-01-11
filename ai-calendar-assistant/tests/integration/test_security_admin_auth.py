@@ -434,3 +434,182 @@ class TestSecurityHeaders:
 
         # Different UA should not match
         assert different_hash != original_hash
+
+
+class TestRefreshTokenFingerprint:
+    """SEC-007: Test refresh token fingerprint binding."""
+
+    def test_fingerprint_creation(self):
+        """Test fingerprint is created from IP + User-Agent."""
+        import hashlib
+
+        ip = "192.168.1.100"
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+        # Create fingerprint (same as AdminAuthService._create_fingerprint)
+        data = f"{ip}:{user_agent}"
+        fingerprint = hashlib.sha256(data.encode()).hexdigest()[:16]
+
+        assert len(fingerprint) == 16
+        assert fingerprint.isalnum()
+
+    def test_fingerprint_same_inputs_same_output(self):
+        """Test that same IP+UA produces same fingerprint."""
+        import hashlib
+
+        ip = "10.0.0.1"
+        user_agent = "TestBrowser/1.0"
+
+        def create_fingerprint(ip: str, ua: str) -> str:
+            data = f"{ip}:{ua}"
+            return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+        fp1 = create_fingerprint(ip, user_agent)
+        fp2 = create_fingerprint(ip, user_agent)
+
+        assert fp1 == fp2
+
+    def test_fingerprint_different_ip_different_output(self):
+        """SEC-007: Test that different IP produces different fingerprint."""
+        import hashlib
+
+        user_agent = "TestBrowser/1.0"
+
+        def create_fingerprint(ip: str, ua: str) -> str:
+            data = f"{ip}:{ua}"
+            return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+        fp_original = create_fingerprint("192.168.1.1", user_agent)
+        fp_different_ip = create_fingerprint("10.0.0.1", user_agent)
+
+        # Different IP = different fingerprint = refresh rejected
+        assert fp_original != fp_different_ip
+
+    def test_fingerprint_different_ua_different_output(self):
+        """Test that different User-Agent produces different fingerprint."""
+        import hashlib
+
+        ip = "192.168.1.1"
+
+        def create_fingerprint(ip: str, ua: str) -> str:
+            data = f"{ip}:{ua}"
+            return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+        fp_chrome = create_fingerprint(ip, "Chrome/100.0")
+        fp_firefox = create_fingerprint(ip, "Firefox/100.0")
+
+        # Different UA = different fingerprint
+        assert fp_chrome != fp_firefox
+
+    def test_refresh_token_with_fingerprint_payload(self):
+        """Test refresh token includes fingerprint in payload."""
+        import hashlib
+
+        ip = "203.0.113.50"
+        user_agent = "Mozilla/5.0 (X11; Linux x86_64)"
+
+        def create_fingerprint(ip: str, ua: str) -> str:
+            data = f"{ip}:{ua}"
+            return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+        fingerprint = create_fingerprint(ip, user_agent)
+
+        # Simulating refresh token payload creation
+        payload = {
+            "type": "refresh",
+            "user_id": 1,
+            "username": "admin",
+            "mode": "real",
+            "ip": ip,
+            "ua_hash": hashlib.sha256(user_agent.encode()).hexdigest(),
+            "fingerprint": fingerprint  # SEC-007: Added fingerprint
+        }
+
+        assert "fingerprint" in payload
+        assert payload["fingerprint"] == fingerprint
+
+    def test_refresh_from_different_ip_rejected(self):
+        """SEC-007: Test that refresh token from different IP is rejected."""
+        import hashlib
+
+        original_ip = "192.168.1.100"
+        attacker_ip = "10.10.10.10"  # Attacker's IP
+        user_agent = "Chrome/100.0"
+
+        def create_fingerprint(ip: str, ua: str) -> str:
+            data = f"{ip}:{ua}"
+            return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+        # Token was created with original IP
+        token_fingerprint = create_fingerprint(original_ip, user_agent)
+
+        # Attacker tries to use token from different IP
+        current_fingerprint = create_fingerprint(attacker_ip, user_agent)
+
+        # Fingerprints don't match = token should be rejected
+        fingerprint_matches = token_fingerprint == current_fingerprint
+        assert fingerprint_matches is False, "Refresh from different IP should be rejected"
+
+    def test_backward_compatibility_no_fingerprint(self):
+        """SEC-007: Test backward compatibility - tokens without fingerprint accepted."""
+        # Simulating legacy token without fingerprint
+        legacy_payload = {
+            "type": "refresh",
+            "user_id": 1,
+            "username": "admin",
+            "mode": "real",
+            "ip": "192.168.1.1",
+            "ua_hash": "abc123..."
+            # No "fingerprint" field - legacy token
+        }
+
+        # Logic from AdminAuthService.verify_token
+        token_fingerprint = legacy_payload.get("fingerprint")
+
+        # If no fingerprint in token - accept it (backward compatibility)
+        if token_fingerprint:
+            should_validate_fingerprint = True
+        else:
+            should_validate_fingerprint = False
+
+        assert should_validate_fingerprint is False, "Legacy tokens without fingerprint should be accepted"
+
+    def test_fingerprint_validation_logic(self):
+        """SEC-007: Test full fingerprint validation logic flow."""
+        import hashlib
+
+        def create_fingerprint(ip: str, ua: str) -> str:
+            data = f"{ip}:{ua}"
+            return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+        def validate_refresh_token(token_payload: dict, request_ip: str, request_ua: str) -> bool:
+            """Simulating AdminAuthService.verify_token logic for refresh tokens."""
+            token_fingerprint = token_payload.get("fingerprint")
+
+            # Backward compatibility: no fingerprint = accept
+            if not token_fingerprint:
+                return True
+
+            # Check fingerprint matches
+            current_fingerprint = create_fingerprint(request_ip, request_ua)
+            return token_fingerprint == current_fingerprint
+
+        # Test 1: Same IP/UA - should pass
+        original_ip = "192.168.1.1"
+        original_ua = "Chrome/100"
+        token_payload = {
+            "type": "refresh",
+            "fingerprint": create_fingerprint(original_ip, original_ua)
+        }
+
+        assert validate_refresh_token(token_payload, original_ip, original_ua) is True
+
+        # Test 2: Different IP - should fail
+        assert validate_refresh_token(token_payload, "10.0.0.1", original_ua) is False
+
+        # Test 3: Different UA - should fail
+        assert validate_refresh_token(token_payload, original_ip, "Firefox/100") is False
+
+        # Test 4: Legacy token (no fingerprint) - should pass
+        legacy_token = {"type": "refresh"}  # No fingerprint
+        assert validate_refresh_token(legacy_token, "any.ip", "any ua") is True

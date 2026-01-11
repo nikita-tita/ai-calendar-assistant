@@ -1,0 +1,19 @@
+# Grafana dashboard provisioning
+# INFRA-002: Automatic dashboard loading configuration
+#
+# Dashboards in /var/lib/grafana/dashboards will be automatically imported
+
+apiVersion: 1
+
+providers:
+  - name: 'Calendar Assistant Dashboards'
+    orgId: 1
+    folder: 'AI Calendar'
+    folderUid: 'calendar-assistant'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

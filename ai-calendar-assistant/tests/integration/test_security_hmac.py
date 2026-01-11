@@ -4,6 +4,7 @@ import pytest
 import hmac
 import hashlib
 import json
+import time
 from urllib.parse import urlencode
 from unittest.mock import patch, MagicMock
 
@@ -33,16 +34,16 @@ class TestTelegramHMACValidation:
             "language_code": "en"
         }
 
-    def _create_init_data(self, bot_token: str, user_data: dict, extra_params: dict = None) -> str:
+    def _create_init_data(self, bot_token: str, user_data: dict, extra_params: dict = None, auth_date: str = None) -> str:
         """
         Create valid Telegram initData string with correct HMAC signature.
 
         This mimics how Telegram creates the initData.
         """
-        # Build params
+        # Build params - use fresh auth_date by default for SEC-008 validation
         params = {
             "user": json.dumps(user_data),
-            "auth_date": "1704067200",
+            "auth_date": auth_date or str(int(time.time())),
             "query_id": "AAGxyz123"
         }
         if extra_params:
@@ -263,17 +264,17 @@ class TestHMACSecurityEdgeCases:
     def bot_token(self):
         return "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
 
-    def test_replay_attack_protection(self, bot_token):
+    def test_replay_attack_protection_old_auth_date_rejected(self, bot_token):
         """
-        Test that old signatures can still validate.
+        SEC-008: Test that old auth_date is rejected (replay attack protection).
 
-        Note: Actual replay protection should check auth_date
-        and reject requests older than X seconds.
+        auth_date older than 5 minutes should be rejected.
         """
         user_data = {"id": 123, "first_name": "Test"}
+        old_auth_date = str(int(time.time()) - 400)  # 6+ minutes ago
         params = {
             "user": json.dumps(user_data),
-            "auth_date": "1609459200"  # Old date (2021-01-01)
+            "auth_date": old_auth_date
         }
 
         # Create valid signature
@@ -295,7 +296,113 @@ class TestHMACSecurityEdgeCases:
         params["hash"] = calculated_hash
         init_data = urlencode(params)
 
-        # Signature is valid (replay protection should be at application level)
+        # SEC-008: Old auth_date should be rejected
+        result = validate_telegram_init_data(init_data, bot_token)
+        assert result is None  # Rejected due to replay protection
+
+    def test_replay_attack_protection_fresh_auth_date_accepted(self, bot_token):
+        """
+        SEC-008: Test that fresh auth_date is accepted.
+
+        auth_date within 5 minutes should be accepted.
+        """
+        user_data = {"id": 123, "first_name": "Test"}
+        fresh_auth_date = str(int(time.time()) - 60)  # 1 minute ago
+        params = {
+            "user": json.dumps(user_data),
+            "auth_date": fresh_auth_date
+        }
+
+        # Create valid signature
+        data_check_arr = [f"{k}={v}" for k, v in sorted(params.items())]
+        data_check_string = '\n'.join(data_check_arr)
+
+        secret_key = hmac.new(
+            b"WebAppData",
+            bot_token.encode(),
+            hashlib.sha256
+        ).digest()
+
+        calculated_hash = hmac.new(
+            secret_key,
+            data_check_string.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        params["hash"] = calculated_hash
+        init_data = urlencode(params)
+
+        # Fresh auth_date should be accepted
+        result = validate_telegram_init_data(init_data, bot_token)
+        assert result is not None
+
+    def test_future_auth_date_rejected(self, bot_token):
+        """
+        SEC-008: Test that future auth_date is rejected.
+
+        auth_date more than 60 seconds in the future should be rejected.
+        """
+        user_data = {"id": 123, "first_name": "Test"}
+        future_auth_date = str(int(time.time()) + 120)  # 2 minutes in future
+        params = {
+            "user": json.dumps(user_data),
+            "auth_date": future_auth_date
+        }
+
+        # Create valid signature
+        data_check_arr = [f"{k}={v}" for k, v in sorted(params.items())]
+        data_check_string = '\n'.join(data_check_arr)
+
+        secret_key = hmac.new(
+            b"WebAppData",
+            bot_token.encode(),
+            hashlib.sha256
+        ).digest()
+
+        calculated_hash = hmac.new(
+            secret_key,
+            data_check_string.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        params["hash"] = calculated_hash
+        init_data = urlencode(params)
+
+        # Future auth_date should be rejected
+        result = validate_telegram_init_data(init_data, bot_token)
+        assert result is None
+
+    def test_slight_clock_skew_tolerated(self, bot_token):
+        """
+        SEC-008: Test that slight clock skew (up to 60s future) is tolerated.
+        """
+        user_data = {"id": 123, "first_name": "Test"}
+        slight_future = str(int(time.time()) + 30)  # 30 seconds in future (within tolerance)
+        params = {
+            "user": json.dumps(user_data),
+            "auth_date": slight_future
+        }
+
+        # Create valid signature
+        data_check_arr = [f"{k}={v}" for k, v in sorted(params.items())]
+        data_check_string = '\n'.join(data_check_arr)
+
+        secret_key = hmac.new(
+            b"WebAppData",
+            bot_token.encode(),
+            hashlib.sha256
+        ).digest()
+
+        calculated_hash = hmac.new(
+            secret_key,
+            data_check_string.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        params["hash"] = calculated_hash
+        init_data = urlencode(params)
+
+        # Slight clock skew should be accepted
         result = validate_telegram_init_data(init_data, bot_token)
         assert result is not None
 

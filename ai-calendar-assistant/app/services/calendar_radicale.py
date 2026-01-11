@@ -1,6 +1,6 @@
 """Radicale CalDAV integration service (local calendar server)."""
 
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import asyncio
 import threading
@@ -187,6 +187,92 @@ class RadicaleService:
                 self._principal = None
             logger.debug("calendar_cache_invalidated", user_id=user_id)
 
+    def _find_conflicts(
+        self,
+        user_id: str,
+        start: datetime,
+        end: datetime,
+        exclude_uid: Optional[str] = None
+    ) -> List[dict]:
+        """
+        Find events that overlap with the specified time range.
+
+        BIZ-004: Event conflict detection.
+
+        Args:
+            user_id: Telegram user ID
+            start: Start time of the new/updated event
+            end: End time of the new/updated event
+            exclude_uid: Event UID to exclude (for updates)
+
+        Returns:
+            List of conflicting events as dicts with uid, summary, start, end
+        """
+        import pytz
+
+        calendar = self._get_user_calendar(user_id)
+        if not calendar:
+            return []
+
+        # Search events in time range (with buffer for edge cases)
+        try:
+            events = calendar.date_search(start=start, end=end)
+        except Exception as e:
+            logger.error("conflict_search_error", user_id=user_id, error=str(e))
+            return []
+
+        conflicts = []
+        for event in events:
+            try:
+                ical = Calendar.from_ical(event.data)
+                for component in ical.walk('VEVENT'):
+                    uid = str(component.get('uid'))
+
+                    # Skip excluded event (for updates)
+                    if exclude_uid and uid == exclude_uid:
+                        continue
+
+                    event_start = component.get('dtstart').dt
+                    event_end = component.get('dtend').dt
+
+                    # Convert date to datetime if needed
+                    if not isinstance(event_start, datetime):
+                        event_start = datetime.combine(event_start, datetime.min.time())
+                    if not isinstance(event_end, datetime):
+                        event_end = datetime.combine(event_end, datetime.min.time())
+
+                    # Ensure timezone awareness
+                    if event_start.tzinfo is None:
+                        event_start = pytz.UTC.localize(event_start)
+                    if event_end.tzinfo is None:
+                        event_end = pytz.UTC.localize(event_end)
+
+                    # Normalize times for comparison
+                    check_start = start if start.tzinfo else pytz.UTC.localize(start)
+                    check_end = end if end.tzinfo else pytz.UTC.localize(end)
+
+                    # Check overlap: start1 < end2 AND start2 < end1
+                    if event_start < check_end and check_start < event_end:
+                        conflicts.append({
+                            'uid': uid,
+                            'summary': str(component.get('summary', 'Событие')),
+                            'start': event_start,
+                            'end': event_end
+                        })
+            except Exception as e:
+                logger.debug("conflict_parse_error", error=str(e))
+                continue
+
+        if conflicts:
+            logger.info(
+                "conflicts_found",
+                user_id=user_id,
+                conflict_count=len(conflicts),
+                time_range=f"{start.isoformat()} - {end.isoformat()}"
+            )
+
+        return conflicts
+
     def _create_event_sync(self, user_id: str, event: EventDTO) -> Optional[str]:
         """
         Synchronous implementation of create_event.
@@ -232,6 +318,18 @@ class RadicaleService:
             moscow_tz = pytz.timezone(settings.default_timezone)
             end_time_utc = moscow_tz.localize(end_time_utc)
         end_time_utc = end_time_utc.astimezone(pytz.UTC)
+
+        # BIZ-004: Check for conflicts (warning only, does not block)
+        conflicts = self._find_conflicts(user_id, start_time_utc, end_time_utc)
+        if conflicts:
+            conflict_summaries = [c['summary'] for c in conflicts[:3]]  # First 3
+            logger.warning(
+                "event_conflict_detected",
+                user_id=user_id,
+                new_event_title=event.title,
+                conflicts_count=len(conflicts),
+                conflict_summaries=conflict_summaries
+            )
 
         # Create iCalendar event
         cal = Calendar()
@@ -534,6 +632,8 @@ class RadicaleService:
         Synchronous implementation of update_event.
         Called via asyncio.to_thread to avoid blocking event loop.
         """
+        import pytz  # Import here for thread safety
+
         calendar = self._get_user_calendar(user_id)
         if not calendar:
             return False
@@ -557,6 +657,36 @@ class RadicaleService:
                         component['location'] = updated_event.location
                     if updated_event.description:
                         component['description'] = updated_event.description
+
+                    # BIZ-004: Check for conflicts when time is updated
+                    if updated_event.start_time:
+                        new_start = updated_event.start_time
+                        new_end = updated_event.end_time or (
+                            updated_event.start_time + timedelta(minutes=updated_event.duration_minutes or 60)
+                        )
+                        # Ensure timezone awareness
+                        if new_start.tzinfo is None:
+                            moscow_tz = pytz.timezone(settings.default_timezone)
+                            new_start = moscow_tz.localize(new_start)
+                        if new_end.tzinfo is None:
+                            moscow_tz = pytz.timezone(settings.default_timezone)
+                            new_end = moscow_tz.localize(new_end)
+                        new_start_utc = new_start.astimezone(pytz.UTC)
+                        new_end_utc = new_end.astimezone(pytz.UTC)
+
+                        conflicts = self._find_conflicts(
+                            user_id, new_start_utc, new_end_utc, exclude_uid=event_uid
+                        )
+                        if conflicts:
+                            conflict_summaries = [c['summary'] for c in conflicts[:3]]
+                            logger.warning(
+                                "event_conflict_detected",
+                                user_id=user_id,
+                                updated_event_uid=event_uid,
+                                new_event_title=updated_event.title,
+                                conflicts_count=len(conflicts),
+                                conflict_summaries=conflict_summaries
+                            )
 
                     # Save updated event
                     event.data = ical.to_ical()
