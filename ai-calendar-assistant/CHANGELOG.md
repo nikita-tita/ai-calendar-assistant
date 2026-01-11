@@ -6,6 +6,74 @@
 
 ---
 
+## [2026-01-11] - Documentation & Monitoring Sprint
+
+### Added
+
+**API Reference (DOC-001):**
+- `docs/API_REFERENCE.md` — полная документация всех API endpoints (1930 строк)
+  - Events API: CRUD operations с примерами curl
+  - Todos API: CRUD + toggle + priority
+  - Admin API v1: 3-password auth, stats, users, dialog, events, todos, timeline, actions, errors
+  - Admin API v2: login/2FA, cookies auth, audit-logs, LLM costs, user metrics
+  - Telegram API: webhook, status
+  - Logs API: user logs, recent, stats
+  - Authentication: Telegram HMAC + Admin JWT подробно описаны
+  - Rate limiting, error codes, CORS
+
+**Operational Runbooks (DOC-002):**
+- `docs/RUNBOOKS.md` — операционная документация (755 строк)
+  - Daily Health Check: чеклист + автоматический скрипт
+  - Incident Response: P1/P2/P3 severity levels, SLA, step-by-step
+  - Troubleshooting Guide: 7 сценариев (SQLite locked, webhook, memory, Redis, Radicale, YandexGPT, restart loop)
+  - Backup & Restore: автоматические + ручные + верификация
+  - Escalation Matrix: L1-L4, контакты, правила эскалации
+
+**CI/CD Pipeline (TEST-003):**
+- `.github/workflows/ci.yml` — GitHub Actions workflow
+  - pytest с coverage threshold 25%
+  - bandit security scan
+  - ruff lint
+  - Запускается на push/PR в main/develop
+  - pip cache для ускорения
+
+**Security Enhancement (SEC-007):**
+- JWT refresh token fingerprint binding
+  - `_create_fingerprint(ip, user_agent)` — SHA256 hash
+  - Refresh tokens включают fingerprint в payload
+  - Валидация fingerprint при обновлении токенов
+  - Backward compatibility со старыми токенами
+
+**Centralized Logging (INFRA-003):**
+- Loki + Promtail в docker-compose.monitoring.yml
+- 30-day retention (limits_config.retention_period: 720h)
+- Grafana datasource для Loki
+- Promtail собирает логи из всех Docker контейнеров
+
+### Changed
+
+**Документация синхронизирована:**
+- `BACKLOG.md` — обновлены статусы DOC-001, DOC-002, TEST-003, сводка (Done: 21)
+- `PROJECT_STATUS.md` — дата 2026-01-11, метрики обновлены
+- `TEAM_ASSIGNMENT.md` — сводка Done: 21
+
+### Summary
+
+| Задача | Приоритет | Статус |
+|--------|-----------|--------|
+| DOC-001: API Reference | High | ✅ Done |
+| DOC-002: Operational Runbooks | High | ✅ Done |
+| TEST-003: CI/CD pipeline | High | ✅ Done |
+| SEC-007: JWT fingerprint binding | Medium | ✅ Done |
+| INFRA-003: Centralized logging | High | ✅ Done |
+| Синхронизация документации | — | ✅ Done |
+
+**High-задач закрыто сегодня:** 5 (DOC-001, DOC-002, TEST-003, SEC-007, INFRA-003)
+
+**Прогресс проекта:** 21/45 задач выполнено (47%)
+
+---
+
 ## [2026-01-10] - Security Sprint: Git Cleanup & SQL Injection Fix
 
 ### Added
