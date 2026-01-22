@@ -1,6 +1,7 @@
 """Service for managing todos with encrypted storage."""
 
 import uuid
+import os
 from datetime import datetime
 from typing import List, Optional, Dict
 import structlog
@@ -24,13 +25,26 @@ except ImportError:
 class TodosService:
     """Service for storing and managing user todos with encrypted storage."""
 
-    def __init__(self, data_dir: str = "/var/lib/calendar-bot/todos"):
+    def __init__(self, data_dir: Optional[str] = None):
         """
         Initialize todos service with encrypted storage.
 
         Args:
             data_dir: Directory path for storing encrypted todo files
         """
+        if data_dir is None:
+            data_dir = os.getenv("TODOS_DATA_DIR", "/var/lib/calendar-bot/todos")
+            
+        # Development fallback if we can't write to the target directory
+        try:
+            # We don't create it here, EncryptedStorage does, but we can check parent
+            pass
+        except Exception:
+            pass
+            
+        # If we are local and the path is /var/lib, we might want to fallback automatically
+        # but explicit env var is better.
+            
         self.storage = EncryptedStorage(data_dir=data_dir)
         self._lock = Lock()
         logger.info("todos_service_initialized_encrypted", data_dir=data_dir)

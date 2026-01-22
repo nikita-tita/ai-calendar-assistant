@@ -1,6 +1,7 @@
 """Analytics service with SQLite storage for reliable multi-process access."""
 
 import sqlite3
+import os
 import time
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
@@ -72,10 +73,22 @@ class AnalyticsService:
     - Efficient queries - SQL instead of list iteration
     """
 
-    def __init__(self, db_path: str = "/var/lib/calendar-bot/analytics.db"):
+    def __init__(self, db_path: Optional[str] = None):
         """Initialize analytics service with SQLite database."""
+        if db_path is None:
+            db_path = os.getenv("ANALYTICS_DB_PATH", "/var/lib/calendar-bot/analytics.db")
+            
         self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # In development (locally), avoid permission errors if path is root-owned
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            # Fallback to local user data structure if we can't write to system paths
+            logger.warning("analytics_db_permission_error", path=str(self.db_path), fallback="using local ./data directory")
+            self.db_path = Path("./data/analytics.db")
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
         self._init_database()
         self._migrate_encrypted_actions()
 

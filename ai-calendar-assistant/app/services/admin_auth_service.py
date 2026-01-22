@@ -52,9 +52,22 @@ class AdminAuthService:
     - Audit logging
     """
     
-    def __init__(self, db_path: str = "/var/lib/calendar-bot/admin_auth.db"):
+    def __init__(self, db_path: Optional[str] = None):
         """Initialize admin auth service."""
+        if db_path is None:
+            db_path = os.getenv("ADMIN_AUTH_DB_PATH", "/var/lib/calendar-bot/admin_auth.db")
+            
         self.db_path = db_path
+        
+        # In development (locally), avoid permission errors if path is root-owned
+        try:
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            # Fallback to local user data structure if we can't write to system paths
+            logger.warning("admin_auth_db_permission_error", path=self.db_path, fallback="using local ./data directory")
+            self.db_path = "./data/analytics.db" # Use analytics.db as default fallback
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+
         self._init_database()
         self._load_or_generate_keys()
 

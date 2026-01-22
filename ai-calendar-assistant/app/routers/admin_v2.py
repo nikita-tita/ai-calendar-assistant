@@ -144,13 +144,17 @@ async def login(
             }
         )
 
+        # SEC-008: Use secure cookies only on HTTPS
+        # Allow HTTP in development for testing (localhost)
+        is_secure = not settings.debug  # False in dev, True in production
+        
         # Set httpOnly cookies (more secure than localStorage)
         json_response.set_cookie(
             key="admin_access_token",
             value=access_token,
             httponly=True,
-            secure=True,
-            samesite="strict",
+            secure=is_secure,  # Conditional: requires HTTPS only in production
+            samesite="lax" if not is_secure else "strict",  # Lax for HTTP, strict for HTTPS
             max_age=3600,  # 1 hour
             path="/"
         )
@@ -159,8 +163,8 @@ async def login(
             key="admin_refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=True,
-            samesite="strict",
+            secure=is_secure,  # Conditional: requires HTTPS only in production
+            samesite="lax" if not is_secure else "strict",  # Lax for HTTP, strict for HTTPS
             max_age=604800,  # 7 days
             path="/"
         )
