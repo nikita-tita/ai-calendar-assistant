@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -10,49 +11,36 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* CSS Custom Properties - Dark theme (default) */
+        /* Light theme (Housler standard) */
         :root {
-            --bg-primary: #0b0b0b;
-            --bg-secondary: #1a1a1a;
-            --bg-tertiary: rgba(255,255,255,0.05);
-            --text-primary: #ffffff;
-            --text-hint: #9ca3af;
-            --text-debug: #888888;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f9fafb;
+            --bg-tertiary: #f3f4f6;
+            --text-primary: #181A20;
+            --text-hint: #6b7280;
+            --text-debug: #9ca3af;
             --accent-color: #181A20;
             --button-bg: #181A20;
             --button-text: #ffffff;
-            --button-danger-bg: #333333;
+            --button-danger-bg: #181A20;
             --button-danger-text: #ffffff;
-            --modal-overlay: rgba(0,0,0,0.85);
-            --day-separator-bg: rgba(11, 11, 11, 0.95);
-            --calendar-hover: rgba(255,255,255,0.1);
-            --spinner-border: rgba(255,255,255,0.3);
-            --spinner-top: #ffffff;
-            --border-color: #262626;
-        }
-
-        /* Light theme overrides */
-        .light-theme {
-            --bg-primary: #ffffff;
-            --bg-secondary: #f5f5f5;
-            --bg-tertiary: rgba(0,0,0,0.05);
-            --text-primary: #000000;
-            --text-hint: #6b7280;
-            --text-debug: #666666;
-            --accent-color: #3b82f6;
-            --button-bg: #3b82f6;
-            --button-text: #ffffff;
-            --button-danger-bg: #ef4444;
-            --button-danger-text: #ffffff;
-            --modal-overlay: rgba(0,0,0,0.5);
+            --modal-overlay: rgba(0, 0, 0, 0.5);
             --day-separator-bg: rgba(255, 255, 255, 0.95);
-            --calendar-hover: rgba(0,0,0,0.08);
-            --spinner-border: rgba(0,0,0,0.2);
-            --spinner-top: #3b82f6;
-            --border-color: #e5e5e5;
+            --calendar-hover: rgba(0, 0, 0, 0.05);
+            --spinner-border: rgba(24, 26, 32, 0.2);
+            --spinner-top: #181A20;
+            --border-color: #e5e7eb;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--tg-theme-bg-color, var(--bg-primary));
@@ -61,16 +49,62 @@
             touch-action: pan-y;
             padding-bottom: 20px;
         }
-        .secondary-bg { background: var(--tg-theme-secondary-bg-color, var(--bg-secondary)); }
-        .tertiary-bg { background: var(--bg-tertiary); }
-        .button-bg { background: var(--button-bg); color: var(--button-text); }
-        .button-danger { background: var(--button-danger-bg); color: var(--button-danger-text); }
-        .hint-color { color: var(--tg-theme-hint-color, var(--text-hint)); }
-        .border-theme { border-color: var(--border-color); }
 
-        .modal { position: fixed; inset: 0; background: var(--modal-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-        .spinner { border: 3px solid var(--spinner-border); border-top: 3px solid var(--spinner-top); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .secondary-bg {
+            background: var(--tg-theme-secondary-bg-color, var(--bg-secondary));
+        }
+
+        .tertiary-bg {
+            background: var(--bg-tertiary);
+        }
+
+        .button-bg {
+            background: var(--button-bg);
+            color: var(--button-text);
+        }
+
+        .button-danger {
+            background: var(--button-danger-bg);
+            color: var(--button-danger-text);
+        }
+
+        .hint-color {
+            color: var(--tg-theme-hint-color, var(--text-hint));
+        }
+
+        .border-theme {
+            border-color: var(--border-color);
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: var(--modal-overlay);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            border: 3px solid var(--spinner-border);
+            border-top: 3px solid var(--spinner-top);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
         .day-separator {
             position: sticky;
             top: 0;
@@ -78,6 +112,7 @@
             backdrop-filter: blur(10px);
             background: var(--day-separator-bg);
         }
+
         .calendar-day {
             width: 40px;
             height: 40px;
@@ -88,10 +123,23 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        .calendar-day:hover { background: var(--calendar-hover); }
-        .calendar-day.selected { background: var(--accent-color); }
-        .calendar-day.today { border: 2px solid var(--accent-color); }
-        .calendar-day.has-events { position: relative; }
+
+        .calendar-day:hover {
+            background: var(--calendar-hover);
+        }
+
+        .calendar-day.selected {
+            background: var(--accent-color);
+        }
+
+        .calendar-day.today {
+            border: 2px solid var(--accent-color);
+        }
+
+        .calendar-day.has-events {
+            position: relative;
+        }
+
         .calendar-day.has-events::after {
             content: '';
             position: absolute;
@@ -101,10 +149,12 @@
             background: var(--accent-color);
             border-radius: 50%;
         }
+
         .event-card {
             position: relative;
             overflow: hidden;
         }
+
         .event-card::before {
             content: '';
             position: absolute;
@@ -116,19 +166,23 @@
         }
     </style>
 </head>
+
 <body>
     <div id="app">
         <div class="modal" style="display:flex;">
             <div class="spinner"></div>
         </div>
     </div>
-    <div id="loading" class="modal" style="display:none;"><div class="spinner"></div></div>
+    <div id="loading" class="modal" style="display:none;">
+        <div class="spinner"></div>
+    </div>
     <div id="confirmModal" class="modal" style="display:none;">
         <div class="secondary-bg rounded-xl p-6 max-w-sm mx-4 shadow-2xl">
             <div id="confirmText" class="text-lg mb-6 text-center"></div>
             <div class="flex gap-3">
                 <button onclick="closeConfirm()" class="tertiary-bg px-6 py-3 rounded-lg flex-1 font-medium"></button>
-                <button id="confirmBtn" onclick="execConfirm()" class="button-bg px-6 py-3 rounded-lg flex-1 font-medium"></button>
+                <button id="confirmBtn" onclick="execConfirm()"
+                    class="button-bg px-6 py-3 rounded-lg flex-1 font-medium"></button>
             </div>
         </div>
     </div>
@@ -139,8 +193,9 @@
                 <button onclick="closeSettings()" class="hint-color text-2xl">&times;</button>
             </div>
             <div class="space-y-3">
-                <button onclick="openSupport()" class="tertiary-bg w-full px-4 py-4 rounded-lg flex items-center gap-3 text-left">
-                    <span class="text-2xl">💬</span>
+                <button onclick="openSupport()"
+                    class="tertiary-bg w-full px-4 py-4 rounded-lg flex items-center gap-3 text-left">
+                    <span class="text-xl font-bold">?</span>
                     <div>
                         <div class="font-medium">Написать нам</div>
                         <div class="text-sm hint-color">Пожелания, вопросы, предложения</div>
@@ -151,8 +206,8 @@
     </div>
 
     <script>
-        // Version: 2025-12-05-v1 - Design System alignment (gray palette, Inter font, reduced border-radius)
-        const APP_VERSION = '2026-01-11-v1';
+        // Version: 2026-01-23-v987 - Housler Design System (Light Mode, Monochrome)
+        const APP_VERSION = '2026-01-23-v987';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -178,18 +233,8 @@
             console.log('Initializing app...');
             console.log('tg.initDataUnsafe:', tg.initDataUnsafe);
 
-            // Detect and apply Telegram theme
-            function applyTheme() {
-                const colorScheme = tg.colorScheme || 'dark';
-                if (colorScheme === 'light') {
-                    document.body.classList.add('light-theme');
-                } else {
-                    document.body.classList.remove('light-theme');
-                }
-                console.log('Theme applied:', colorScheme);
-            }
-            applyTheme();
-            tg.onEvent('themeChanged', applyTheme);
+            // Force light theme (Housler standard)
+            // Ignore Telegram theme preference
 
             const urlParams = new URLSearchParams(window.location.search);
 
@@ -235,9 +280,9 @@
                     selectDate: 'Выберите дату', myEvents: 'Мои события',
                     events: 'События', todos: 'Задачи', myTodos: 'Мои задачи',
                     noTodos: 'Нет задач', completed: 'Выполнено', active: 'Активные',
-                    months: ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
-                    monthsGen: ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"],
-                    days: ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+                    months: ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
+                    monthsGen: ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"],
+                    days: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
                 }
             };
 
@@ -279,7 +324,7 @@
             }
 
             function fmtTime(d) {
-                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
             }
 
             // XSS protection - escape HTML entities
@@ -315,11 +360,11 @@
             }
 
             function toDateInputValue(d) {
-                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             }
 
             function toTimeInputValue(d) {
-                return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
             }
 
             function showLoading() {
@@ -336,10 +381,10 @@
                 try {
                     const start = new Date();
                     start.setDate(start.getDate() - 90);
-                    start.setHours(0,0,0,0);
+                    start.setHours(0, 0, 0, 0);
                     const end = new Date();
                     end.setDate(end.getDate() + 90);
-                    end.setHours(23,59,59,999);
+                    end.setHours(23, 59, 59, 999);
 
                     const res = await fetch(`/api/events/${userId}?start=${start.toISOString()}&end=${end.toISOString()}`, {
                         headers: {
@@ -352,7 +397,7 @@
                     state.events = await res.json();
                     console.log('Events loaded:', state.events.length);
                     render();
-                } catch(e) {
+                } catch (e) {
                     console.error('Error loading events:', e);
                     document.getElementById('app').innerHTML = `
                         <div style="padding: 40px; text-align: center; font-family: Arial;">
@@ -382,20 +427,20 @@
                     state.todos = await res.json();
                     console.log('Todos loaded:', state.todos.length);
                     render();
-                } catch(e) {
+                } catch (e) {
                     console.error('Error loading todos:', e);
                     state.todos = [];
                     render();
                 }
             }
 
-            window.viewEvent = function(id) {
+            window.viewEvent = function (id) {
                 state.viewEvent = state.events.find(e => e.id === id);
                 state.view = 'detail';
                 render();
             };
 
-            window.openEdit = function(id = null) {
+            window.openEdit = function (id = null) {
                 if (id) {
                     const e = state.events.find(ev => ev.id === id);
                     if (!e) return;
@@ -411,12 +456,12 @@
                 render();
             };
 
-            window.closeEdit = function() {
+            window.closeEdit = function () {
                 state.view = 'list';
                 render();
             };
 
-            window.saveEvent = async function() {
+            window.saveEvent = async function () {
                 const title = document.getElementById('editTitle').value.trim();
                 const dateVal = document.getElementById('editDate').value;
                 const startTime = document.getElementById('editStartTime').value;
@@ -469,7 +514,7 @@
                     await loadEvents();
                     state.view = 'list';
                     render();
-                } catch(e) {
+                } catch (e) {
                     console.error('Save error:', e);
                     tg.showAlert('Ошибка сохранения: ' + e.message);
                 } finally {
@@ -477,7 +522,7 @@
                 }
             };
 
-            window.deleteEvent = function(id) {
+            window.deleteEvent = function (id) {
                 confirmAction(t.confirmDelete, async () => {
                     showLoading();
                     try {
@@ -491,7 +536,7 @@
                         await loadEvents();
                         state.view = 'list';
                         render();
-                    } catch(e) {
+                    } catch (e) {
                         console.error('Delete error:', e);
                         tg.showAlert('Ошибка удаления: ' + e.message);
                     } finally {
@@ -506,7 +551,7 @@
                 for (let i = 0; i < days; i++) {
                     const d = new Date(fromDate);
                     d.setDate(d.getDate() + i);
-                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                     result[key] = events.filter(e => {
                         const eDate = new Date(e.start);
                         return sameDay(eDate, d);
@@ -545,20 +590,20 @@
                 return state.events.some(e => sameDay(new Date(e.start), date));
             }
 
-            window.toggleCalendar = function() {
+            window.toggleCalendar = function () {
                 console.log('toggleCalendar called, showCalendar was:', state.showCalendar);
                 state.showCalendar = !state.showCalendar;
                 console.log('showCalendar is now:', state.showCalendar);
                 render();
             };
 
-            window.selectDate = function(date) {
+            window.selectDate = function (date) {
                 state.selectedDate = date;
                 state.showCalendar = false;
                 render();
             };
 
-            window.goToToday = function() {
+            window.goToToday = function () {
                 state.selectedDate = new Date();
                 state.currentMonth = new Date();
                 render();
@@ -566,7 +611,7 @@
                 // Scroll to today after render
                 setTimeout(() => {
                     const today = new Date();
-                    const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                     const todaySection = document.querySelector(`[data-date="${todayKey}"]`);
                     if (todaySection) {
                         todaySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -574,17 +619,17 @@
                 }, 300);
             };
 
-            window.prevMonth = function() {
+            window.prevMonth = function () {
                 state.currentMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth() - 1, 1);
                 render();
             };
 
-            window.nextMonth = function() {
+            window.nextMonth = function () {
                 state.currentMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth() + 1, 1);
                 render();
             };
 
-            window.switchTab = function(tab) {
+            window.switchTab = function (tab) {
                 state.activeTab = tab;
                 state.view = 'list';
                 state.showCalendar = false;
@@ -595,7 +640,7 @@
                 }
             };
 
-            window.toggleTodo = async function(todoId) {
+            window.toggleTodo = async function (todoId) {
                 try {
                     const res = await fetch(`/api/todos/${userId}/${todoId}/toggle`, {
                         method: 'POST',
@@ -607,13 +652,13 @@
                         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
                     }
                     await loadTodos();
-                } catch(e) {
+                } catch (e) {
                     console.error('Error toggling todo:', e);
                     alert('Ошибка при изменении статуса задачи');
                 }
             };
 
-            window.editTodo = function(todoId) {
+            window.editTodo = function (todoId) {
                 const todo = state.todos.find(t => t.id === todoId);
                 if (!todo) return;
 
@@ -622,7 +667,7 @@
                 render();
             };
 
-            window.deleteTodo = async function(todoId) {
+            window.deleteTodo = async function (todoId) {
                 confirmAction('Удалить эту задачу?', async () => {
                     try {
                         const res = await fetch(`/api/todos/${userId}/${todoId}`, {
@@ -637,14 +682,14 @@
                         await loadTodos();
                         state.view = 'list';
                         render();
-                    } catch(e) {
+                    } catch (e) {
                         console.error('Error deleting todo:', e);
                         alert('Ошибка при удалении задачи');
                     }
                 });
             };
 
-            window.updateTodo = async function() {
+            window.updateTodo = async function () {
                 try {
                     const res = await fetch(`/api/todos/${userId}/${state.editingTodo.id}`, {
                         method: 'PUT',
@@ -665,25 +710,25 @@
                     state.view = 'list';
                     state.editingTodo = null;
                     render();
-                } catch(e) {
+                } catch (e) {
                     console.error('Error updating todo:', e);
                     alert('Ошибка при обновлении задачи');
                 }
             };
 
-            window.cancelTodoEdit = function() {
+            window.cancelTodoEdit = function () {
                 state.view = 'list';
                 state.editingTodo = null;
                 render();
             };
 
-            window.openNewTodo = function() {
+            window.openNewTodo = function () {
                 state.editingTodo = { id: null, title: '', completed: false, due_date: null };
                 state.view = 'todo-edit';
                 render();
             };
 
-            window.createTodo = async function() {
+            window.createTodo = async function () {
                 const title = document.getElementById('editTodoTitle').value.trim();
                 if (!title) {
                     tg.showAlert('Введите название задачи');
@@ -716,7 +761,7 @@
                     state.view = 'list';
                     state.editingTodo = null;
                     render();
-                } catch(e) {
+                } catch (e) {
                     console.error('Error creating todo:', e);
                     tg.showAlert('Ошибка при создании задачи');
                 } finally {
@@ -733,27 +778,27 @@
                 confirmCallback = callback;
             }
 
-            window.closeConfirm = function() {
+            window.closeConfirm = function () {
                 document.getElementById('confirmModal').style.display = 'none';
                 confirmCallback = null;
             };
 
-            window.execConfirm = function() {
+            window.execConfirm = function () {
                 document.getElementById('confirmModal').style.display = 'none';
                 if (confirmCallback) confirmCallback();
                 confirmCallback = null;
             };
 
             // Settings functions
-            window.openSettings = function() {
+            window.openSettings = function () {
                 document.getElementById('settingsModal').style.display = 'flex';
             };
 
-            window.closeSettings = function() {
+            window.closeSettings = function () {
                 document.getElementById('settingsModal').style.display = 'none';
             };
 
-            window.openSupport = function() {
+            window.openSupport = function () {
                 closeSettings();
                 // Show message before redirect
                 tg.showPopup({
@@ -763,7 +808,7 @@
                         { id: 'open', type: 'default', text: 'Перейти в чат' },
                         { id: 'cancel', type: 'cancel' }
                     ]
-                }, function(buttonId) {
+                }, function (buttonId) {
                     if (buttonId === 'open') {
                         if (window.Telegram?.WebApp?.openTelegramLink) {
                             window.Telegram.WebApp.openTelegramLink('https://t.me/iay_pm');
@@ -781,7 +826,7 @@
                 if (state.view === 'list') {
                     const fromDate = new Date(state.selectedDate);
                     fromDate.setDate(fromDate.getDate() - 30); // Show 30 days back
-                    fromDate.setHours(0,0,0,0);
+                    fromDate.setHours(0, 0, 0, 0);
                     const grouped = groupEventsByDay(state.events, fromDate, 90); // 30 back + 60 forward
                     const dateKeys = Object.keys(grouped);
 
@@ -794,7 +839,7 @@
                                         onclick="switchTab('events')"
                                         class="${state.activeTab === 'events' ? 'button-bg' : 'tertiary-bg'} px-6 py-2 rounded-xl flex-1 font-medium"
                                     >
-                                        📅 ${t.events}
+                                        ${t.events}
                                     </button>
                                     <button
                                         onclick="switchTab('todos')"
@@ -837,10 +882,10 @@
                                     </div>
                                     <div class="grid grid-cols-7 gap-1">
                                         ${getMonthDays(state.currentMonth.getFullYear(), state.currentMonth.getMonth()).map(d => {
-                                            const isToday = sameDay(d.date, new Date());
-                                            const isSelected = sameDay(d.date, state.selectedDate);
-                                            const hasEvents = hasEventsOnDate(d.date);
-                                            return `
+                        const isToday = sameDay(d.date, new Date());
+                        const isSelected = sameDay(d.date, state.selectedDate);
+                        const hasEvents = hasEventsOnDate(d.date);
+                        return `
                                                 <div
                                                     onclick="selectDate(new Date(${d.date.getTime()}))"
                                                     class="calendar-day ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''} ${hasEvents ? 'has-events' : ''} ${!d.current ? 'opacity-30' : ''}"
@@ -848,7 +893,7 @@
                                                     ${d.date.getDate()}
                                                 </div>
                                             `;
-                                        }).join('')}
+                    }).join('')}
                                     </div>
                                 </div>
                             ` : ''}
@@ -860,15 +905,15 @@
                                     </button>
 
                                     ${dateKeys.map(dateKey => {
-                                        const dayEvents = grouped[dateKey];
-                                        const [y, m, d] = dateKey.split('-').map(Number);
-                                        const dayDate = new Date(y, m - 1, d);
-                                        const isToday = sameDay(dayDate, new Date());
+                        const dayEvents = grouped[dateKey];
+                        const [y, m, d] = dateKey.split('-').map(Number);
+                        const dayDate = new Date(y, m - 1, d);
+                        const isToday = sameDay(dayDate, new Date());
 
-                                        // Skip empty days UNLESS it's today (always show today for scroll)
-                                        if (dayEvents.length === 0 && !isToday) return '';
+                        // Skip empty days UNLESS it's today (always show today for scroll)
+                        if (dayEvents.length === 0 && !isToday) return '';
 
-                                        return `
+                        return `
                                             <div class="day-separator py-2 px-2 font-semibold text-sm ${isToday ? 'tertiary-bg rounded-lg' : ''}" data-date="${dateKey}">
                                                 ${fmtDate(dayDate)} ${isToday ? '• Сегодня' : ''} — ${dayEvents.length > 0 ? (dayEvents.length + ' ' + (dayEvents.length === 1 ? 'событие' : 'событий')) : 'событий нет'}
                                             </div>
@@ -882,7 +927,7 @@
                                                 </div>
                                             `).join('')}
                                         `;
-                                    }).join('')}
+                    }).join('')}
 
                                     ${state.events.length === 0 ? `
                                         <div class="text-center py-12 hint-color">
@@ -1003,7 +1048,7 @@
                             <div class="space-y-4">
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.title}</span>
-                                    <input id="editTitle" value="${escapeAttr(state.edit.title||'')}"
+                                    <input id="editTitle" value="${escapeAttr(state.edit.title || '')}"
                                         class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="${t.title}"/>
                                 </label>
@@ -1026,7 +1071,7 @@
                                 </div>
                                 <label class="block">
                                     <span class="text-sm hint-color mb-2 block">${t.location}</span>
-                                    <input id="editLocation" value="${escapeAttr(state.edit.location||'')}"
+                                    <input id="editLocation" value="${escapeAttr(state.edit.location || '')}"
                                         class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base"
                                         placeholder="${t.location}"/>
                                 </label>
@@ -1034,7 +1079,7 @@
                                     <span class="text-sm hint-color mb-2 block">${t.note}</span>
                                     <textarea id="editNote" rows="4"
                                         class="secondary-bg w-full px-4 py-3 rounded-lg outline-none text-base resize-none"
-                                        placeholder="${t.note}">${escapeHtml(state.edit.description||'')}</textarea>
+                                        placeholder="${t.note}">${escapeHtml(state.edit.description || '')}</textarea>
                                 </label>
                                 <div class="flex gap-3 mt-6 pt-4">
                                     <button onclick="closeEdit()" class="tertiary-bg flex-1 py-4 rounded-lg font-medium">
@@ -1100,7 +1145,7 @@
                     const scrollToToday = () => {
                         const today = new Date();
                         today.setHours(0, 0, 0, 0);
-                        const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                        const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
                         console.log('Looking for today section:', todayKey);
                         let targetSection = document.querySelector(`[data-date="${todayKey}"]`);
 
@@ -1159,7 +1204,7 @@
             }
 
             // Global event delegation
-            document.addEventListener('click', function(e) {
+            document.addEventListener('click', function (e) {
                 if (e.target.classList.contains('btn-edit') || e.target.closest('.btn-edit')) {
                     const btn = e.target.classList.contains('btn-edit') ? e.target : e.target.closest('.btn-edit');
                     const eventId = btn.getAttribute('data-event-id');
@@ -1184,4 +1229,5 @@
         }
     </script>
 </body>
+
 </html>

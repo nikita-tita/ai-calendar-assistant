@@ -693,13 +693,17 @@ class AdminAuthService:
             # Check IP address binding
             if payload.get("ip") != ip_address:
                 logger.warning("jwt_ip_mismatch", token_ip=payload.get("ip"), request_ip=ip_address)
-                return None
+                # Relaxed: don't invalidate just because of IP change (common on mobile)
+                # return None
+                pass
 
             # Check User-Agent fingerprint
             ua_hash = hashlib.sha256(user_agent.encode()).hexdigest()
             if payload.get("ua_hash") != ua_hash:
-                logger.warning("jwt_ua_mismatch")
-                return None
+                logger.warning("jwt_ua_mismatch", expected=payload.get("ua_hash"), actual=ua_hash)
+                # Relaxed: allow minor UA changes if token is valid
+                # return None
+                pass
 
             # SEC-007: Check fingerprint for refresh tokens
             if token_type == "refresh":

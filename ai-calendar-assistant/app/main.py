@@ -169,8 +169,22 @@ async def metrics():
 
 
 @app.get("/")
-async def root():
-    """Root endpoint."""
+async def root(request: Request):
+    """
+    Root endpoint.
+    Serves WebApp for browsers (including Telegram WebApp), JSON for others.
+    """
+    accept = request.headers.get("Accept", "")
+    if "text/html" in accept:
+        return FileResponse(
+            "app/static/index.html",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+        
     return {
         "message": "AI Calendar Assistant API",
         "version": "0.1.0",

@@ -154,7 +154,7 @@ async def login(
             value=access_token,
             httponly=True,
             secure=is_secure,  # Conditional: requires HTTPS only in production
-            samesite="lax" if not is_secure else "strict",  # Lax for HTTP, strict for HTTPS
+            samesite="lax",  # Use Lax for better compatibility
             max_age=3600,  # 1 hour
             path="/"
         )
@@ -164,7 +164,7 @@ async def login(
             value=refresh_token,
             httponly=True,
             secure=is_secure,  # Conditional: requires HTTPS only in production
-            samesite="lax" if not is_secure else "strict",  # Lax for HTTP, strict for HTTPS
+            samesite="lax",  # Use Lax for better compatibility
             max_age=604800,  # 7 days
             path="/"
         )
@@ -178,6 +178,61 @@ async def login(
             mode="invalid",
             message="Server error"
         )
+
+
+@router.post("/refresh")
+@limiter.limit("5/minute")
+async def refresh_session(request: Request):
+    """
+    Refresh access token using refresh token from cookie.
+    """
+    try:
+        # Get refresh token from cookie
+        refresh_token = request.cookies.get("admin_refresh_token")
+        if not refresh_token:
+            raise HTTPException(status_code=401, detail="No refresh token provided")
+
+        # Get IP and UA
+        ip_address = get_client_ip(request)
+        user_agent = get_user_agent(request)
+
+        # Verify refresh token
+        auth_service = get_admin_auth()
+        payload = auth_service.verify_token(refresh_token, ip_address, user_agent, "refresh")
+
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+        # Get user
+        user = auth_service.get_admin_user(payload["user_id"])
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="User not found or inactive")
+
+        # Generate new access token
+        # Use the mode from the payload (real or fake)
+        mode = payload.get("mode", "real")
+        access_token = auth_service._generate_token(user, mode, ip_address, user_agent, "access")
+        
+        # Determine if we should use secure cookies (production)
+        is_secure = settings.app_env == "production"
+        
+        json_response = JSONResponse(content={"success": True, "message": "Token refreshed"})
+        json_response.set_cookie(
+            key="admin_access_token",
+            value=access_token,
+            httponly=True,
+            secure=is_secure,
+            samesite="lax",
+            max_age=3600,
+            path="/"
+        )
+        return json_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("token_refresh_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error during refresh")
 
 
 @router.post("/logout")
