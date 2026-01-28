@@ -11,8 +11,20 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Light theme (Housler standard) */
+        /* Housler Design System - Light theme */
         :root {
+            /* Базовые цвета согласно DESIGN-SYSTEM.md */
+            --gray-900: #181A20;
+            --gray-800: #333333;
+            --gray-700: #4A4A4A;
+            --gray-600: #6B7280;
+            --gray-500: #9CA3AF;
+            --gray-400: #D1D5DB;
+            --gray-300: #E5E7EB;
+            --gray-200: #F3F4F6;
+            --gray-100: #F9FAFB;
+
+            /* Семантические алиасы */
             --bg-primary: #ffffff;
             --bg-secondary: #f9fafb;
             --bg-tertiary: #f3f4f6;
@@ -43,37 +55,37 @@
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--tg-theme-bg-color, var(--bg-primary));
-            color: var(--tg-theme-text-color, var(--text-primary));
+            background: var(--bg-primary);
+            color: var(--text-primary);
             overscroll-behavior: none;
             touch-action: pan-y;
             padding-bottom: 20px;
         }
 
         .secondary-bg {
-            background: var(--tg-theme-secondary-bg-color, var(--bg-secondary));
+            background: var(--bg-secondary) !important;
         }
 
         .tertiary-bg {
-            background: var(--bg-tertiary);
+            background: var(--bg-tertiary) !important;
         }
 
         .button-bg {
-            background: var(--button-bg);
-            color: var(--button-text);
+            background: var(--button-bg) !important;
+            color: var(--button-text) !important;
         }
 
         .button-danger {
-            background: var(--button-danger-bg);
-            color: var(--button-danger-text);
+            background: var(--button-danger-bg) !important;
+            color: var(--button-danger-text) !important;
         }
 
         .hint-color {
-            color: var(--tg-theme-hint-color, var(--text-hint));
+            color: var(--text-hint) !important;
         }
 
         .border-theme {
-            border-color: var(--border-color);
+            border-color: var(--border-color) !important;
         }
 
         .modal {
@@ -206,8 +218,8 @@
     </div>
 
     <script>
-        // Version: 2026-01-23-v987 - Housler Design System (Light Mode, Monochrome)
-        const APP_VERSION = '2026-01-23-v987';
+        // Version: 2026-01-28-v988 - Fix: Historical events, Housler Design System enforcement
+        const APP_VERSION = '2026-01-28-v988';
 
         // Initialize Telegram WebApp
         const tg = window.Telegram?.WebApp;
@@ -380,10 +392,10 @@
                 showLoading();
                 try {
                     const start = new Date();
-                    start.setDate(start.getDate() - 90);
+                    start.setDate(start.getDate() - 365);
                     start.setHours(0, 0, 0, 0);
                     const end = new Date();
-                    end.setDate(end.getDate() + 90);
+                    end.setDate(end.getDate() + 365);
                     end.setHours(23, 59, 59, 999);
 
                     const res = await fetch(`/api/events/${userId}?start=${start.toISOString()}&end=${end.toISOString()}`, {
@@ -825,9 +837,9 @@
 
                 if (state.view === 'list') {
                     const fromDate = new Date(state.selectedDate);
-                    fromDate.setDate(fromDate.getDate() - 30); // Show 30 days back
+                    fromDate.setDate(fromDate.getDate() - 365); // Show 365 days back
                     fromDate.setHours(0, 0, 0, 0);
-                    const grouped = groupEventsByDay(state.events, fromDate, 90); // 30 back + 60 forward
+                    const grouped = groupEventsByDay(state.events, fromDate, 730); // 365 back + 365 forward
                     const dateKeys = Object.keys(grouped);
 
                     app.innerHTML = `
@@ -852,7 +864,7 @@
                                 <div class="flex items-center justify-between mb-3">
                                     <h1 class="text-2xl font-bold">${state.activeTab === 'events' ? t.myEvents : t.myTodos}</h1>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-xs hint-color px-2 py-1 rounded tertiary-bg">v986</span>
+                                        <span class="text-xs hint-color px-2 py-1 rounded tertiary-bg">v988</span>
                                         <button onclick="openSettings()" class="tertiary-bg w-8 h-8 rounded-xl flex items-center justify-center">
                                             <span class="text-lg">⚙️</span>
                                         </button>
