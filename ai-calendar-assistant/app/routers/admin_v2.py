@@ -937,6 +937,41 @@ async def get_audit_logs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/broadcast-conversion")
+async def get_broadcast_conversion(
+    request: Request,
+    hours: int = Query(48, ge=1, le=720, description="Hours to look back")
+):
+    """
+    Get broadcast conversion metrics.
+
+    Returns users who clicked broadcast button and then sent voice message.
+    Useful for measuring campaign effectiveness.
+    """
+    try:
+        payload = await verify_admin_token(request)
+
+        if payload.get("mode") == "fake":
+            logger.info("admin_broadcast_conversion_fake_mode")
+            return {"total_clicks": 0, "voice_after_click": 0, "conversion_rate": 0, "users": []}
+
+        result = analytics_service.get_broadcast_conversion(hours=hours)
+
+        logger.info("admin_broadcast_conversion_accessed",
+                   admin_id=payload["user_id"],
+                   hours=hours,
+                   total_clicks=result["total_clicks"],
+                   conversions=result["voice_after_click"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin_broadcast_conversion_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/actions/summary")
 async def get_actions_summary(request: Request):
     """

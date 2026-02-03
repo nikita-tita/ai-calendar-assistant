@@ -1568,6 +1568,87 @@ class AnalyticsService:
         finally:
             conn.close()
 
+    @retry_on_locked()
+    def get_broadcast_conversion(self, hours: int = 48) -> Dict:
+        """
+        Get broadcast conversion metrics.
+
+        Returns users who clicked broadcast button and then sent voice message
+        within the specified time window.
+
+        Args:
+            hours: Time window to look back (default 48 hours)
+
+        Returns:
+            Dict with conversion metrics:
+            - total_clicks: number of users who clicked broadcast
+            - voice_after_click: number who sent voice after clicking
+            - conversion_rate: percentage
+            - users: detailed list of users with timestamps
+        """
+        conn = self._get_connection()
+        try:
+            cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+
+            # Get all broadcast clicks in time window
+            clicks = conn.execute('''
+                SELECT DISTINCT a.user_id, u.username, u.first_name,
+                       MIN(a.timestamp) as click_time
+                FROM actions a
+                LEFT JOIN users u ON a.user_id = u.user_id
+                WHERE a.action_type = 'broadcast_click'
+                  AND a.timestamp >= ?
+                  AND (a.is_test = 0 OR a.is_test IS NULL)
+                GROUP BY a.user_id
+                ORDER BY click_time DESC
+            ''', (cutoff,)).fetchall()
+
+            users_data = []
+            voice_after_click = 0
+
+            for click in clicks:
+                user_id = click['user_id']
+                click_time = click['click_time']
+
+                # Check if user sent voice message AFTER clicking
+                voice = conn.execute('''
+                    SELECT MIN(timestamp) as voice_time
+                    FROM actions
+                    WHERE user_id = ?
+                      AND action_type = 'voice_message'
+                      AND timestamp > ?
+                      AND (is_test = 0 OR is_test IS NULL)
+                ''', (user_id, click_time)).fetchone()
+
+                voice_time = voice['voice_time'] if voice else None
+                converted = voice_time is not None
+
+                if converted:
+                    voice_after_click += 1
+
+                users_data.append({
+                    'user_id': user_id,
+                    'username': click['username'],
+                    'first_name': click['first_name'],
+                    'click_time': click_time,
+                    'voice_time': voice_time,
+                    'converted': converted
+                })
+
+            total_clicks = len(clicks)
+            conversion_rate = (voice_after_click / total_clicks * 100) if total_clicks > 0 else 0
+
+            return {
+                'total_clicks': total_clicks,
+                'voice_after_click': voice_after_click,
+                'conversion_rate': round(conversion_rate, 1),
+                'hours': hours,
+                'users': users_data
+            }
+
+        finally:
+            conn.close()
+
 
 # Global instance
 analytics_service = AnalyticsService()

@@ -42,6 +42,8 @@ class ActionType(str, Enum):
     LLM_REQUEST = "llm_request"       # Successful LLM request (for cost tracking)
     # Referral tracking
     REFERRAL_JOINED = "referral_joined"  # New user joined via referral link
+    # Broadcast tracking
+    BROADCAST_CLICK = "broadcast_click"  # User clicked button from broadcast message
 
 
 class UserAction(BaseModel):

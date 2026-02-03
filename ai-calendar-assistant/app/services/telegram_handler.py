@@ -1063,6 +1063,22 @@ Housler.ru сделал подборку сервисов, которые пом
         if data != "broadcast:start":
             return False
 
+        # Log broadcast click for conversion tracking
+        if ANALYTICS_ENABLED and analytics_service:
+            try:
+                from app.models.analytics import ActionType
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.BROADCAST_CLICK,
+                    details="Clicked broadcast button",
+                    success=True,
+                    username=update.effective_user.username if update.effective_user else None,
+                    first_name=update.effective_user.first_name if update.effective_user else None,
+                    last_name=update.effective_user.last_name if update.effective_user else None
+                )
+            except Exception as e:
+                logger.warning("analytics_broadcast_click_log_failed", error=str(e))
+
         await query.answer()
 
         try:
