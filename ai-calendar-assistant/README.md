@@ -170,6 +170,74 @@ ssh root@95.163.227.26 'docker ps'
 
 ---
 
+## Админ-панель
+
+### Доступ
+
+- **UI интерфейс:** `/admin`
+- **API v1:** `/api/admin/` (3 пароля)
+- **API v2:** `/api/admin/v2/` (логин + 2FA)
+
+### Авторизация
+
+**Версия 1 — три пароля:**
+```bash
+# POST /api/admin/verify
+curl -X POST http://localhost:8000/api/admin/verify \
+  -H "Content-Type: application/json" \
+  -d '{"password1": "...", "password2": "...", "password3": "..."}'
+```
+
+Переменные окружения:
+```bash
+ADMIN_PASSWORD_1=первый_пароль
+ADMIN_PASSWORD_2=второй_пароль
+ADMIN_PASSWORD_3=третий_пароль
+```
+
+> **Fake mode:** Если пароли 1 и 2 верные, а 3 — неверный, показываются фейковые данные (защита от принуждения).
+
+**Версия 2 — логин + Google Authenticator:**
+```bash
+# POST /api/admin/v2/login
+curl -X POST http://localhost:8000/api/admin/v2/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "...", "totp_code": "123456"}'
+```
+
+### Основные эндпоинты
+
+| Эндпоинт | Описание |
+|----------|----------|
+| `GET /stats` | Статистика (пользователи, события, сообщения) |
+| `GET /users` | Список пользователей с метриками |
+| `GET /users/{id}/dialog` | История сообщений пользователя |
+| `GET /users/{id}/events` | Календарные события пользователя |
+| `GET /timeline` | Лента активности по часам |
+| `GET /timeline/daily` | Ежедневная статистика (v2) |
+| `GET /users/metrics` | DAU/WAU/MAU, retention, сегменты (v2) |
+| `GET /users/top` | Топ активных пользователей (v2) |
+| `GET /llm/costs` | Расходы на LLM по дням/моделям (v2) |
+| `GET /errors` | Системные ошибки |
+| `POST /broadcast` | Рассылка сообщений всем пользователям |
+
+### Сравнение версий
+
+| Функция | v1 | v2 |
+|---------|:--:|:--:|
+| JWT токены | HS256 | RS256 (асимметричные) |
+| 2FA (TOTP) | ❌ | ✅ |
+| httpOnly cookies | ❌ | ✅ |
+| Привязка к IP | ❌ | ✅ |
+| Аудит действий | ❌ | ✅ |
+| Несколько админов | ❌ | ✅ |
+| Роли (admin/moderator/viewer) | ❌ | ✅ |
+| Rate limiting | 5/мин | 3/5мин + блокировка 15мин |
+
+Подробное сравнение: [ADMIN_COMPARISON.md](../ADMIN_COMPARISON.md)
+
+---
+
 ## Безопасность
 
 - **HMAC-авторизация** — WebApp запросы проверяются подписью Telegram
