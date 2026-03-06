@@ -188,6 +188,16 @@ _WEEKDAY_MAP = {
 }
 
 
+def _get_now(timezone: str) -> datetime:
+    """Get current time in user's timezone as naive datetime."""
+    try:
+        import pytz
+        tz = pytz.timezone(timezone)
+        return datetime.now(tz).replace(tzinfo=None)
+    except Exception:
+        return datetime.now()
+
+
 def _try_create_with_time(text_lower: str, text_orig: str, timezone: str) -> Optional[Tuple[str, dict, float]]:
     """Try to match create intent — requires explicit time."""
     # Must have explicit time to be confident
@@ -202,8 +212,8 @@ def _try_create_with_time(text_lower: str, text_orig: str, timezone: str) -> Opt
     if hour > 23 or minute > 59:
         return None
 
-    # Extract day reference
-    now = datetime.now()
+    # Use timezone-aware "now" for correct past-time detection
+    now = _get_now(timezone)
     target_date = now  # Default to today
 
     for day_kw, offset in _DAY_KEYWORDS.items():

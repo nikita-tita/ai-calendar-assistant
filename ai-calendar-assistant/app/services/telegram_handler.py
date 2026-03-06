@@ -1991,6 +1991,25 @@ Housler.ru сделал подборку сервисов, которые пом
             self._log_bot_response(user_id, msg, user_text)
             return
 
+        # Safeguard: if start_time is in the past (user's timezone), shift to tomorrow
+        # Unless user explicitly said "сегодня"
+        try:
+            import pytz
+            user_tz = self._get_user_timezone(update)
+            tz = pytz.timezone(user_tz)
+            now_user = datetime.now(tz).replace(tzinfo=None)
+            if event_dto.start_time < now_user:
+                user_said_today = user_text and "сегодня" in user_text.lower()
+                if not user_said_today:
+                    event_duration = (event_dto.end_time - event_dto.start_time) if event_dto.end_time else timedelta(hours=1)
+                    event_dto.start_time += timedelta(days=1)
+                    event_dto.end_time = event_dto.start_time + event_duration
+                    logger.info("past_time_shifted_to_tomorrow",
+                                user_id=user_id,
+                                new_start=str(event_dto.start_time))
+        except Exception as e:
+            logger.warning("past_time_check_failed", error=str(e))
+
         # Create event
         event_uid = await calendar_service.create_event(user_id, event_dto)
 
