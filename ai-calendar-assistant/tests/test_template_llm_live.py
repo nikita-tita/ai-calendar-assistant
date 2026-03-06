@@ -1,6 +1,6 @@
 """Live LLM tests for template field extraction and refinement.
 
-Run inside Docker: python -m tests.test_template_llm_live
+Run inside Docker: python /app/test_template_llm_live.py
 """
 
 import asyncio
@@ -16,9 +16,15 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+# Cost tracking
+total_input_tokens = 0
+total_output_tokens = 0
+total_requests = 0
+
 
 async def call_llm(system_prompt: str, user_text: str) -> dict:
-    """Call YandexGPT-Lite and return parsed result."""
+    """Call YandexGPT-Lite and return parsed result with token counts."""
+    global total_input_tokens, total_output_tokens, total_requests
     payload = {
         "modelUri": MODEL,
         "completionOptions": {"stream": False, "temperature": 0.1, "maxTokens": 500},
@@ -32,8 +38,16 @@ async def call_llm(system_prompt: str, user_text: str) -> dict:
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(API_URL, headers=HEADERS, json=payload)
         resp.raise_for_status()
-        raw = resp.json()["result"]["alternatives"][0]["message"]["text"]
+        data = resp.json()
+        raw = data["result"]["alternatives"][0]["message"]["text"]
+        usage = data["result"].get("usage", {})
     elapsed = round((time.perf_counter() - t0) * 1000)
+
+    input_tokens = int(usage.get("inputTextTokens", 0))
+    output_tokens = int(usage.get("completionTokens", 0))
+    total_input_tokens += input_tokens
+    total_output_tokens += output_tokens
+    total_requests += 1
 
     # Parse JSON
     parsed = None
@@ -50,14 +64,25 @@ async def call_llm(system_prompt: str, user_text: str) -> dict:
                     pass
                 break
 
-    return {"raw": raw, "parsed": parsed, "elapsed_ms": elapsed}
+    return {
+        "raw": raw, "parsed": parsed, "elapsed_ms": elapsed,
+        "input_tokens": input_tokens, "output_tokens": output_tokens,
+    }
 
 
-# ==================== System Prompts ====================
+# ==================== System Prompts (WITH dative case fix) ====================
+# These match production prompts in telegram_handler.py
+
+DATIVE_HINT = (
+    "ВАЖНО: client_name — это имя/фамилия клиента. Может быть в любом падеже: "
+    "\"Сидорову\" → client_name: \"Сидоров\", \"Козловой\" → client_name: \"Козлова\". "
+    "Всегда приводи к именительному падежу.\n"
+)
 
 SHOWING_CONFIRM_PROMPT = (
     "Ты помощник риелтора. Из сообщения пользователя извлеки поля для шаблона.\n"
     'Нужные поля: "client_name": Имя клиента, "address": Адрес, "date": Дата, "time": Время\n'
+    + DATIVE_HINT +
     "Если есть дополнительные пожелания/заметки не из полей — верни в поле \"extra\".\n"
     "Верни ТОЛЬКО JSON, без пояснений. Пример:\n"
     '{"client_name": "Иванов Пётр", "address": "ул. Пионерская 12", "date": "завтра", "time": "14:00", "extra": null}\n'
@@ -67,6 +92,7 @@ SHOWING_CONFIRM_PROMPT = (
 DOC_REMINDER_PROMPT = (
     "Ты помощник риелтора. Из сообщения пользователя извлеки поля для шаблона.\n"
     'Нужные поля: "client_name": Имя клиента, "doc_list": Список документов\n'
+    + DATIVE_HINT +
     "Если поле doc_list — верни как массив строк.\n"
     "Если есть дополнительные пожелания/заметки не из полей — верни в поле \"extra\".\n"
     "Верни ТОЛЬКО JSON, без пояснений. Пример:\n"
@@ -77,6 +103,7 @@ DOC_REMINDER_PROMPT = (
 MEETING_REMINDER_PROMPT = (
     "Ты помощник риелтора. Из сообщения пользователя извлеки поля для шаблона.\n"
     'Нужные поля: "client_name": Имя клиента, "date": Дата, "time": Время, "address": Адрес\n'
+    + DATIVE_HINT +
     "Если есть дополнительные пожелания/заметки не из полей — верни в поле \"extra\".\n"
     "Верни ТОЛЬКО JSON, без пояснений. Пример:\n"
     '{"client_name": "Иванов", "date": "завтра", "time": "14:00", "address": "ул. Ленина 5", "extra": null}\n'
@@ -86,6 +113,7 @@ MEETING_REMINDER_PROMPT = (
 THANK_YOU_PROMPT = (
     "Ты помощник риелтора. Из сообщения пользователя извлеки поля для шаблона.\n"
     'Нужные поля: "client_name": Имя клиента\n'
+    + DATIVE_HINT +
     "Если есть дополнительные пожелания/заметки не из полей — верни в поле \"extra\".\n"
     "Верни ТОЛЬКО JSON, без пояснений. Пример:\n"
     '{"client_name": "Иванов Пётр", "extra": null}\n'
@@ -96,6 +124,7 @@ EVENT_SHOWING_PROMPT = (
     "Ты помощник риелтора. Из сообщения извлеки поля для создания события.\n"
     "Тип события: 🏠 Показ квартиры\n"
     'Нужные поля: "address": Адрес, "client_name": Имя клиента, "time_text": Время\n'
+    + DATIVE_HINT +
     "Верни ТОЛЬКО JSON. Пример:\n"
     '{"address": "ул. Пионерская 12", "client_name": "Иванов", "time_text": "завтра в 14:00"}\n'
     "Если поле не удалось определить — поставь null."
@@ -105,6 +134,7 @@ EVENT_CALL_PROMPT = (
     "Ты помощник риелтора. Из сообщения извлеки поля для создания события.\n"
     "Тип события: 📞 Звонок клиенту\n"
     'Нужные поля: "client_name": Имя клиента, "time_text": Время, "topic": Тема звонка\n'
+    + DATIVE_HINT +
     "Верни ТОЛЬКО JSON. Пример:\n"
     '{"client_name": "Иванов", "time_text": "сегодня в 10:00", "topic": "обсудить условия"}\n'
     "Если поле не удалось определить — поставь null."
@@ -130,7 +160,7 @@ TESTS = [
         "expect_fields": ["client_name", "address", "date", "time"],
     },
     {
-        "name": "1.2 Документы — имя + список",
+        "name": "1.2 Документы — Сидорову (дат. падеж)",
         "prompt": DOC_REMINDER_PROMPT,
         "input": "Сидорову напомнить: паспорт, справка 2-НДФЛ, выписка из ЕГРН",
         "expect_fields": ["client_name", "doc_list"],
@@ -150,21 +180,21 @@ TESTS = [
 
     # ===== ГРУППА 2: Доп пожелания (extra) =====
     {
-        "name": "2.1 Документы + extra про срок",
+        "name": "2.1 Документы — Петрову + extra",
         "prompt": DOC_REMINDER_PROMPT,
         "input": "Петрову: паспорт и свидетельство о браке, и скажи что срок до пятницы",
         "expect_fields": ["client_name", "doc_list"],
         "expect_extra": True,
     },
     {
-        "name": "2.2 Показ + extra про парковку",
+        "name": "2.2 Показ — Козлова + extra парковка",
         "prompt": SHOWING_CONFIRM_PROMPT,
         "input": "Козлова, Литейный 30, послезавтра в 11:00, и напиши что парковка во дворе",
         "expect_fields": ["client_name", "address", "date", "time"],
         "expect_extra": True,
     },
     {
-        "name": "2.3 Встреча + extra про документы",
+        "name": "2.3 Встреча + extra про паспорт",
         "prompt": MEETING_REMINDER_PROMPT,
         "input": "Антон, Новочеркасская 10к4 завтра в 16, и напиши чтобы паспорт не забыл",
         "expect_fields": ["client_name", "date", "time", "address"],
@@ -193,14 +223,14 @@ TESTS = [
 
     # ===== ГРУППА 4: Частичные данные =====
     {
-        "name": "4.1 Показ — без даты",
+        "name": "4.1 Показ — Васильев без даты",
         "prompt": SHOWING_CONFIRM_PROMPT,
         "input": "Васильев, Гагарина 5, в 15:00",
         "expect_fields": ["client_name", "address", "time"],
         "expect_null": ["date"],
     },
     {
-        "name": "4.2 Документы — только имя, без списка",
+        "name": "4.2 Документы — Козлову, без списка",
         "prompt": DOC_REMINDER_PROMPT,
         "input": "Козлову",
         "expect_fields": ["client_name"],
@@ -209,13 +239,13 @@ TESTS = [
 
     # ===== ГРУППА 5: Шаблоны событий =====
     {
-        "name": "5.1 Показ квартиры — событие",
+        "name": "5.1 Показ квартиры — событие (Иванову)",
         "prompt": EVENT_SHOWING_PROMPT,
         "input": "Иванову на Пионерской 12 завтра в 14:00",
         "expect_fields": ["address", "client_name", "time_text"],
     },
     {
-        "name": "5.2 Звонок — событие",
+        "name": "5.2 Звонок — Сидорову",
         "prompt": EVENT_CALL_PROMPT,
         "input": "позвонить Сидорову сегодня в 10 обсудить ипотеку",
         "expect_fields": ["client_name", "time_text", "topic"],
@@ -275,13 +305,14 @@ REFINE_CHAIN = [
 
 async def run_tests():
     print("=" * 70)
-    print("LIVE LLM TEMPLATE TESTS")
+    print("LIVE LLM TEMPLATE TESTS (with dative case fix + cost tracking)")
     print(f"Model: {MODEL}")
     print("=" * 70)
 
     passed = 0
     failed = 0
     errors = 0
+    times = []
 
     for test in TESTS:
         print(f"\n{'─' * 60}")
@@ -291,9 +322,9 @@ async def run_tests():
         try:
             result = await call_llm(test["prompt"], test["input"])
             parsed = result["parsed"]
+            times.append(result["elapsed_ms"])
 
-            print(f"TIME: {result['elapsed_ms']}ms")
-            print(f"RAW: {result['raw'][:200]}")
+            print(f"TIME: {result['elapsed_ms']}ms | tokens: {result['input_tokens']}→{result['output_tokens']}")
             print(f"PARSED: {json.dumps(parsed, ensure_ascii=False, indent=2) if parsed else 'NONE'}")
 
             # Validate
@@ -301,7 +332,6 @@ async def run_tests():
             issues = []
 
             if test.get("expect_all_null"):
-                # All fields should be null
                 if parsed:
                     non_null = [k for k, v in parsed.items() if v is not None and k != "extra"]
                     if non_null:
@@ -321,7 +351,6 @@ async def run_tests():
                     val = parsed.get(field)
                     if val is not None and val != "null":
                         issues.append(f"Expected null for {field}, got: {val}")
-                        # Not a hard fail — LLM might infer date
 
                 if test.get("expect_extra"):
                     extra = parsed.get("extra")
@@ -352,15 +381,15 @@ async def run_tests():
 
         try:
             if "prompt" in step:
-                # Initial render
                 print(f"INPUT: {step['input']}")
                 result = await call_llm(step["prompt"], step["input"])
                 parsed = result["parsed"]
-                print(f"TIME: {result['elapsed_ms']}ms")
+                times.append(result["elapsed_ms"])
+
+                print(f"TIME: {result['elapsed_ms']}ms | tokens: {result['input_tokens']}→{result['output_tokens']}")
                 print(f"PARSED: {json.dumps(parsed, ensure_ascii=False, indent=2) if parsed else 'NONE'}")
 
                 if parsed:
-                    # Simulate template rendering
                     name = parsed.get("client_name", "[Имя]")
                     date = parsed.get("date", "[Дата]")
                     time_ = parsed.get("time", "[Время]")
@@ -375,14 +404,14 @@ async def run_tests():
                     print("RESULT: ❌ FAIL — no parsed data")
                     failed += 1
             else:
-                # Refinement step
                 print(f"REFINE: {step['refine']}")
                 refine_prompt = REFINE_PROMPT_TPL.format(current_text=current_text)
 
                 result = await call_llm(refine_prompt, step["refine"])
                 refined = result["raw"].strip()
+                times.append(result["elapsed_ms"])
 
-                print(f"TIME: {result['elapsed_ms']}ms")
+                print(f"TIME: {result['elapsed_ms']}ms | tokens: {result['input_tokens']}→{result['output_tokens']}")
                 print(f"REFINED:\n{refined}")
 
                 if len(refined) > 10 and refined != current_text:
@@ -397,10 +426,43 @@ async def run_tests():
             print(f"RESULT: 💥 ERROR — {e}")
             errors += 1
 
-    # Summary
+    # ===== Summary & Cost =====
     total = passed + failed + errors
+    avg_time = round(sum(times) / len(times)) if times else 0
+
+    # YandexGPT Lite pricing (as of 2026):
+    # Input:  0.20 ₽ / 1000 tokens
+    # Output: 0.40 ₽ / 1000 tokens
+    input_cost = total_input_tokens * 0.20 / 1000
+    output_cost = total_output_tokens * 0.40 / 1000
+    total_cost = input_cost + output_cost
+    cost_per_request = total_cost / total_requests if total_requests else 0
+
     print(f"\n{'=' * 70}")
-    print(f"SUMMARY: {passed}/{total} passed, {failed} failed, {errors} errors")
+    print(f"RESULTS: {passed}/{total} passed, {failed} failed, {errors} errors")
+    print(f"{'─' * 70}")
+    print(f"PERFORMANCE:")
+    print(f"  Avg latency:    {avg_time}ms")
+    print(f"  Total requests: {total_requests}")
+    print(f"{'─' * 70}")
+    print(f"TOKEN USAGE:")
+    print(f"  Input tokens:   {total_input_tokens}")
+    print(f"  Output tokens:  {total_output_tokens}")
+    print(f"  Total tokens:   {total_input_tokens + total_output_tokens}")
+    print(f"{'─' * 70}")
+    print(f"COST (YandexGPT Lite: 0.20₽/1K input, 0.40₽/1K output):")
+    print(f"  Input cost:     {input_cost:.4f} ₽")
+    print(f"  Output cost:    {output_cost:.4f} ₽")
+    print(f"  Total cost:     {total_cost:.4f} ₽")
+    print(f"  Per request:    {cost_per_request:.4f} ₽ (~{cost_per_request*100:.2f} коп.)")
+    print(f"{'─' * 70}")
+    print(f"DIALOG COST ESTIMATE (typical 3-5 LLM calls per dialog):")
+    print(f"  1 template fill:           ~{cost_per_request:.4f} ₽")
+    print(f"  Fill + 1 edit:             ~{cost_per_request*2:.4f} ₽")
+    print(f"  Fill + 3 edits:            ~{cost_per_request*4:.4f} ₽")
+    print(f"  10 dialogs/day:            ~{cost_per_request*2*10:.4f} ₽")
+    print(f"  100 dialogs/day:           ~{cost_per_request*2*100:.3f} ₽")
+    print(f"  1000 dialogs/day:          ~{cost_per_request*2*1000:.2f} ₽")
     print(f"{'=' * 70}")
 
 
