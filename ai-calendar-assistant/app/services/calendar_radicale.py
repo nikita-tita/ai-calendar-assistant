@@ -11,6 +11,7 @@ from icalendar import Calendar, Event as ICalEvent
 import structlog
 import hashlib
 import uuid
+from urllib3.exceptions import NameResolutionError, NewConnectionError
 
 from app.config import settings
 from app.schemas.events import EventDTO, CalendarEvent, FreeSlot
@@ -28,6 +29,41 @@ except ImportError:
     analytics_service = None
 
 
+class CalendarServiceError(Exception):
+    """Raised when calendar service is temporarily unavailable.
+    Used to distinguish real errors from empty calendar."""
+    pass
+
+
+class CalendarErrorType:
+    """Error classification for structured analytics."""
+    DNS_RESOLUTION = "dns_resolution"
+    CONNECTION_REFUSED = "connection_refused"
+    TIMEOUT = "timeout"
+    AUTH_FAILED = "auth_failed"
+    CONNECTION_RESET = "connection_reset"
+    PARSE_ERROR = "parse_error"
+    UNKNOWN = "unknown"
+
+    @staticmethod
+    def classify(error: Exception) -> str:
+        """Classify an exception into error type."""
+        error_str = str(error).lower()
+        if isinstance(error, (NameResolutionError, NewConnectionError)) or 'nameresolutionerror' in error_str:
+            return CalendarErrorType.DNS_RESOLUTION
+        elif 'connectionrefused' in error_str or 'connection refused' in error_str:
+            return CalendarErrorType.CONNECTION_REFUSED
+        elif 'timed out' in error_str or 'timeout' in error_str:
+            return CalendarErrorType.TIMEOUT
+        elif 'authorization' in error_str or '401' in error_str or '403' in error_str:
+            return CalendarErrorType.AUTH_FAILED
+        elif 'remote end closed' in error_str or 'connectionreset' in error_str:
+            return CalendarErrorType.CONNECTION_RESET
+        elif 'parse' in error_str or 'ical' in error_str or 'decode' in error_str:
+            return CalendarErrorType.PARSE_ERROR
+        return CalendarErrorType.UNKNOWN
+
+
 class RadicaleService:
     """
     Service for interacting with Radicale CalDAV server.
@@ -42,6 +78,9 @@ class RadicaleService:
     # Cache settings
     CACHE_TTL_SECONDS = 300  # 5 minutes
     MAX_CACHED_CALENDARS = 500  # Limit memory usage
+    MAX_CLIENT_AGE_SECONDS = 300  # Recycle connection every 5 minutes
+    MAX_RETRIES = 2  # Retry CalDAV operations up to 2 times
+    RETRY_DELAY_SECONDS = 0.5  # Delay between retries
 
     def __init__(self):
         """Initialize Radicale service."""
@@ -50,6 +89,7 @@ class RadicaleService:
         # Single reusable client (connection pooling)
         self._client: Optional[caldav.DAVClient] = None
         self._principal: Optional[caldav.Principal] = None
+        self._client_created_at: float = 0  # Timestamp for connection recycling
 
         # Calendar cache: user_id -> (calendar, timestamp)
         self._calendar_cache: dict = {}
@@ -59,13 +99,34 @@ class RadicaleService:
         """Generate calendar name for user based on Telegram ID."""
         return f"telegram_{user_id}"
 
+    def _reset_connection(self, reason: str = "manual"):
+        """Reset CalDAV client and principal, forcing reconnection on next use."""
+        self._client = None
+        self._principal = None
+        self._client_created_at = 0
+        self.invalidate_cache()
+        logger.info("caldav_connection_reset", reason=reason)
+
     def _get_shared_client(self) -> caldav.DAVClient:
         """
-        Get shared CalDAV client with connection reuse.
+        Get shared CalDAV client with connection reuse and automatic recycling.
+
+        Connection is recycled every MAX_CLIENT_AGE_SECONDS to prevent
+        stale TCP connections after Radicale restarts (fixes DNS resolution errors).
 
         Returns:
-            caldav.DAVClient - reused single instance
+            caldav.DAVClient - reused or freshly created instance
         """
+        now = time.time()
+
+        # Recycle old connections to prevent stale TCP issues
+        if self._client is not None:
+            age = now - self._client_created_at
+            if age > self.MAX_CLIENT_AGE_SECONDS:
+                logger.info("caldav_client_recycling", age_seconds=round(age, 1))
+                self._client = None
+                self._principal = None
+
         if self._client is None:
             if settings.radicale_bot_user and settings.radicale_bot_password:
                 self._client = caldav.DAVClient(
@@ -77,6 +138,7 @@ class RadicaleService:
                 # Fallback for development (no auth)
                 logger.warning("radicale_auth_not_configured", message="Using unauthenticated access")
                 self._client = caldav.DAVClient(url=self.url)
+            self._client_created_at = now
         return self._client
 
     def _get_user_client(self, user_id: str):
@@ -177,6 +239,58 @@ class RadicaleService:
 
             self._calendar_cache[user_id] = (calendar, time.time())
 
+    def _get_user_calendar_with_retry(self, user_id: str):
+        """Get user calendar with retry on connection failure."""
+        for attempt in range(self.MAX_RETRIES + 1):
+            calendar = self._get_user_calendar(user_id)
+            if calendar is not None:
+                return calendar
+            if attempt < self.MAX_RETRIES:
+                logger.warning("get_calendar_retry",
+                             user_id=user_id,
+                             attempt=attempt)
+                self._reset_connection(reason=f"get_calendar_retry_{attempt}")
+                time.sleep(self.RETRY_DELAY_SECONDS * (attempt + 1))
+        return None
+
+    def _retry_caldav_operation(self, operation_name: str, user_id: str, func, *args, **kwargs):
+        """
+        Execute a CalDAV operation with retry logic.
+
+        Retries on connection errors with connection reset between attempts.
+
+        Args:
+            operation_name: Name for logging
+            user_id: User ID for logging
+            func: Callable to execute
+            *args, **kwargs: Arguments to pass to func
+
+        Returns:
+            Result of func call
+
+        Raises:
+            CalendarServiceError: If all retries exhausted
+        """
+        last_error = None
+        for attempt in range(self.MAX_RETRIES + 1):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                last_error = e
+                error_type = CalendarErrorType.classify(e)
+                logger.warning(f"caldav_{operation_name}_retry",
+                             user_id=user_id,
+                             attempt=attempt,
+                             error_type=error_type,
+                             error=str(e)[:200])
+                self._reset_connection(reason=f"{operation_name}_{error_type}")
+                if attempt < self.MAX_RETRIES:
+                    time.sleep(self.RETRY_DELAY_SECONDS * (attempt + 1))
+                    continue
+        raise CalendarServiceError(
+            f"{operation_name} failed after {self.MAX_RETRIES + 1} attempts: {str(last_error)[:100]}"
+        )
+
     def invalidate_cache(self, user_id: Optional[str] = None):
         """Invalidate calendar cache for user or all users (thread-safe)."""
         with self._cache_lock:
@@ -275,7 +389,7 @@ class RadicaleService:
 
     def _create_event_sync(self, user_id: str, event: EventDTO) -> Optional[str]:
         """
-        Synchronous implementation of create_event.
+        Synchronous implementation of create_event with retry logic.
         Called via asyncio.to_thread to avoid blocking event loop.
         """
         import pytz  # Import here for thread safety
@@ -287,7 +401,7 @@ class RadicaleService:
                         title=event.title)
             return None
 
-        calendar = self._get_user_calendar(user_id)
+        calendar = self._get_user_calendar_with_retry(user_id)
         if not calendar:
             return None
 
@@ -360,8 +474,12 @@ class RadicaleService:
 
         cal.add_component(ical_event)
 
-        # Save to Radicale
-        calendar.save_event(cal.to_ical().decode('utf-8'))
+        # Save to Radicale with retry
+        ical_data = cal.to_ical().decode('utf-8')
+        self._retry_caldav_operation(
+            "save_event", user_id,
+            lambda: calendar.save_event(ical_data)
+        )
 
         logger.info(
             "event_created",
@@ -394,14 +512,26 @@ class RadicaleService:
             if result:
                 self.invalidate_cache(user_id)
             return result
+        except CalendarServiceError:
+            logger.error("event_create_service_error", user_id=user_id)
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Event create failed (retries exhausted): {event.title[:50] if event.title else 'No title'}",
+                    success=False,
+                    error_message="CalendarServiceError after retries"
+                )
+            raise
         except Exception as e:
-            logger.error("event_create_error", user_id=user_id, error=str(e), exc_info=True)
+            error_type = CalendarErrorType.classify(e)
+            logger.error("event_create_error", user_id=user_id, error=str(e), error_type=error_type, exc_info=True)
             # Log calendar error to analytics
             if ANALYTICS_ENABLED and analytics_service:
                 analytics_service.log_action(
                     user_id=user_id,
                     action_type=ActionType.CALENDAR_ERROR,
-                    details=f"Event create failed: {event.title[:50] if event.title else 'No title'}",
+                    details=f"Event create failed [{error_type}]: {event.title[:50] if event.title else 'No title'}",
                     success=False,
                     error_message=str(e)[:200]
                 )
@@ -414,20 +544,54 @@ class RadicaleService:
         time_max: datetime
     ) -> List[CalendarEvent]:
         """
-        Synchronous implementation of list_events.
+        Synchronous implementation of list_events with retry logic.
         Called via asyncio.to_thread to avoid blocking event loop.
+
+        Retries on connection errors (DNS, timeout, reset) with connection refresh.
         """
         import pytz  # Import here to avoid issues with thread safety
 
-        calendar = self._get_user_calendar(user_id)
-        if not calendar:
-            return []
+        last_error = None
+        for attempt in range(self.MAX_RETRIES + 1):
+            calendar = self._get_user_calendar(user_id)
+            if not calendar:
+                if attempt < self.MAX_RETRIES:
+                    # Calendar fetch failed, reset connection and retry
+                    self._reset_connection(reason=f"get_calendar_failed_attempt_{attempt}")
+                    time.sleep(self.RETRY_DELAY_SECONDS)
+                    continue
+                raise CalendarServiceError("Calendar service unavailable")
 
-        # Search events in time range
-        _search_start = time.perf_counter()
-        events = calendar.date_search(start=time_min, end=time_max)
-        _search_duration_ms = (time.perf_counter() - _search_start) * 1000
-        logger.info("caldav_date_search_duration", duration_ms=round(_search_duration_ms, 1), user_id=user_id)
+            try:
+                # Search events in time range
+                _search_start = time.perf_counter()
+                events = calendar.date_search(start=time_min, end=time_max)
+                _search_duration_ms = (time.perf_counter() - _search_start) * 1000
+                logger.info("caldav_date_search_duration",
+                           duration_ms=round(_search_duration_ms, 1),
+                           user_id=user_id,
+                           attempt=attempt)
+                break  # Success — exit retry loop
+
+            except Exception as e:
+                last_error = e
+                error_type = CalendarErrorType.classify(e)
+                logger.warning("caldav_date_search_failed",
+                             user_id=user_id,
+                             attempt=attempt,
+                             max_retries=self.MAX_RETRIES,
+                             error_type=error_type,
+                             error=str(e)[:200])
+
+                # Reset connection for next attempt
+                self._reset_connection(reason=f"date_search_error_{error_type}")
+
+                if attempt < self.MAX_RETRIES:
+                    time.sleep(self.RETRY_DELAY_SECONDS * (attempt + 1))  # Exponential-ish backoff
+                    continue
+                else:
+                    # All retries exhausted
+                    raise CalendarServiceError(f"Calendar unavailable after {self.MAX_RETRIES + 1} attempts: {error_type}")
 
         calendar_events = []
         for event in events:
@@ -506,14 +670,27 @@ class RadicaleService:
                 time_min,
                 time_max
             )
-        except Exception as e:
-            logger.error("events_list_error", user_id=user_id, error=str(e), exc_info=True)
-            # Log calendar error to analytics
+        except CalendarServiceError:
+            # Re-raise CalendarServiceError so telegram_handler can show user-friendly message
+            logger.error("events_list_service_error", user_id=user_id)
             if ANALYTICS_ENABLED and analytics_service:
                 analytics_service.log_action(
                     user_id=user_id,
                     action_type=ActionType.CALENDAR_ERROR,
-                    details=f"Events list failed: {time_min.strftime('%Y-%m-%d')} - {time_max.strftime('%Y-%m-%d')}",
+                    details=f"Events list failed (retries exhausted): {time_min.strftime('%Y-%m-%d')} - {time_max.strftime('%Y-%m-%d')}",
+                    success=False,
+                    error_message="CalendarServiceError after retries"
+                )
+            raise
+        except Exception as e:
+            error_type = CalendarErrorType.classify(e)
+            logger.error("events_list_error", user_id=user_id, error=str(e), error_type=error_type, exc_info=True)
+            # Log calendar error to analytics with error type
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Events list failed [{error_type}]: {time_min.strftime('%Y-%m-%d')} - {time_max.strftime('%Y-%m-%d')}",
                     success=False,
                     error_message=str(e)[:200]
                 )
@@ -629,12 +806,12 @@ class RadicaleService:
 
     def _update_event_sync(self, user_id: str, event_uid: str, updated_event: EventDTO) -> bool:
         """
-        Synchronous implementation of update_event.
+        Synchronous implementation of update_event with retry.
         Called via asyncio.to_thread to avoid blocking event loop.
         """
         import pytz  # Import here for thread safety
 
-        calendar = self._get_user_calendar(user_id)
+        calendar = self._get_user_calendar_with_retry(user_id)
         if not calendar:
             return False
 
@@ -723,14 +900,26 @@ class RadicaleService:
             if result:
                 self.invalidate_cache(user_id)
             return result
-        except Exception as e:
-            logger.error("event_update_error", user_id=user_id, error=str(e), exc_info=True)
-            # Log calendar error to analytics
+        except CalendarServiceError:
+            logger.error("event_update_service_error", user_id=user_id, uid=event_uid)
             if ANALYTICS_ENABLED and analytics_service:
                 analytics_service.log_action(
                     user_id=user_id,
                     action_type=ActionType.CALENDAR_ERROR,
-                    details=f"Event update failed: uid={event_uid[:20]}",
+                    details=f"Event update failed (retries exhausted): uid={event_uid[:20]}",
+                    event_id=event_uid,
+                    success=False,
+                    error_message="CalendarServiceError after retries"
+                )
+            raise
+        except Exception as e:
+            error_type = CalendarErrorType.classify(e)
+            logger.error("event_update_error", user_id=user_id, error=str(e), error_type=error_type, exc_info=True)
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Event update failed [{error_type}]: uid={event_uid[:20]}",
                     event_id=event_uid,
                     success=False,
                     error_message=str(e)[:200]
@@ -739,10 +928,10 @@ class RadicaleService:
 
     def _delete_event_sync(self, user_id: str, event_uid: str) -> bool:
         """
-        Synchronous implementation of delete_event.
+        Synchronous implementation of delete_event with retry.
         Called via asyncio.to_thread to avoid blocking event loop.
         """
-        calendar = self._get_user_calendar(user_id)
+        calendar = self._get_user_calendar_with_retry(user_id)
         if not calendar:
             return False
 
@@ -782,43 +971,56 @@ class RadicaleService:
             if result:
                 self.invalidate_cache(user_id)
             return result
-        except Exception as e:
-            logger.error("event_delete_error", user_id=user_id, error=str(e), exc_info=True)
-            # Log calendar error to analytics
+        except CalendarServiceError:
+            logger.error("event_delete_service_error", user_id=user_id, uid=event_uid)
             if ANALYTICS_ENABLED and analytics_service:
                 analytics_service.log_action(
                     user_id=user_id,
                     action_type=ActionType.CALENDAR_ERROR,
-                    details=f"Event delete failed: uid={event_uid[:20]}",
+                    details=f"Event delete failed (retries exhausted): uid={event_uid[:20]}",
+                    event_id=event_uid,
+                    success=False,
+                    error_message="CalendarServiceError after retries"
+                )
+            raise
+        except Exception as e:
+            error_type = CalendarErrorType.classify(e)
+            logger.error("event_delete_error", user_id=user_id, error=str(e), error_type=error_type, exc_info=True)
+            if ANALYTICS_ENABLED and analytics_service:
+                analytics_service.log_action(
+                    user_id=user_id,
+                    action_type=ActionType.CALENDAR_ERROR,
+                    details=f"Event delete failed [{error_type}]: uid={event_uid[:20]}",
                     event_id=event_uid,
                     success=False,
                     error_message=str(e)[:200]
                 )
             return False
 
-    def is_connected(self) -> bool:
-        """Check if Radicale server is accessible."""
+    def _is_connected_sync(self) -> bool:
+        """Synchronous connectivity check for Radicale server."""
         try:
-            # Test with bot service account credentials
-            if settings.radicale_bot_user and settings.radicale_bot_password:
-                client = caldav.DAVClient(
-                    url=self.url,
-                    username=settings.radicale_bot_user,
-                    password=settings.radicale_bot_password
-                )
-                # Get principal and calendars - this tests actual connectivity
-                principal = client.principal()
-                # Get calendars list to verify connection works
-                _ = principal.calendars()
-            else:
-                # Fallback for development (no auth)
-                client = caldav.DAVClient(url=self.url, username="test")
-                principal = client.principal()
-                _ = principal.calendars()
+            # Use the shared client instead of creating a new one each time
+            client = self._get_shared_client()
+            if self._principal is None:
+                self._principal = client.principal()
+            _ = self._principal.calendars()
             return True
         except Exception as e:
-            # Log error but don't expose details
             logger.debug("radicale_connection_check_failed", error=str(e))
+            # Reset on failure so next real operation gets fresh connection
+            self._reset_connection(reason="health_check_failed")
+            return False
+
+    def is_connected(self) -> bool:
+        """Check if Radicale server is accessible (sync wrapper)."""
+        return self._is_connected_sync()
+
+    async def is_connected_async(self) -> bool:
+        """Check if Radicale server is accessible (async, non-blocking)."""
+        try:
+            return await asyncio.to_thread(self._is_connected_sync)
+        except Exception:
             return False
 
 

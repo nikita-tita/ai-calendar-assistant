@@ -1649,6 +1649,29 @@ class AnalyticsService:
         finally:
             conn.close()
 
+    def get_user_action_count(self, user_id: str) -> int:
+        """Get total action count for a user (for quick-hint visibility).
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Total number of text_message/voice_message actions
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                """SELECT COUNT(*) FROM actions
+                   WHERE user_id = ? AND action_type IN ('text_message', 'voice_message')""",
+                (str(user_id),)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else 0
+        except Exception:
+            return 0
+        finally:
+            conn.close()
+
 
 # Global instance
 analytics_service = AnalyticsService()

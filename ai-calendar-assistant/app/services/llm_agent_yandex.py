@@ -642,6 +642,64 @@ JSON:"""
                 llm_model=self.model
             )
 
+    def _try_local_parser(self, user_text: str, timezone: str = 'Europe/Moscow') -> Optional[EventDTO]:
+        """
+        Phase 4: Try local regex parser before calling LLM.
+
+        Handles ~60-70% of typical requests (query, todo, create, free_slots)
+        without an LLM call, saving cost and latency.
+
+        Returns:
+            EventDTO if locally parsed, None to fall through to LLM.
+        """
+        try:
+            from app.services.local_intent_parser import parse_intent
+            result = parse_intent(user_text, timezone)
+            if result is None:
+                return None
+
+            intent_str, params, confidence = result
+
+            if intent_str == "query":
+                dto = EventDTO(
+                    intent=IntentType.QUERY,
+                    confidence=confidence,
+                    query_date_start=params.get("query_date_start"),
+                    query_date_end=params.get("query_date_end"),
+                )
+            elif intent_str == "todo":
+                dto = EventDTO(
+                    intent=IntentType.TODO,
+                    confidence=confidence,
+                    title=params.get("title"),
+                )
+            elif intent_str == "create":
+                dto = EventDTO(
+                    intent=IntentType.CREATE,
+                    confidence=confidence,
+                    title=params.get("title"),
+                    start_time=params.get("start_time"),
+                    end_time=params.get("end_time"),
+                )
+            elif intent_str == "find_free_slots":
+                dto = EventDTO(
+                    intent=IntentType.FIND_FREE_SLOTS,
+                    confidence=confidence,
+                    query_date_start=params.get("query_date_start"),
+                )
+            else:
+                return None
+
+            logger.info("local_parser_matched",
+                       intent=intent_str,
+                       confidence=confidence,
+                       text=user_text[:100])
+            return dto
+
+        except Exception as e:
+            logger.warning("local_parser_error", error=str(e))
+            return None
+
     def _detect_schedule_format(self, user_text: str, timezone: str = 'Europe/Moscow', conversation_history: Optional[list] = None) -> Optional[EventDTO]:
         """
         Detect and parse schedule format with multiple time ranges.
@@ -957,6 +1015,11 @@ JSON:"""
             logger.info("schedule_format_detected_preprocessing",
                        events_count=len(schedule_dto.batch_actions))
             return schedule_dto
+
+        # 2.5 Phase 4: Local regex parser for common queries (saves LLM cost)
+        local_dto = self._try_local_parser(user_text, timezone)
+        if local_dto:
+            return local_dto
 
         try:
             # 3. Prepare datetime context using helper

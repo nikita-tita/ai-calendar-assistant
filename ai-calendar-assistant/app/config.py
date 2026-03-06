@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     # Admin settings
     admin_user_id: Optional[str] = None  # Telegram user ID - gets LLM stats in evening reminder
 
+    # Admin notifications (e.g. new user registration → @dogovorarenda_bot)
+    notify_bot_token: Optional[str] = None
+    notify_chat_id: Optional[str] = None
+
 
 # Global settings instance
 settings = Settings()

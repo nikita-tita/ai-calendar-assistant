@@ -9,7 +9,7 @@ import structlog
 
 from app.config import settings
 from app.services.llm_agent_yandex import llm_agent_yandex as llm_agent
-from app.services.calendar_radicale import calendar_service
+from app.services.calendar_radicale import calendar_service, CalendarServiceError
 from app.services.user_preferences import user_preferences
 from app.services.todos_service import todos_service
 from app.services.referral_service import referral_service
@@ -312,22 +312,49 @@ class TelegramHandler:
             except Exception as e:
                 logger.warning("analytics_log_failed", error=str(e))
 
+        # Notify admin about new /start
+        await self._notify_admin_new_user(update.effective_user, user_id)
+
         # Check if user has already given consents
         advertising_consent = user_preferences.get_advertising_consent(user_id)
         privacy_consent = user_preferences.get_privacy_consent(user_id)
 
-        if not advertising_consent:
-            # Ask for advertising consent first
-            await self._ask_advertising_consent(update, user_id)
-            return
-
-        if not privacy_consent:
-            # Ask for privacy consent second
-            await self._ask_privacy_consent(update, user_id)
+        if not advertising_consent or not privacy_consent:
+            # Ask for combined consent (Phase 2.2)
+            await self._ask_combined_consent(update, user_id)
             return
 
         # Both consents given - show welcome message
         await self._send_welcome_message(update.message, user_id)
+
+    async def _notify_admin_new_user(self, user, user_id: str) -> None:
+        """Send notification to admin about new /start via separate bot."""
+        try:
+            token = settings.notify_bot_token
+            chat_id = settings.notify_chat_id
+            if not token or not chat_id:
+                return
+
+            import httpx
+            name = user.first_name or "" if user else ""
+            last = f" {user.last_name}" if user and user.last_name else ""
+            username = f"@{user.username}" if user and user.username else "нет"
+            ts = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+            text = (
+                f"📱 <b>Новая регистрация AI Calendar</b>\n\n"
+                f"👤 {name}{last}\n"
+                f"🆔 {username} (ID: {user_id})\n"
+                f"🕐 {ts}"
+            )
+
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+                )
+        except Exception as e:
+            logger.warning("admin_notify_failed", error=str(e))
 
     async def _send_welcome_message(self, message, user_id: str) -> None:
         """Send welcome message and setup keyboard.
@@ -381,6 +408,71 @@ class TelegramHandler:
         except Exception as e:
             logger.warning("menu_button_set_failed", error=str(e))
 
+        # Create demo content for new users (Phase 2.1)
+        await self._create_demo_content(message, user_id)
+
+    async def _create_demo_content(self, message, user_id: str) -> None:
+        """Create demo event and todo for new users on first start.
+
+        Only creates if user has zero events (prevents re-creation on repeat /start).
+        Any failure is silently caught — onboarding continues normally.
+        """
+        try:
+            # Check if user already has events (repeat /start guard)
+            now = datetime.now()
+            existing = await calendar_service.list_events(
+                user_id,
+                now - timedelta(days=30),
+                now + timedelta(days=30)
+            )
+            if existing:
+                return  # Not first time — skip demo
+
+            # Create demo event: tomorrow at 14:00, 1 hour
+            tomorrow = now + timedelta(days=1)
+            demo_start = tomorrow.replace(hour=14, minute=0, second=0, microsecond=0)
+            demo_end = demo_start + timedelta(hours=1)
+
+            from app.schemas.events import EventDTO, IntentType
+            demo_event = EventDTO(
+                intent=IntentType.CREATE,
+                title="Пример: Встреча с клиентом",
+                description="Это демо-событие. Удалите или измените как хотите!",
+                start_time=demo_start,
+                end_time=demo_end,
+                confidence=1.0
+            )
+            event_uid = await calendar_service.create_event(user_id, demo_event)
+
+            # Create demo todo
+            from app.schemas.todos import TodoDTO
+            demo_todo = TodoDTO(
+                title="Пример: Подготовить документы для встречи"
+            )
+            todo_id = await todos_service.create_todo(user_id, demo_todo)
+
+            if event_uid or todo_id:
+                hint = (
+                    "💡 Я добавил пример события и задачи, чтобы вы увидели как это работает.\n\n"
+                    "Попробуйте написать:\n"
+                    "• «Что на завтра?»\n"
+                    "• «Встреча в пятницу в 10:00»\n"
+                    "• «Позвонить собственнику»"
+                )
+                await message.reply_text(hint)
+
+            logger.info("demo_content_created",
+                       user_id=user_id,
+                       event=bool(event_uid),
+                       todo=bool(todo_id))
+
+        except CalendarServiceError:
+            # Calendar unavailable — skip demo silently
+            logger.warning("demo_content_skipped_calendar_error", user_id=user_id)
+        except Exception as e:
+            # Don't fail onboarding because of demo
+            logger.warning("demo_content_failed", user_id=user_id, error=str(e))
+
     async def _ask_advertising_consent(self, update: Update, user_id: str) -> None:
         """Ask for advertising consent."""
         message_text = """Для дальнейшего взаимодействия с ботом необходимо дать согласие на получение новостей и рекламных рассылок.
@@ -418,6 +510,25 @@ class TelegramHandler:
             await update.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
         elif update.callback_query:
             await update.callback_query.message.reply_text(message, reply_markup=keyboard, parse_mode="Markdown")
+
+    async def _ask_combined_consent(self, update: Update, user_id: str) -> None:
+        """Ask for both advertising and privacy consent on one screen (Phase 2.2)."""
+        message_text = (
+            "Для использования бота необходимо ваше согласие:\n\n"
+            "📄 [Соглашение на получение рекламы](https://housler.ru/doc/clients/soglasiya/advertising-agreement/)\n"
+            "🔒 [Политика конфиденциальности](https://housler.ru/doc/clients/politiki/)\n\n"
+            "Нажимая «Принимаю», вы соглашаетесь с обоими документами."
+        )
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Принимаю", callback_data="consent:combined:yes")],
+            [InlineKeyboardButton("❌ Не принимаю", callback_data="consent:combined:no")]
+        ])
+
+        if update.message:
+            await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode="Markdown")
+        elif update.callback_query:
+            await update.callback_query.message.reply_text(message_text, reply_markup=keyboard, parse_mode="Markdown")
 
     async def _notify_referrer(self, referrer_id: str, new_user) -> None:
         """Notify referrer when someone joins via their link."""
@@ -717,11 +828,42 @@ Housler.ru сделал подборку сервисов, которые пом
             return False
 
         parts = data.split(":")
-        consent_type = parts[1]  # "advertising" or "privacy"
+        consent_type = parts[1]  # "advertising", "privacy", or "combined"
         answer = parts[2]  # "yes" or "no"
 
         if answer == "yes":
-            if consent_type == "advertising":
+            if consent_type == "combined":
+                # Phase 2.2: Combined consent — accept both at once
+                user_preferences.set_advertising_consent(user_id, True)
+                user_preferences.set_privacy_consent(user_id, True)
+                logger.info("combined_consent_given", user_id=user_id)
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.CONSENT_ADVERTISING_ACCEPTED,
+                            details="Согласие на рекламу принято (combined)",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.CONSENT_PRIVACY_ACCEPTED,
+                            details="Согласие на обработку данных принято (combined)",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_consent_log_failed", error=str(e))
+                await query.edit_message_text("✅ Согласие принято. Добро пожаловать!")
+                await self._send_welcome_message(query.message, user_id)
+
+            elif consent_type == "advertising":
                 user_preferences.set_advertising_consent(user_id, True)
                 logger.info("advertising_consent_given", user_id=user_id)
                 if ANALYTICS_ENABLED and analytics_service:
@@ -762,7 +904,28 @@ Housler.ru сделал подборку сервисов, которые пом
                 await self._send_welcome_message(query.message, user_id)
         else:
             # User declined
-            if consent_type == "advertising":
+            if consent_type == "combined":
+                # Phase 2.2: Combined decline
+                if ANALYTICS_ENABLED and analytics_service:
+                    try:
+                        from app.models.analytics import ActionType
+                        analytics_service.log_action(
+                            user_id=user_id,
+                            action_type=ActionType.CONSENT_ADVERTISING_DECLINED,
+                            details="Согласие отклонено (combined)",
+                            success=True,
+                            username=update.effective_user.username if update.effective_user else None,
+                            first_name=update.effective_user.first_name if update.effective_user else None,
+                            last_name=update.effective_user.last_name if update.effective_user else None
+                        )
+                    except Exception as e:
+                        logger.warning("analytics_consent_log_failed", error=str(e))
+                await query.edit_message_text(
+                    "❌ Без согласия продолжить невозможно.\n\nПопробуйте снова:"
+                )
+                await self._ask_combined_consent(update, user_id)
+
+            elif consent_type == "advertising":
                 if ANALYTICS_ENABLED and analytics_service:
                     try:
                         from app.models.analytics import ActionType
@@ -1089,12 +1252,8 @@ Housler.ru сделал подборку сервисов, которые пом
         advertising_consent = user_preferences.get_advertising_consent(user_id)
         privacy_consent = user_preferences.get_privacy_consent(user_id)
 
-        if not advertising_consent:
-            await self._ask_advertising_consent(update, user_id)
-            return True
-
-        if not privacy_consent:
-            await self._ask_privacy_consent(update, user_id)
+        if not advertising_consent or not privacy_consent:
+            await self._ask_combined_consent(update, user_id)
             return True
 
         await self._send_welcome_message(query.message, user_id)
@@ -1132,8 +1291,68 @@ Housler.ru сделал подборку сервисов, которые пом
         if await self._handle_broadcast_callback(query, update, user_id, data):
             return
 
+        if await self._handle_hint_callback(query, update, user_id, data):
+            return
+
         # Unknown callback - log for debugging
         logger.warning("unknown_callback_query", user_id=user_id, data=data)
+
+    # ========== Quick-start Hints (Phase 2.3) ==========
+
+    def _should_show_hints(self, user_id: str) -> bool:
+        """Check if user is new enough to show quick-start hints.
+
+        Hides hints after 10+ successful interactions to reduce noise.
+        """
+        if not ANALYTICS_ENABLED or not analytics_service:
+            return True  # Show by default if analytics unavailable
+        try:
+            count = analytics_service.get_user_action_count(user_id)
+            return count < 10
+        except Exception:
+            return True  # Show by default on error
+
+    def _get_quick_hints_keyboard(self) -> InlineKeyboardMarkup:
+        """Get inline keyboard with quick-start action hints."""
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📋 Что на завтра?", callback_data="hint:query_tomorrow"),
+                InlineKeyboardButton("✅ Мои задачи", callback_data="hint:my_todos"),
+            ],
+            [
+                InlineKeyboardButton("➕ Добавить встречу", callback_data="hint:add_meeting"),
+            ]
+        ])
+
+    async def _handle_hint_callback(
+        self, query, update: Update, user_id: str, data: str
+    ) -> bool:
+        """Handle hint:* callbacks — simulate user typing a common phrase."""
+        if not data.startswith("hint:"):
+            return False
+
+        hint_type = data[5:]  # Remove "hint:" prefix
+
+        # Map hint types to simulated user text
+        hint_texts = {
+            "query_tomorrow": "Что на завтра?",
+            "my_todos": "Мои задачи",
+            "add_meeting": "Встреча завтра в 15:00",
+        }
+
+        simulated_text = hint_texts.get(hint_type)
+        if not simulated_text:
+            return False
+
+        # Remove hint buttons from the message to avoid re-clicks
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        # Process as if user typed the text
+        await self._handle_text(update, user_id, simulated_text)
+        return True
 
     def _get_user_timezone(self, update: Update) -> str:
         """Get user timezone from stored preferences or default to Moscow."""
@@ -1540,7 +1759,8 @@ Housler.ru сделал подборку сервисов, которые пом
                                 "📅 Создать событие: «Встреча завтра в 15:00»\n"
                                 "📝 Добавить задачу: «Позвонить клиенту»\n"
                                 "📋 Посмотреть планы: «Что на сегодня?»")
-            await update.message.reply_text(greeting_response)
+            reply_markup = self._get_quick_hints_keyboard() if self._should_show_hints(user_id) else None
+            await update.message.reply_text(greeting_response, reply_markup=reply_markup)
             self._log_bot_response(user_id, greeting_response, text)
             return
 
@@ -1613,10 +1833,16 @@ Housler.ru сделал подборку сервисов, которые пом
         now = datetime.now()
         start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=7)
         end = now + timedelta(days=60)
-        existing_events = await calendar_service.list_events(user_id, start, end)
+        calendar_had_error = False
+        try:
+            existing_events = await calendar_service.list_events(user_id, start, end)
+        except CalendarServiceError:
+            existing_events = []
+            calendar_had_error = True
+            logger.warning("calendar_unavailable_for_context", user_id=user_id)
         _events_duration_ms = (time.perf_counter() - _handle_start) * 1000
 
-        logger.info("events_loaded_for_context", user_id=user_id, count=len(existing_events), duration_ms=round(_events_duration_ms, 1))
+        logger.info("events_loaded_for_context", user_id=user_id, count=len(existing_events), duration_ms=round(_events_duration_ms, 1), calendar_error=calendar_had_error)
 
         # Get recent context events (for follow-up commands like "перепиши эти события")
         context_event_ids = self._get_event_context(user_id)
@@ -1792,7 +2018,8 @@ Housler.ru сделал подборку сервисов, которые пом
             message = f"✅ Записал\n{time_str} • {event_dto.title}"
             if event_dto.location:
                 message += f" ({event_dto.location})"
-            await update.message.reply_text(message)
+            reply_markup = self._get_quick_hints_keyboard() if self._should_show_hints(user_id) else None
+            await update.message.reply_text(message, reply_markup=reply_markup)
             self._log_bot_response(user_id, message, user_text)
         else:
             error_msg = "Не получилось. Попробуйте ещё раз одной фразой."
@@ -1955,7 +2182,13 @@ Housler.ru сделал подборку сервисов, которые пом
         if end_date.hour == 0 and end_date.minute == 0 and end_date.second == 0:
             end_date = end_date.replace(hour=23, minute=59, second=59)
 
-        events = await calendar_service.list_events(user_id, start_date, end_date)
+        try:
+            events = await calendar_service.list_events(user_id, start_date, end_date)
+        except CalendarServiceError:
+            error_msg = "⚠️ Календарь временно недоступен. Ваши данные в порядке — попробуйте через минуту."
+            await update.message.reply_text(error_msg)
+            self._log_bot_response(user_id, error_msg, user_text)
+            return
 
         if not events:
             # Contextual hint based on query date
@@ -1972,9 +2205,12 @@ Housler.ru сделал подборку сервисов, которые пом
             # Try to find next upcoming event
             user_tz = self._get_user_timezone(update)
             now = datetime.now()
-            future_events = await calendar_service.list_events(
-                user_id, now, now + timedelta(days=30)
-            )
+            try:
+                future_events = await calendar_service.list_events(
+                    user_id, now, now + timedelta(days=30)
+                )
+            except CalendarServiceError:
+                future_events = []
 
             if future_events:
                 # Show nearest event as helpful context
@@ -1998,7 +2234,8 @@ Housler.ru сделал подборку сервисов, которые пом
 📋 Или задачу без времени:
 • «Подготовить документы по сделке»"""
 
-            await update.message.reply_text(empty_msg)
+            reply_markup = self._get_quick_hints_keyboard() if self._should_show_hints(user_id) else None
+            await update.message.reply_text(empty_msg, reply_markup=reply_markup)
             self._log_bot_response(user_id, empty_msg, user_text)
             return
 

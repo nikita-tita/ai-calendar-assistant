@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 import structlog
 
 from app.config import settings
-from app.routers import telegram, events, admin, admin_v2, logs, todos
+from app.routers import telegram, events, admin, admin_v2, logs, todos, health
 from app.utils.logger import setup_logging
 from app.middleware import TelegramAuthMiddleware, SecurityHeadersMiddleware, CSRFProtectionMiddleware, PrometheusMiddleware
 
@@ -83,6 +83,7 @@ app.include_router(todos.router, prefix="/api", tags=["todos"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(admin_v2.router, prefix="/api/admin/v2", tags=["admin_v2"])
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
+app.include_router(health.router, tags=["health"])
 
 
 @app.on_event("startup")

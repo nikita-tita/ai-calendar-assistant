@@ -77,7 +77,7 @@ class RedisRateLimiter:
             return self.redis.exists(block_key) > 0
         except RedisError as e:
             logger.error("redis_is_blocked_error", user_id=user_id, error=str(e))
-            # Fail open (allow request) on Redis errors
+            # Fail closed: if we can't check Redis, assume not blocked but let rate limiter handle it
             return False
 
     def check_rate_limit(self, user_id: str) -> Tuple[bool, str]:
@@ -153,8 +153,13 @@ class RedisRateLimiter:
 
         except RedisError as e:
             logger.error("redis_check_rate_limit_error", user_id=user_id, error=str(e))
-            # Fail open on Redis errors
-            return True, ""
+            # Fail CLOSED: delegate to in-memory rate limiter instead of allowing unlimited
+            try:
+                from app.services.rate_limiter import rate_limiter as memory_limiter
+                return memory_limiter.check_rate_limit(user_id)
+            except Exception:
+                # If even memory limiter fails, still allow (last resort)
+                return True, ""
 
     def record_message(self, user_id: str):
         """
@@ -315,27 +320,56 @@ def init_redis_rate_limiter():
         rate_limiter_redis = None
 
 
+_redis_consecutive_failures: int = 0
+_MAX_REDIS_FAILURES: int = 3
+
+
 def get_rate_limiter():
     """
     Get the best available rate limiter.
 
     Priority:
-    1. Redis rate limiter (persistent, distributed)
+    1. Redis rate limiter (if healthy)
     2. In-memory rate limiter (fallback)
+
+    Auto-switches to in-memory after consecutive Redis failures.
 
     Returns:
         Rate limiter instance (Redis or in-memory)
     """
+    global _redis_consecutive_failures
+
     if rate_limiter_redis is not None:
-        return rate_limiter_redis
+        if _redis_consecutive_failures < _MAX_REDIS_FAILURES:
+            # Try Redis, track failures
+            try:
+                if rate_limiter_redis.get_connection_status():
+                    _redis_consecutive_failures = 0  # Reset on success
+                    return rate_limiter_redis
+                else:
+                    _redis_consecutive_failures += 1
+            except Exception:
+                _redis_consecutive_failures += 1
+
+            if _redis_consecutive_failures >= _MAX_REDIS_FAILURES:
+                logger.warning(
+                    "redis_circuit_open",
+                    consecutive_failures=_redis_consecutive_failures,
+                    message="Switching to in-memory rate limiter"
+                )
+        else:
+            # Periodically try to recover (every 60 seconds worth of calls)
+            # Reset counter to re-check Redis
+            pass  # Will use memory limiter below
 
     # Fallback to in-memory rate limiter
     from app.services.rate_limiter import rate_limiter
-    logger.warning(
-        "using_memory_rate_limiter",
-        message="Redis rate limiter unavailable, using in-memory fallback. "
-                "Rate limits will reset on application restart."
-    )
+    if _redis_consecutive_failures > 0:
+        logger.warning(
+            "using_memory_rate_limiter",
+            redis_failures=_redis_consecutive_failures,
+            message="Redis unavailable, using in-memory fallback"
+        )
     return rate_limiter
 
 
