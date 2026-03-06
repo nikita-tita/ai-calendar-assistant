@@ -406,7 +406,8 @@ class TelegramHandler:
         keyboard = ReplyKeyboardMarkup([
             [KeyboardButton("📋 Дела на сегодня")],
             [KeyboardButton("📅 Дела на завтра"), KeyboardButton("✅ Задачи")],
-            [KeyboardButton("⚙️ Настройки"), KeyboardButton("💡 Полезное")]
+            [KeyboardButton("✉️ Шаблоны"), KeyboardButton("💡 Полезное")],
+            [KeyboardButton("⚙️ Настройки")]
         ], resize_keyboard=True)
 
         await message.reply_text(welcome_text, reply_markup=keyboard, parse_mode="Markdown")
@@ -1424,26 +1425,24 @@ Housler.ru сделал подборку сервисов, которые пом
             if not tpl:
                 return False
 
-            # Show template preview with empty fields
-            fields = {f: f"[{get_field_prompt(f)}]" for f in tpl["fields"]}
-            preview = render_client_template(tpl_id, fields)
-
-            msg = (
-                f"**{tpl['title']}**\n\n"
-                f"{preview}\n\n"
-                f"Отправьте данные одним сообщением или голосом.\n"
-                f"Нужные поля: {', '.join(get_field_prompt(f) for f in tpl['fields'])}"
-            )
-
-            # Store template context for next message
+            # Store template context — LLM will extract fields from one message
             if not hasattr(self, '_template_context'):
                 self._template_context = {}
             self._template_context[user_id] = {
                 "type": "client",
                 "template_id": tpl_id,
-                "fields": {},
-                "pending_fields": list(tpl["fields"]),
             }
+
+            # Show preview + ask for free-form input
+            fields_preview = {f: f"[{get_field_prompt(f)}]" for f in tpl["fields"]}
+            preview = render_client_template(tpl_id, fields_preview)
+            field_labels = ', '.join(get_field_prompt(f) for f in tpl['fields'])
+            msg = (
+                f"{tpl['title']}\n\n"
+                f"{preview}\n\n"
+                f"Опишите ситуацию одним сообщением или голосом.\n"
+                f"Я сам извлеку: {field_labels}"
+            )
 
             try:
                 await query.edit_message_text(msg)
@@ -1457,30 +1456,32 @@ Housler.ru сделал подборку сервисов, которые пом
             if not tpl:
                 return False
 
-            # Start guided event creation
+            # Store template context — LLM will extract fields from one message
             if not hasattr(self, '_template_context'):
                 self._template_context = {}
             self._template_context[user_id] = {
                 "type": "event",
                 "template_id": tpl_id,
-                "fields": {},
-                "pending_fields": list(tpl["field_names"]),
-                "prompts": list(tpl["prompts"]),
-                "current_prompt_idx": 0,
             }
 
-            # Ask first question
-            first_prompt = tpl["prompts"][0]
+            # Show what's needed + ask for free-form input
+            prompts_list = '\n'.join(f'• {p}' for p in tpl["prompts"])
+            msg = (
+                f"{tpl['title']}\n\n"
+                f"Что нужно знать:\n{prompts_list}\n\n"
+                f"Опишите всё одним сообщением или голосом."
+            )
+
             try:
-                await query.edit_message_text(f"{tpl['title']}\n\n{first_prompt}")
+                await query.edit_message_text(msg)
             except Exception:
-                await query.message.reply_text(f"{tpl['title']}\n\n{first_prompt}")
+                await query.message.reply_text(msg)
             return True
 
         return False
 
-    def _check_template_context(self, user_id: str, text: str) -> Optional[str]:
-        """Check if user is in template filling mode and process input.
+    async def _check_template_context(self, user_id: str, text: str) -> Optional[str]:
+        """Check if user is in template filling mode. Uses LLM to extract fields.
 
         Returns response message if handled, None otherwise.
         """
@@ -1491,90 +1492,210 @@ Housler.ru сделал подборку сервисов, которые пом
         if not ctx:
             return None
 
+        # Editing mode — user refines already rendered message
+        if ctx.get("state") == "editing":
+            return await self._refine_template_result(user_id, text, ctx)
+
         if ctx["type"] == "client":
-            return self._process_client_template_input(user_id, text, ctx)
+            return await self._process_client_template_input(user_id, text, ctx)
         elif ctx["type"] == "event":
-            return self._process_event_template_input(user_id, text, ctx)
+            return await self._process_event_template_input(user_id, text, ctx)
         return None
 
-    def _process_client_template_input(self, user_id: str, text: str, ctx: dict) -> Optional[str]:
-        """Process input for client text template."""
+    async def _call_template_llm(self, system_prompt: str, user_text: str) -> Optional[dict]:
+        """Lightweight LLM call for template field extraction. Returns parsed JSON or None."""
+        try:
+            from app.config import settings
+            import httpx as _httpx
+
+            headers = {
+                "Authorization": f"Api-Key {settings.yandex_gpt_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "modelUri": f"gpt://{settings.yandex_gpt_folder_id}/yandexgpt-lite/latest",
+                "completionOptions": {"stream": False, "temperature": 0.1, "maxTokens": 500},
+                "messages": [
+                    {"role": "system", "text": system_prompt},
+                    {"role": "user", "text": user_text},
+                ]
+            }
+
+            async with _httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
+                    headers=headers, json=payload
+                )
+                resp.raise_for_status()
+                result_text = resp.json()["result"]["alternatives"][0]["message"]["text"]
+
+            # Parse JSON from response
+            import json as _json
+            # Find JSON object in response
+            start = result_text.find('{')
+            if start == -1:
+                return None
+            depth = 0
+            for i in range(start, len(result_text)):
+                if result_text[i] == '{': depth += 1
+                elif result_text[i] == '}': depth -= 1
+                if depth == 0:
+                    return _json.loads(result_text[start:i+1])
+            return None
+        except Exception as e:
+            logger.warning("template_llm_error", error=str(e))
+            return None
+
+    async def _process_client_template_input(self, user_id: str, text: str, ctx: dict) -> Optional[str]:
+        """Process input for client text template — LLM extracts fields from free-form text."""
         from app.services.template_gallery import (
-            render_client_template, extract_fields_from_text, get_field_prompt,
-            CLIENT_TEMPLATES,
+            render_client_template, get_field_prompt, CLIENT_TEMPLATES,
         )
 
         tpl_id = ctx["template_id"]
-        pending = ctx["pending_fields"]
+        tpl = CLIENT_TEMPLATES.get(tpl_id)
+        if not tpl:
+            del self._template_context[user_id]
+            return None
 
-        # Try bulk extraction first
-        if len(ctx["fields"]) == 0:
-            extracted = extract_fields_from_text(text, pending)
-            if extracted:
-                ctx["fields"].update(extracted)
-                pending = [f for f in pending if f not in extracted]
+        field_descriptions = ', '.join(
+            f'"{f}": {get_field_prompt(f)}' for f in tpl["fields"]
+        )
 
-        # If still have pending fields, fill next one
-        if pending:
-            field = pending[0]
-            if field not in ctx["fields"]:
-                ctx["fields"][field] = text.strip()
-            pending = pending[1:]
-            ctx["pending_fields"] = pending
+        system_prompt = (
+            "Ты помощник риелтора. Из сообщения пользователя извлеки поля для шаблона.\n"
+            f"Нужные поля: {field_descriptions}\n"
+            "Если поле doc_list — верни как массив строк.\n"
+            "Если есть дополнительные пожелания/заметки не из полей — верни в поле \"extra\".\n"
+            "Верни ТОЛЬКО JSON, без пояснений. Пример:\n"
+            '{"client_name": "Иванов Пётр", "doc_list": ["паспорт", "справка НДФЛ"], "extra": "срок до пятницы"}\n'
+            "Если какое-то поле не удалось определить — поставь null."
+        )
 
-        if pending:
-            # Ask for next field
-            next_field = pending[0]
-            return f"Укажите: {get_field_prompt(next_field)}"
+        parsed = await self._call_template_llm(system_prompt, text)
 
-        # All fields filled — render template
-        result = render_client_template(tpl_id, ctx["fields"])
-        del self._template_context[user_id]
+        if not parsed:
+            # Fallback: use text as-is for single-field templates
+            if len(tpl["fields"]) == 1:
+                fields = {tpl["fields"][0]: text.strip()}
+            else:
+                del self._template_context[user_id]
+                return "Не удалось разобрать сообщение. Попробуйте ещё раз."
+        else:
+            fields = {}
+            for f in tpl["fields"]:
+                val = parsed.get(f)
+                if val is None:
+                    fields[f] = f"[{get_field_prompt(f)}]"
+                elif isinstance(val, list):
+                    # Format list fields (doc_list) as bulleted list
+                    fields[f] = '\n'.join(f'• {item}' for item in val)
+                else:
+                    fields[f] = str(val)
 
-        return f"✅ Готово! Скопируйте и отправьте клиенту:\n\n{result}"
+        result = render_client_template(tpl_id, fields)
 
-    def _process_event_template_input(self, user_id: str, text: str, ctx: dict) -> Optional[str]:
-        """Process input for event template. Returns None when event should be created."""
-        pending = ctx["pending_fields"]
-        idx = ctx["current_prompt_idx"]
+        # Append extra notes if any
+        extra = parsed.get("extra") if parsed else None
+        if extra and extra != "null":
+            result += f"\n\nP.S. {extra}"
 
-        if pending:
-            field = pending[0]
-            ctx["fields"][field] = text.strip()
-            ctx["pending_fields"] = pending[1:]
-            ctx["current_prompt_idx"] = idx + 1
+        # Keep context for editing — user can refine the message
+        self._template_context[user_id] = {
+            "type": "client",
+            "state": "editing",
+            "template_id": tpl_id,
+            "rendered_text": result,
+        }
 
-        if ctx["pending_fields"]:
-            # Ask next question
-            prompts = ctx["prompts"]
-            next_idx = ctx["current_prompt_idx"]
-            if next_idx < len(prompts):
-                return prompts[next_idx]
-            return f"Укажите: {ctx['pending_fields'][0]}"
+        return f"✅ Готово! Скопируйте и отправьте клиенту:\n\n{result}\n\n💡 Можете дополнить: \"и напиши чтобы паспорт не забыл\""
 
-        # All fields collected — create event via normal flow
-        from app.services.template_gallery import EVENT_TEMPLATES
-        tpl = EVENT_TEMPLATES.get(ctx["template_id"])
-        fields = ctx["fields"]
+    async def _process_event_template_input(self, user_id: str, text: str, ctx: dict) -> Optional[str]:
+        """Process input for event template — LLM extracts fields, then creates event."""
+        from app.services.template_gallery import EVENT_TEMPLATES, get_field_prompt
+
+        tpl_id = ctx["template_id"]
+        tpl = EVENT_TEMPLATES.get(tpl_id)
+        if not tpl:
+            del self._template_context[user_id]
+            return None
+
+        field_descriptions = ', '.join(
+            f'"{f}": {get_field_prompt(f)}' for f in tpl["field_names"]
+        )
+
+        system_prompt = (
+            "Ты помощник риелтора. Из сообщения извлеки поля для создания события.\n"
+            f"Тип события: {tpl['title']}\n"
+            f"Нужные поля: {field_descriptions}\n"
+            "Верни ТОЛЬКО JSON. Пример:\n"
+            '{"client_name": "Иванов", "time_text": "завтра в 14:00", "address": "ул. Пионерская 12"}\n'
+            "Если поле не удалось определить — поставь null."
+        )
+
+        parsed = await self._call_template_llm(system_prompt, text)
         del self._template_context[user_id]
 
         # Build natural language command for existing parser
-        parts = [tpl["title"].split(" ", 1)[-1]]  # Remove emoji
-        if "client_name" in fields:
-            parts.append(fields["client_name"])
-        if "address" in fields:
-            parts.append(fields["address"])
-        if "developer" in fields:
-            parts.append(fields["developer"])
-        if "topic" in fields:
-            parts.append(fields["topic"])
-        if "parties" in fields:
-            parts.append(fields["parties"])
-        if "time_text" in fields:
-            parts.append(fields["time_text"])
+        parts = [tpl["title"].split(" ", 1)[-1]]  # Remove emoji from title
 
-        # Return special marker so caller knows to process as event creation
+        if parsed:
+            for f in tpl["field_names"]:
+                val = parsed.get(f)
+                if val and val != "null":
+                    parts.append(str(val))
+        else:
+            # Fallback: pass original text
+            parts.append(text.strip())
+
         return f"__CREATE_EVENT__:{' '.join(parts)}"
+
+    async def _refine_template_result(self, user_id: str, text: str, ctx: dict) -> Optional[str]:
+        """Refine already rendered template with user's additional instructions."""
+        current_text = ctx.get("rendered_text", "")
+
+        system_prompt = (
+            "Ты помощник риелтора. Есть готовое сообщение для клиента:\n\n"
+            f"{current_text}\n\n"
+            "Пользователь хочет его дополнить или изменить. "
+            "Верни ТОЛЬКО обновлённый текст сообщения целиком, без пояснений. "
+            "Сохрани стиль и тон оригинала. Добавь/измени только то, что просит пользователь."
+        )
+
+        try:
+            from app.config import settings
+            import httpx as _httpx
+
+            headers = {
+                "Authorization": f"Api-Key {settings.yandex_gpt_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "modelUri": f"gpt://{settings.yandex_gpt_folder_id}/yandexgpt-lite/latest",
+                "completionOptions": {"stream": False, "temperature": 0.2, "maxTokens": 500},
+                "messages": [
+                    {"role": "system", "text": system_prompt},
+                    {"role": "user", "text": text},
+                ]
+            }
+
+            async with _httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
+                    headers=headers, json=payload
+                )
+                resp.raise_for_status()
+                refined = resp.json()["result"]["alternatives"][0]["message"]["text"].strip()
+
+            # Update context with refined text for further edits
+            ctx["rendered_text"] = refined
+
+            return f"✅ Обновлено:\n\n{refined}\n\n💡 Можете продолжить редактирование или отправить клиенту."
+
+        except Exception as e:
+            logger.warning("template_refine_error", error=str(e))
+            del self._template_context[user_id]
+            return "Не удалось обновить сообщение. Попробуйте ещё раз."
 
     async def _handle_followup_callback(
         self, query, update: Update, user_id: str, data: str
@@ -2092,7 +2213,7 @@ Housler.ru сделал подборку сервисов, которые пом
         text_lower = text.lower().strip()
 
         # ========== Template context check (guided template filling) ==========
-        template_response = self._check_template_context(user_id, text)
+        template_response = await self._check_template_context(user_id, text)
         if template_response:
             if template_response.startswith("__CREATE_EVENT__:"):
                 # Event template completed — process as natural language event creation

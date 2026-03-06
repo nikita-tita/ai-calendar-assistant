@@ -5,7 +5,7 @@ import logging
 import signal
 from datetime import datetime, time
 import pytz
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters
 
 from app.config import settings
@@ -124,6 +124,7 @@ async def main():
     # Add handlers
     app.add_handler(CommandHandler("start", handle_with_context))
     app.add_handler(CommandHandler("timezone", handle_with_context))
+    app.add_handler(CommandHandler("templates", handle_with_context))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.VOICE, handle_with_context))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_with_context))
@@ -133,6 +134,14 @@ async def main():
     logger.info(f"Bot token: {settings.telegram_bot_token[:10]}...")
 
     await app.initialize()
+
+    # Register bot commands menu (visible when user types "/" in chat)
+    await app.bot.set_my_commands([
+        BotCommand("start", "Начать работу"),
+        BotCommand("templates", "Шаблоны текстов и событий"),
+        BotCommand("timezone", "Сменить часовой пояс"),
+    ])
+
     await app.start()
     await app.updater.start_polling(drop_pending_updates=True)
 
