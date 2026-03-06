@@ -135,6 +135,17 @@ intent="create" когда:
 - "на 3 дня" → +3 дня
 - "на неделю" → +7 дней
 
+ТИП СОБЫТИЯ (event_type):
+- "showing": показ, просмотр, осмотр квартиры
+- "client_call": звонок, созвон с клиентом
+- "doc_signing": подписание, сделка, договор
+- "dev_meeting": встреча с застройщиком, девелопером
+- "generic": всё остальное (по умолчанию)
+Примеры:
+- "Показ на Пионерской в 14:00" → event_type="showing"
+- "Позвонить Иванову в 10:00" → event_type="client_call"
+- "Подписание договора завтра в 15:00" → event_type="doc_signing"
+
 УДАЛЕНИЕ:
 - "удали все X" → intent="delete_by_criteria", delete_criteria_title_contains="X"
 - "удали дубликаты" → intent="delete_duplicates"
@@ -680,6 +691,7 @@ JSON:"""
                     title=params.get("title"),
                     start_time=params.get("start_time"),
                     end_time=params.get("end_time"),
+                    event_type=params.get("event_type", "generic"),
                 )
             elif intent_str == "find_free_slots":
                 dto = EventDTO(
@@ -1355,7 +1367,12 @@ JSON:"""
             recurrence_days=input_data.get("recurrence_days"),
             # Delete by criteria fields
             delete_criteria_title=input_data.get("delete_criteria_title"),
-            delete_criteria_title_contains=input_data.get("delete_criteria_title_contains")
+            delete_criteria_title_contains=input_data.get("delete_criteria_title_contains"),
+            # Real estate domain fields
+            event_type=input_data.get("event_type", "generic"),
+            client_name=input_data.get("client_name"),
+            client_phone=input_data.get("client_phone"),
+            apartment_details=input_data.get("apartment_details"),
         )
 
         return event_dto

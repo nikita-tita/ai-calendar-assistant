@@ -13,6 +13,7 @@ from app.services.calendar_radicale import calendar_service, CalendarServiceErro
 from app.services.user_preferences import user_preferences
 from app.services.todos_service import todos_service
 from app.services.referral_service import referral_service
+from app.services.followup_service import followup_service
 
 # Analytics service - optional, fallback if not available
 try:
@@ -196,6 +197,15 @@ class TelegramHandler:
                 await self._handle_share_command(update, user_id)
                 return
 
+            # Handle /templates command
+            if message.text and message.text.startswith('/templates'):
+                from app.services.template_gallery import get_templates_keyboard
+                await update.message.reply_text(
+                    "Выберите тип шаблона:",
+                    reply_markup=get_templates_keyboard()
+                )
+                return
+
             # Handle quick buttons
             if message.text and message.text in ['📋 Дела на сегодня', 'Дела на сегодня']:
                 await self._handle_text(update, user_id, "Какие планы на сегодня?")
@@ -237,6 +247,15 @@ class TelegramHandler:
             # Handle todos list button
             if message.text and message.text in ['✅ Задачи', 'Задачи']:
                 await self._handle_todos_list(update, user_id)
+                return
+
+            # Handle templates button
+            if message.text and message.text in ['✉️ Шаблоны', 'Шаблоны']:
+                from app.services.template_gallery import get_templates_keyboard
+                await update.message.reply_text(
+                    "Выберите тип шаблона:",
+                    reply_markup=get_templates_keyboard()
+                )
                 return
 
             # Handle voice message
@@ -1294,6 +1313,15 @@ Housler.ru сделал подборку сервисов, которые пом
         if await self._handle_hint_callback(query, update, user_id, data):
             return
 
+        if await self._handle_template_callback(query, update, user_id, data):
+            return
+
+        if await self._handle_followup_callback(query, update, user_id, data):
+            return
+
+        if await self._handle_followup_action_callback(query, update, user_id, data):
+            return
+
         # Unknown callback - log for debugging
         logger.warning("unknown_callback_query", user_id=user_id, data=data)
 
@@ -1352,6 +1380,320 @@ Housler.ru сделал подборку сервисов, которые пом
 
         # Process as if user typed the text
         await self._handle_text(update, user_id, simulated_text)
+        return True
+
+    async def _handle_template_callback(
+        self, query, update: Update, user_id: str, data: str
+    ) -> bool:
+        """Handle template:* callbacks — template gallery navigation."""
+        if not data.startswith("template:"):
+            return False
+
+        from app.services.template_gallery import (
+            get_client_templates_keyboard, get_event_templates_keyboard,
+            get_templates_keyboard, CLIENT_TEMPLATES, EVENT_TEMPLATES,
+            render_client_template, get_field_prompt,
+        )
+
+        action = data[9:]  # Remove "template:" prefix
+
+        if action == "client_menu":
+            await query.edit_message_text(
+                "✉️ Тексты для клиентов\nВыберите шаблон:",
+                reply_markup=get_client_templates_keyboard()
+            )
+            return True
+
+        elif action == "event_menu":
+            await query.edit_message_text(
+                "📅 Создать событие\nВыберите тип:",
+                reply_markup=get_event_templates_keyboard()
+            )
+            return True
+
+        elif action == "back":
+            await query.edit_message_text(
+                "Выберите тип шаблона:",
+                reply_markup=get_templates_keyboard()
+            )
+            return True
+
+        elif action.startswith("client:"):
+            tpl_id = action[7:]  # Remove "client:"
+            tpl = CLIENT_TEMPLATES.get(tpl_id)
+            if not tpl:
+                return False
+
+            # Show template preview with empty fields
+            fields = {f: f"[{get_field_prompt(f)}]" for f in tpl["fields"]}
+            preview = render_client_template(tpl_id, fields)
+
+            msg = (
+                f"**{tpl['title']}**\n\n"
+                f"{preview}\n\n"
+                f"Отправьте данные одним сообщением или голосом.\n"
+                f"Нужные поля: {', '.join(get_field_prompt(f) for f in tpl['fields'])}"
+            )
+
+            # Store template context for next message
+            if not hasattr(self, '_template_context'):
+                self._template_context = {}
+            self._template_context[user_id] = {
+                "type": "client",
+                "template_id": tpl_id,
+                "fields": {},
+                "pending_fields": list(tpl["fields"]),
+            }
+
+            try:
+                await query.edit_message_text(msg)
+            except Exception:
+                await query.message.reply_text(msg)
+            return True
+
+        elif action.startswith("event:"):
+            tpl_id = action[6:]  # Remove "event:"
+            tpl = EVENT_TEMPLATES.get(tpl_id)
+            if not tpl:
+                return False
+
+            # Start guided event creation
+            if not hasattr(self, '_template_context'):
+                self._template_context = {}
+            self._template_context[user_id] = {
+                "type": "event",
+                "template_id": tpl_id,
+                "fields": {},
+                "pending_fields": list(tpl["field_names"]),
+                "prompts": list(tpl["prompts"]),
+                "current_prompt_idx": 0,
+            }
+
+            # Ask first question
+            first_prompt = tpl["prompts"][0]
+            try:
+                await query.edit_message_text(f"{tpl['title']}\n\n{first_prompt}")
+            except Exception:
+                await query.message.reply_text(f"{tpl['title']}\n\n{first_prompt}")
+            return True
+
+        return False
+
+    def _check_template_context(self, user_id: str, text: str) -> Optional[str]:
+        """Check if user is in template filling mode and process input.
+
+        Returns response message if handled, None otherwise.
+        """
+        if not hasattr(self, '_template_context'):
+            return None
+
+        ctx = self._template_context.get(user_id)
+        if not ctx:
+            return None
+
+        if ctx["type"] == "client":
+            return self._process_client_template_input(user_id, text, ctx)
+        elif ctx["type"] == "event":
+            return self._process_event_template_input(user_id, text, ctx)
+        return None
+
+    def _process_client_template_input(self, user_id: str, text: str, ctx: dict) -> Optional[str]:
+        """Process input for client text template."""
+        from app.services.template_gallery import (
+            render_client_template, extract_fields_from_text, get_field_prompt,
+            CLIENT_TEMPLATES,
+        )
+
+        tpl_id = ctx["template_id"]
+        pending = ctx["pending_fields"]
+
+        # Try bulk extraction first
+        if len(ctx["fields"]) == 0:
+            extracted = extract_fields_from_text(text, pending)
+            if extracted:
+                ctx["fields"].update(extracted)
+                pending = [f for f in pending if f not in extracted]
+
+        # If still have pending fields, fill next one
+        if pending:
+            field = pending[0]
+            if field not in ctx["fields"]:
+                ctx["fields"][field] = text.strip()
+            pending = pending[1:]
+            ctx["pending_fields"] = pending
+
+        if pending:
+            # Ask for next field
+            next_field = pending[0]
+            return f"Укажите: {get_field_prompt(next_field)}"
+
+        # All fields filled — render template
+        result = render_client_template(tpl_id, ctx["fields"])
+        del self._template_context[user_id]
+
+        return f"✅ Готово! Скопируйте и отправьте клиенту:\n\n{result}"
+
+    def _process_event_template_input(self, user_id: str, text: str, ctx: dict) -> Optional[str]:
+        """Process input for event template. Returns None when event should be created."""
+        pending = ctx["pending_fields"]
+        idx = ctx["current_prompt_idx"]
+
+        if pending:
+            field = pending[0]
+            ctx["fields"][field] = text.strip()
+            ctx["pending_fields"] = pending[1:]
+            ctx["current_prompt_idx"] = idx + 1
+
+        if ctx["pending_fields"]:
+            # Ask next question
+            prompts = ctx["prompts"]
+            next_idx = ctx["current_prompt_idx"]
+            if next_idx < len(prompts):
+                return prompts[next_idx]
+            return f"Укажите: {ctx['pending_fields'][0]}"
+
+        # All fields collected — create event via normal flow
+        from app.services.template_gallery import EVENT_TEMPLATES
+        tpl = EVENT_TEMPLATES.get(ctx["template_id"])
+        fields = ctx["fields"]
+        del self._template_context[user_id]
+
+        # Build natural language command for existing parser
+        parts = [tpl["title"].split(" ", 1)[-1]]  # Remove emoji
+        if "client_name" in fields:
+            parts.append(fields["client_name"])
+        if "address" in fields:
+            parts.append(fields["address"])
+        if "developer" in fields:
+            parts.append(fields["developer"])
+        if "topic" in fields:
+            parts.append(fields["topic"])
+        if "parties" in fields:
+            parts.append(fields["parties"])
+        if "time_text" in fields:
+            parts.append(fields["time_text"])
+
+        # Return special marker so caller knows to process as event creation
+        return f"__CREATE_EVENT__:{' '.join(parts)}"
+
+    async def _handle_followup_callback(
+        self, query, update: Update, user_id: str, data: str
+    ) -> bool:
+        """Handle followup:* callbacks — record follow-up response."""
+        if not data.startswith("followup:"):
+            return False
+
+        parts = data.split(":")
+        if len(parts) < 3:
+            return False
+
+        response_type = parts[1]  # positive, negative, reschedule, skip
+        fu_id = int(parts[2])
+
+        if not followup_service:
+            return False
+
+        # Record response
+        fu_data = followup_service.record_response(fu_id, response_type)
+
+        # Remove buttons
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        if response_type == "skip":
+            await query.message.reply_text("⏭ Пропущено")
+            return True
+
+        # Post-response feedback
+        _response_messages = {
+            "positive": "👍 Отлично!",
+            "negative": "📝 Понял, записал",
+            "reschedule": "🔄 Записал",
+        }
+        msg = _response_messages.get(response_type, "✅ Записал")
+
+        # Post-event quick actions for positive follow-ups (Sprint 5)
+        if response_type == "positive" and fu_data and fu_data.get("event_type") == "showing":
+            buttons = [
+                [
+                    InlineKeyboardButton("📅 Повторный показ", callback_data=f"followup_action:reschedule:{fu_id}"),
+                    InlineKeyboardButton("📞 Позвонить завтра", callback_data=f"followup_action:call_tomorrow:{fu_id}"),
+                ],
+                [
+                    InlineKeyboardButton("📋 Подготовить документы", callback_data=f"followup_action:prepare_docs:{fu_id}"),
+                ],
+            ]
+            msg += "\nЧто дальше?"
+            await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(buttons))
+        elif response_type == "reschedule" and fu_data:
+            title = fu_data.get("event_title", "Событие")
+            await query.message.reply_text(f"{msg}\nНапишите когда перенести: «{title} завтра в 14:00»")
+        else:
+            await query.message.reply_text(msg)
+
+        return True
+
+    async def _handle_followup_action_callback(
+        self, query, update: Update, user_id: str, data: str
+    ) -> bool:
+        """Handle followup_action:* callbacks — post-follow-up quick actions."""
+        if not data.startswith("followup_action:"):
+            return False
+
+        parts = data.split(":")
+        if len(parts) < 3:
+            return False
+
+        action = parts[1]
+        fu_id = int(parts[2])
+
+        # Remove buttons
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        if not followup_service:
+            return False
+
+        # Get follow-up data to extract title
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(followup_service.db_path))
+            cursor = conn.cursor()
+            cursor.execute("SELECT event_title FROM follow_ups WHERE id = ?", (fu_id,))
+            row = cursor.fetchone()
+            conn.close()
+            title = row[0] if row else "Событие"
+        except Exception:
+            title = "Событие"
+
+        if action == "call_tomorrow":
+            # Create todo for tomorrow call
+            from app.schemas.events import EventDTO, IntentType
+            todo_dto = EventDTO(
+                intent=IntentType.TODO,
+                title=f"Позвонить клиенту по: {title}",
+                confidence=1.0,
+            )
+            await self._handle_create_todo(update, user_id, todo_dto)
+        elif action == "prepare_docs":
+            from app.schemas.events import EventDTO, IntentType
+            todo_dto = EventDTO(
+                intent=IntentType.TODO,
+                title=f"Подготовить документы: {title}",
+                confidence=1.0,
+            )
+            await self._handle_create_todo(update, user_id, todo_dto)
+        elif action == "reschedule":
+            await query.message.reply_text(
+                f"Напишите когда повторный показ:\n«{title} послезавтра в 14:00»"
+            )
+        else:
+            return False
+
         return True
 
     def _get_user_timezone(self, update: Update) -> str:
@@ -1749,6 +2091,20 @@ Housler.ru сделал подборку сервисов, которые пом
 
         text_lower = text.lower().strip()
 
+        # ========== Template context check (guided template filling) ==========
+        template_response = self._check_template_context(user_id, text)
+        if template_response:
+            if template_response.startswith("__CREATE_EVENT__:"):
+                # Event template completed — process as natural language event creation
+                event_text = template_response[17:]
+                # Fall through to normal text processing with constructed text
+                text = event_text
+                text_lower = text.lower().strip()
+            else:
+                await update.message.reply_text(template_response)
+                self._log_bot_response(user_id, template_response, text)
+                return
+
         # ========== Pre-LLM Handlers (avoid expensive LLM calls) ==========
 
         # Handle greetings
@@ -2033,10 +2389,38 @@ Housler.ru сделал подборку сервисов, которые пом
                 except Exception as e:
                     logger.warning("analytics_log_failed", error=str(e))
 
+            # Schedule follow-up for domain events
+            event_type = getattr(event_dto, 'event_type', None) or "generic"
+            if followup_service and event_type not in ("generic", "dev_meeting"):
+                try:
+                    end_time = event_dto.end_time or (event_dto.start_time + timedelta(hours=1))
+                    followup_service.schedule_follow_up(
+                        user_id=user_id,
+                        chat_id=update.effective_chat.id,
+                        event_uid=event_uid,
+                        event_type=event_type,
+                        event_title=event_dto.title or "Событие",
+                        event_end_time=end_time,
+                        user_timezone=self._get_user_timezone(update),
+                    )
+                except Exception as e:
+                    logger.warning("followup_schedule_failed", error=str(e))
+
             time_str = format_datetime_human(event_dto.start_time, self._get_user_timezone(update))
-            message = f"✅ Записал\n{time_str} • {event_dto.title}"
+            # Type-aware confirmation
+            event_type = getattr(event_dto, 'event_type', None) or "generic"
+            _type_labels = {
+                "showing": "Записал показ",
+                "client_call": "Записал звонок",
+                "doc_signing": "Записал подписание",
+                "dev_meeting": "Записал встречу с застройщиком",
+            }
+            label = _type_labels.get(event_type, "Записал")
+            message = f"✅ {label}\n{time_str} • {event_dto.title}"
             if event_dto.location:
-                message += f" ({event_dto.location})"
+                message += f"\n📍 {event_dto.location}"
+            if getattr(event_dto, 'client_name', None):
+                message += f"\n👤 {event_dto.client_name}"
             reply_markup = self._get_quick_hints_keyboard() if self._should_show_hints(user_id) else None
             await update.message.reply_text(message, reply_markup=reply_markup)
             self._log_bot_response(user_id, message, user_text)

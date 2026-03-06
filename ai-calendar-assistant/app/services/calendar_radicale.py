@@ -461,8 +461,13 @@ class RadicaleService:
         ical_event.add('dtend', end_time_utc)
         ical_event.add('dtstamp', datetime.now(pytz.UTC))
 
-        if event.description:
-            ical_event.add('description', event.description)
+        # Encode event_type as prefix in description
+        description = event.description or ""
+        event_type = getattr(event, 'event_type', None) or "generic"
+        if event_type != "generic":
+            description = f"[TYPE:{event_type}] {description}".strip()
+        if description:
+            ical_event.add('description', description)
 
         if event.location:
             ical_event.add('location', event.location)
@@ -627,10 +632,21 @@ class RadicaleService:
                            has_tzinfo=start.tzinfo is not None,
                            tzinfo_str=str(start.tzinfo))
 
+                # Decode event_type from description prefix
+                raw_desc = str(component.get('description', ''))
+                event_type = "generic"
+                clean_desc = raw_desc
+                if raw_desc.startswith("[TYPE:"):
+                    import re as _re
+                    _type_match = _re.match(r'\[TYPE:(\w+)\]\s*(.*)', raw_desc, _re.DOTALL)
+                    if _type_match:
+                        event_type = _type_match.group(1)
+                        clean_desc = _type_match.group(2)
+
                 calendar_events.append(CalendarEvent(
                     id=str(component.get('uid')),
                     summary=str(component.get('summary', 'Событие')),
-                    description=str(component.get('description', '')),
+                    description=clean_desc,
                     start=start_local,
                     end=end_local,
                     location=str(component.get('location', '')),
@@ -638,7 +654,8 @@ class RadicaleService:
                         str(att).replace('mailto:', '')
                         for att in component.get('attendee', [])
                     ],
-                    html_link=f"{self.url}/{self._get_user_calendar_name(user_id)}/{component.get('uid')}.ics"
+                    html_link=f"{self.url}/{self._get_user_calendar_name(user_id)}/{component.get('uid')}.ics",
+                    event_type=event_type,
                 ))
 
         logger.info("events_listed", user_id=user_id, count=len(calendar_events))

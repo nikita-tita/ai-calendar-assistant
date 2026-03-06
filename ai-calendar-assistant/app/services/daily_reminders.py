@@ -261,7 +261,7 @@ class DailyRemindersService:
         return "\n".join(lines)
 
     async def send_morning_reminder(self, user_id: str, chat_id: int) -> str:
-        """Send morning reminder with today's events and tasks.
+        """Send morning reminder with today's events grouped by type and tasks.
 
         Returns:
             The message text that was sent, or None if failed.
@@ -280,7 +280,7 @@ class DailyRemindersService:
             end_of_day = start_of_day + timedelta(days=1)
             events = await calendar_service.list_events(user_id, start_of_day, end_of_day)
 
-            # Format events list
+            # Format events with type info
             today_events = []
             for e in events:
                 event_start = e.start
@@ -289,7 +289,9 @@ class DailyRemindersService:
                 event_start_local = event_start.astimezone(user_tz)
                 today_events.append({
                     'start': event_start_local,
-                    'title': e.summary
+                    'title': e.summary,
+                    'event_type': getattr(e, 'event_type', 'generic') or 'generic',
+                    'location': getattr(e, 'location', '') or '',
                 })
             today_events.sort(key=lambda x: x['start'])
 
@@ -303,48 +305,75 @@ class DailyRemindersService:
             greeting = get_translation("morning_greeting", lang)
             parts = [greeting, ""]
 
-            # Determine scenario and build message
             if events_count == 0 and tasks_count == 0:
-                # Scenario 1: Empty day
                 parts.append(get_translation("morning_empty_day", lang))
                 parts.append("")
                 parts.append(get_translation("morning_empty_suggestions", lang))
 
-            elif events_count == 0 and tasks_count > 0:
-                # Scenario 2: Tasks only
-                parts.append(get_translation("morning_no_meetings", lang))
-                parts.append("")
-                parts.append(get_translation("morning_tasks_header", lang, count=tasks_count))
-                parts.append(self._format_task_list(incomplete_todos))
-                parts.append("")
-                parts.append(get_translation("morning_productive", lang))
-
-            elif events_count > 0 and tasks_count == 0:
-                # Scenario 3: Events only
-                parts.append(get_translation("morning_meetings_header", lang, count=events_count))
-                events_list = "\n".join([
-                    f"• {e['start'].strftime('%H:%M')} - {e['title'][:40]}"
-                    for e in today_events[:7]
-                ])
-                parts.append(events_list)
-                parts.append("")
-                parts.append(get_translation("morning_add_tasks", lang))
-                parts.append("")
-                parts.append(get_translation("morning_good_deals", lang))
-
             else:
-                # Scenario 4: Full day (events + tasks)
-                parts.append(get_translation("morning_meetings_header", lang, count=events_count))
-                events_list = "\n".join([
-                    f"• {e['start'].strftime('%H:%M')} - {e['title'][:40]}"
-                    for e in today_events[:7]
-                ])
-                parts.append(events_list)
-                parts.append("")
-                parts.append(get_translation("morning_and_tasks", lang, count=tasks_count))
-                parts.append(self._format_task_list(incomplete_todos))
-                parts.append("")
-                parts.append(get_translation("morning_full_day", lang))
+                if events_count > 0:
+                    # Group by event type for domain-aware summary
+                    type_counts = {}
+                    for e in today_events:
+                        t = e['event_type']
+                        type_counts[t] = type_counts.get(t, 0) + 1
+
+                    _type_names = {
+                        "showing": "показ", "client_call": "звонок",
+                        "doc_signing": "подписание", "dev_meeting": "встреча с застройщиком",
+                    }
+                    _type_icons = {
+                        "showing": "🏠", "client_call": "📞",
+                        "doc_signing": "📝", "dev_meeting": "🏗",
+                    }
+
+                    # Summary line: "Сегодня: 2 показа, 1 звонок, 1 событие"
+                    summary_parts = []
+                    for t, cnt in type_counts.items():
+                        if t in _type_names:
+                            name = _type_names[t]
+                            # Simple pluralization
+                            if cnt == 1:
+                                summary_parts.append(f"{cnt} {name}")
+                            else:
+                                summary_parts.append(f"{cnt} {name}")
+                        else:
+                            if cnt == 1:
+                                summary_parts.append(f"{cnt} событие")
+                            else:
+                                summary_parts.append(f"{cnt} событий")
+                    parts.append(f"📅 Сегодня: {', '.join(summary_parts)}")
+                    parts.append("")
+
+                    # Events list with type icons
+                    for e in today_events[:10]:
+                        icon = _type_icons.get(e['event_type'], '•')
+                        line = f"{icon} {e['start'].strftime('%H:%M')} — {e['title'][:40]}"
+                        if e['location'] and e['event_type'] == 'showing':
+                            line += f" ({e['location'][:30]})"
+                        parts.append(line)
+
+                    # First event hint
+                    first = today_events[0]
+                    mins_until = int((first['start'] - now_user_tz).total_seconds() / 60)
+                    if 0 < mins_until <= 480:
+                        hours = mins_until // 60
+                        mins = mins_until % 60
+                        if hours > 0:
+                            parts.append(f"\n⏰ Первое через {hours}ч {mins}мин")
+                        else:
+                            parts.append(f"\n⏰ Первое через {mins} мин")
+                    parts.append("")
+
+                if tasks_count > 0:
+                    if events_count > 0:
+                        parts.append(get_translation("morning_and_tasks", lang, count=tasks_count))
+                    else:
+                        parts.append(get_translation("morning_tasks_header", lang, count=tasks_count))
+                    parts.append(self._format_task_list(incomplete_todos))
+                    parts.append("")
+
+                parts.append(get_translation("morning_good_deals", lang))
 
             message = "\n".join(parts)
             await self.bot.send_message(chat_id=chat_id, text=message)
@@ -407,6 +436,96 @@ class DailyRemindersService:
             return None
         except Exception as e:
             logger.error("morning_motivation_error", user_id=user_id, error=str(e))
+            return None
+
+    async def send_weekly_digest(self, user_id: str, chat_id: int) -> str:
+        """Send weekly digest with past week summary and next week preview.
+
+        Returns:
+            The message text that was sent, or None if failed.
+        """
+        try:
+            user_tz_str = user_preferences.get_timezone(user_id)
+            user_tz = pytz.timezone(user_tz_str)
+            now = datetime.now(user_tz)
+
+            # Past week
+            week_start = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+            week_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            past_events = await calendar_service.list_events(user_id, week_start, week_end)
+
+            # Next week
+            next_start = week_end
+            next_end = next_start + timedelta(days=7)
+            next_events = await calendar_service.list_events(user_id, next_start, next_end)
+
+            # Count by type (past week)
+            _type_names = {
+                "showing": "показов", "client_call": "звонков",
+                "doc_signing": "подписаний", "dev_meeting": "встреч с застройщиками",
+            }
+            type_counts = {}
+            for e in past_events:
+                t = getattr(e, 'event_type', 'generic') or 'generic'
+                type_counts[t] = type_counts.get(t, 0) + 1
+
+            # Get incomplete todos
+            incomplete_todos, _ = await self._get_user_todos(user_id)
+
+            parts = ["📊 Итоги недели", ""]
+
+            # Past week summary
+            if past_events:
+                summary_items = []
+                for t, cnt in type_counts.items():
+                    name = _type_names.get(t, "событий")
+                    summary_items.append(f"{cnt} {name}")
+                parts.append(f"За неделю: {', '.join(summary_items)}")
+                parts.append(f"Всего событий: {len(past_events)}")
+            else:
+                parts.append("За неделю событий не было")
+            parts.append("")
+
+            # Next week preview
+            if next_events:
+                parts.append(f"📅 На следующую неделю: {len(next_events)} событий")
+                # Group by day
+                days = {}
+                for e in next_events:
+                    es = e.start
+                    if es.tzinfo is None:
+                        es = pytz.UTC.localize(es)
+                    es_local = es.astimezone(user_tz)
+                    day_key = es_local.strftime('%a %d.%m')
+                    if day_key not in days:
+                        days[day_key] = []
+                    days[day_key].append(f"{es_local.strftime('%H:%M')} {e.summary[:30]}")
+                for day, items in list(days.items())[:5]:
+                    parts.append(f"\n{day}:")
+                    for item in items[:4]:
+                        parts.append(f"  • {item}")
+            else:
+                parts.append("На следующую неделю пока ничего не запланировано")
+
+            # Tasks
+            if incomplete_todos:
+                parts.append(f"\n📋 Незакрытых задач: {len(incomplete_todos)}")
+
+            message = "\n".join(parts)
+            await self.bot.send_message(chat_id=chat_id, text=message)
+            logger.info("weekly_digest_sent", user_id=user_id,
+                       past_events=len(past_events), next_events=len(next_events))
+            return message
+
+        except TelegramError as e:
+            error_msg = str(e).lower()
+            if "chat not found" in error_msg or "bot was blocked" in error_msg:
+                self.unregister_user(user_id)
+            else:
+                logger.error("weekly_digest_failed", user_id=user_id, error=str(e))
+            return None
+        except Exception as e:
+            logger.error("weekly_digest_error", user_id=user_id, error=str(e), exc_info=True)
             return None
 
     async def send_evening_reminder(self, user_id: str, chat_id: int) -> str:
@@ -619,6 +738,14 @@ class DailyRemindersService:
                                         msg = await self.send_evening_reminder(user_id, chat_id)
                                         self._record_daily_reminder(user_id, user_date_str, 'evening', msg)
                                         await asyncio.sleep(1)  # Rate limiting
+
+                            # Weekly digest on Sunday at 18:00
+                            if user_local_time.weekday() == 6 and is_time_match(current_minute_time, time(18, 0)):
+                                if not in_quiet_hours:
+                                    if not self._is_daily_reminder_sent(user_id, user_date_str, 'weekly_digest'):
+                                        msg = await self.send_weekly_digest(user_id, chat_id)
+                                        self._record_daily_reminder(user_id, user_date_str, 'weekly_digest', msg)
+                                        await asyncio.sleep(1)
 
                     except Exception as e:
                         logger.error("user_schedule_check_error", user_id=user_id, error=str(e))

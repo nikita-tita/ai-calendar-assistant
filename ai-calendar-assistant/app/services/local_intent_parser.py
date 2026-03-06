@@ -187,6 +187,23 @@ _WEEKDAY_MAP = {
     "суббота": 5, "субботу": 5, "воскресенье": 6, "воскресени": 6,
 }
 
+# Event type detection keywords
+_EVENT_TYPE_KEYWORDS = {
+    "showing": ["показ", "просмотр", "осмотр", "смотрин"],
+    "client_call": ["позвонить", "звонок", "созвон", "перезвонить", "дозвонить"],
+    "doc_signing": ["подписание", "подписать", "сделка", "договор", "документы на подпис"],
+    "dev_meeting": ["застройщик", "девелопер", "строител", "жк ", "новостройк"],
+}
+
+
+def _detect_event_type(text_lower: str) -> str:
+    """Detect domain event type from text keywords."""
+    for event_type, keywords in _EVENT_TYPE_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text_lower:
+                return event_type
+    return "generic"
+
 
 def _get_now(timezone: str) -> datetime:
     """Get current time in user's timezone as naive datetime."""
@@ -265,10 +282,14 @@ def _try_create_with_time(text_lower: str, text_orig: str, timezone: str) -> Opt
     if confidence < CONFIDENCE_THRESHOLD:
         return None  # Not confident enough
 
+    # Detect domain event type
+    event_type = _detect_event_type(text_lower)
+
     return ("create", {
         "title": title,
         "start_time": start_time,
         "end_time": start_time + timedelta(hours=1),  # Default 1h duration
+        "event_type": event_type,
     }, confidence)
 
 

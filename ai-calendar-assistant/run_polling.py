@@ -14,6 +14,8 @@ from app.services.daily_reminders import DailyRemindersService
 from app.services.event_reminders_idempotent import EventRemindersServiceIdempotent
 from app.services.forum_logger import ForumActivityLogger
 import app.services.forum_logger as forum_logger_module
+from app.services.followup_service import FollowUpService
+import app.services.followup_service as followup_module
 
 # Setup logging
 logging.basicConfig(
@@ -98,6 +100,10 @@ async def main():
     forum_logger_module.forum_logger = forum_logger
     forum_logger.start()
 
+    # Initialize follow-up service
+    followup_svc = FollowUpService(app.bot)
+    followup_module.followup_service = followup_svc
+
     # Create wrapper for handle_update that accepts context
     async def handle_with_context(update: Update, context):
         # Register user for daily reminders on ANY message (idempotent - won't duplicate)
@@ -144,6 +150,18 @@ async def main():
     admin_report_task = asyncio.create_task(run_admin_report_schedule(forum_logger))
     logger.info("Admin report schedule started (21:00 MSK via @dogovorarenda_bot)")
 
+    # Start follow-up checker in background (every minute)
+    async def followup_loop():
+        while not shutdown_event.is_set():
+            try:
+                await followup_svc.check_and_send_follow_ups()
+            except Exception as e:
+                logger.error(f"Follow-up check error: {e}")
+            await asyncio.sleep(60)
+
+    followup_task = asyncio.create_task(followup_loop())
+    logger.info("Follow-up service started (checks every 60s)")
+
     # Setup signal handlers for graceful shutdown (handles Docker SIGTERM)
     # Use get_running_loop() instead of deprecated get_event_loop() in async context
     loop = asyncio.get_running_loop()
@@ -165,6 +183,7 @@ async def main():
     event_reminders.stop()
     event_reminders_task.cancel()
     admin_report_task.cancel()
+    followup_task.cancel()
     forum_logger.stop()
     await app.updater.stop()
     await app.stop()

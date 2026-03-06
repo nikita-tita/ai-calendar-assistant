@@ -6,6 +6,15 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
+class RealEstateEventType(str, Enum):
+    """Domain-specific event types for real estate agents."""
+    SHOWING = "showing"          # Показ квартиры
+    CLIENT_CALL = "client_call"  # Звонок клиенту
+    DOC_SIGNING = "doc_signing"  # Подписание документов
+    DEV_MEETING = "dev_meeting"  # Встреча с застройщиком
+    GENERIC = "generic"          # Обычное событие
+
+
 class IntentType(str, Enum):
     """User intent types."""
     CREATE = "create"
@@ -67,6 +76,12 @@ class EventDTO(BaseModel):
     delete_criteria_title: Optional[str] = Field(None, description="Title pattern to match for deletion")
     delete_criteria_title_contains: Optional[str] = Field(None, description="Substring to search in title for deletion")
 
+    # Real estate domain fields
+    event_type: Optional[str] = Field(None, description="Domain event type: showing, client_call, doc_signing, dev_meeting, generic")
+    client_name: Optional[str] = Field(None, description="Client name for the event")
+    client_phone: Optional[str] = Field(None, description="Client phone number")
+    apartment_details: Optional[str] = Field(None, description="Address or apartment details")
+
     class Config:
         """Pydantic config."""
         use_enum_values = True
@@ -86,6 +101,7 @@ class CalendarEvent(BaseModel):
     location: Optional[str] = None
     attendees: List[str] = Field(default_factory=list)
     html_link: str = Field(..., description="Link to event in Google Calendar")
+    event_type: str = Field(default="generic", description="Domain event type")
 
     class Config:
         """Pydantic config."""
